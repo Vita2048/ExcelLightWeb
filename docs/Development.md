@@ -17,7 +17,31 @@ npm run test:e2e
 
 `npm run check` combines typecheck, unit/integration tests and production build. E2E is separate because browsers must be installed. CI runs both and installs the three browser engines. The Pages workflow repeats them before uploading the exact tested dist directory. The E2E server serves real static files at `/` and `/ExcelLightWeb/`, with no missing-asset SPA fallback. This catches relative asset-path errors hidden by a development server.
 
-The initial tests only establish scaffold/build/base-path behavior and dark-only rendering. Product suites are added by their sprints. There are no spreadsheet, Python or file-compatibility test passes yet. Vite's manual preview server is not a production hosting service.
+The scaffold tests verify build paths and dark rendering. S01 adds fixture integrity, snapshot and expectation loading checks. Spreadsheet, Python and file-compatibility suites arrive in their implementation sprints. Vite's manual preview server is for local development.
+
+## Browser Python feasibility
+
+Run the S02 probe with Node, Python 3, curl and the Playwright browsers listed above. Set the process variable `PYTHON` if your Python executable uses another name.
+
+```powershell
+npm run prepare:python-probe
+npm run test:python-probe
+```
+
+Preparation verifies the cached files against the runtime lock and downloads any missing or changed file. The test build serves these files and its module worker under the repository subpath. Playwright checks the package handshake and reports the time to initialize a fresh worker in its runtime attachment. Add `-- --project chromium` to focus on one browser. The default CI and Pages workflows use the production build. Python feasibility runs against the dedicated probe build in `test-results/python-probe-build/`.
+
+## Formula and file feasibility
+
+`npm test` includes the S03 parity cases. `npm run test:adapter-probe` bundles the probes separately and tests the desktop fixtures in all three Playwright engines. For independent desktop verification, use .NET 10 and the existing Release desktop test binaries. Run the following from the web repository. Pass `-p:DesktopBin=<absolute path>` to the .NET project if the desktop build is in another location.
+
+```powershell
+$env:S03_INTERCHANGE_OUT='node_modules/.cache/s03-verified'
+npx vitest run tests/parity/file-adapter-probe.test.ts
+dotnet run --project tests/desktop-interchange/Interchange.csproj -- check node_modules/.cache/s03-verified
+Remove-Item Env:S03_INTERCHANGE_OUT
+```
+
+Use `export` in place of `check` with a scratch directory to generate the original samples. The checked-in files are enough for Node and browser verification on other machines. [Adapter decision and budgets](decisions/ADR-003-formula-and-file-adapters.md)
 
 ## Test layers
 

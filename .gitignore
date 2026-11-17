@@ -2,9 +2,11 @@ node_modules/
 dist/
 coverage/
 test-results/
+tests/desktop-interchange/obj/
 playwright-report/
 .env*
 !.env.example
 *.log
 .DS_Store
 public/runtime/pyodide/
+tests/python-browser/public/runtime/

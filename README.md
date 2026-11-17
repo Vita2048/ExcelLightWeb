@@ -28,6 +28,6 @@ npm run test:e2e
 
 ## Agent starting prompt
 
-> Read AGENTS.md, docs/Architecture.md, docs/Feature-Parity.md and docs/Implementation-Plan.md. Implement S01 using docs/sprints/S01.md. Complete its acceptance checks, update the parity matrix and write docs/handovers/S01.md using the handover template. Report checks actually run and blockers. Do not claim later sprints are implemented.
+> Read AGENTS.md, docs/Architecture.md, docs/Feature-Parity.md and the S03 handover. Implement S04 using docs/sprints/S04.md and the desktop workbook and session assertions. Run its automated acceptance checks, update the parity matrix and write docs/handovers/S04.md using the handover template.
 
-Replace S01 with the next sprint only after its prerequisites are completed. The scaffold does not mean S01 is complete; S01 freezes the source baseline and fixtures.
+S01 captured the desktop baseline. S02 verified the browser Python probe. S03 selected the formula and file adapters. [S03 handover](docs/handovers/S03.md)

@@ -20,7 +20,7 @@ Deployment is manually triggered to avoid publishing partial sprint work on ever
 
 ## Runtime packaging before product release
 
-S02 identifies a tested Pyodide release and package closure. S24 adds a deterministic acquisition script and SHA-256 manifest, license notices and CI download/cache steps **before** build. The script must reject mismatched hashes and never fetch an unpinned `latest` release. Do not claim the current workflow already packages Python: it only builds the scaffold. Keep the runtime in versioned same-origin folders; runtime downloads are ignored in Git but included in dist by the future packaging step.
+S02 records the pinned Pyodide release and package closure in [the probe lock](../src/python/runtime-lock.json). Its acquisition script verifies SHA-256 and serves the assets in a dedicated test build. S24 will add license notices, production asset staging and CI download steps before the Pages build.
 
 Check total site/runtime sizes and individual assets against current [Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits). Browser asset requests naturally go to the host; application workbook data does not. User Python can make requests, so local computation is not a promise that arbitrary user scripts cannot use the network.
 

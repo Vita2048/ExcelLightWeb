@@ -1,0 +1,103 @@
+{
+  "captured": "2026-11-17",
+  "sourceRoot": "C:\\Temp\\ExcelLight",
+  "usage": "Local development and automated parity tests. No repository-level redistribution license was found in the desktop tree. Verify rights before publishing these copies.",
+  "files": [
+    {
+      "path": "sales/Showcase.exlt",
+      "sourcePath": "docs/showcase/Showcase.exlt",
+      "sha256": "bee81a60d0d0ed9ed203f42184e34bec5ffc15546b28a1bc857b261343db3ebf",
+      "bytes": 137512,
+      "purpose": "Native sales workbook with saved formulas, spills and charts",
+      "expectedValues": "sales/Expected-values.json"
+    },
+    {
+      "path": "sales/showcase_data.xlsx",
+      "sourcePath": "docs/showcase/showcase_data.xlsx",
+      "sha256": "274acbb92a5300368da7a1a887fa3789c2c97e628931c6790b1fc95c697108a3",
+      "bytes": 13629,
+      "purpose": "Original XLSX input for independent sales expectations",
+      "expectedValues": "sales/Expected-values.json"
+    },
+    {
+      "path": "sales/Expected-values.json",
+      "sourcePath": "docs/showcase/Expected-values.json",
+      "sha256": "1a746ecf5a24de12f15bb50ba770166573df1927d522f5b5867815c515f81c0a",
+      "bytes": 38500,
+      "purpose": "Desktop project’s independent source-derived cells and monthly totals",
+      "expectedValues": "docs/showcase/tools/showcase_expectations.py"
+    },
+    {
+      "path": "sla/Support-SLA.exlt",
+      "sourcePath": "docs/showcase/sla/Support-SLA.exlt",
+      "sha256": "6a4e1258701b2be5c72bb14e710bbf92edc6f279f1241ac386313fb258d98c02",
+      "bytes": 403579,
+      "purpose": "Synthetic SLA tickets, workbook links and saved charts",
+      "expectedValues": "sla/Expected-values.json"
+    },
+    {
+      "path": "sales/monthly-revenue.py",
+      "sourcePath": "docs/showcase/python/monthly-revenue.py",
+      "sha256": "bdc2e8dfc73a8c5f7ae8a0d2cd3737a025765568b7162098cea100a392fea670",
+      "bytes": 1831,
+      "purpose": "Desktop Python source for unchanged-script comparison",
+      "expectedValues": "sales/Expected-values.json"
+    },
+    {
+      "path": "sales/regional-revenue.py",
+      "sourcePath": "docs/showcase/python/regional-revenue.py",
+      "sha256": "e0b53e35120cb2657382d9e5ebf42097c5ad50d780bb50c5ba58f652e6a87037",
+      "bytes": 522,
+      "purpose": "Desktop Python source for unchanged-script comparison",
+      "expectedValues": "sales/Expected-values.json"
+    },
+    {
+      "path": "sales/regional-statistics.py",
+      "sourcePath": "docs/showcase/python/regional-statistics.py",
+      "sha256": "b0830561471530ff2c4e80c290a962bed23f451396ce22d8fcb0ad009bdef6fc",
+      "bytes": 1742,
+      "purpose": "Desktop Python source for unchanged-script comparison",
+      "expectedValues": "sales/Expected-values.json"
+    },
+    {
+      "path": "sla/analysis.py",
+      "sourcePath": "docs/showcase/sla/analysis.py",
+      "sha256": "3db8d845d36bdc464b40e37c292a659a89daf78936924d6ce8e00d35d08574bd",
+      "bytes": 4582,
+      "purpose": "Desktop Python source for unchanged-script comparison",
+      "expectedValues": "sla/Expected-values.json"
+    },
+    {
+      "path": "sla/heatmap.py",
+      "sourcePath": "docs/showcase/sla/heatmap.py",
+      "sha256": "3327545b639911fb4e6fb8f4b8d4ded42d781470a3ee221499b13c687c454235",
+      "bytes": 1697,
+      "purpose": "Desktop Python source for unchanged-script comparison",
+      "expectedValues": "sla/Expected-values.json"
+    },
+    {
+      "path": "sla/trend.py",
+      "sourcePath": "docs/showcase/sla/trend.py",
+      "sha256": "7fdda0d887927e97fbb9c18e182305771fdd5a2c28c309159386aadd91a4e868",
+      "bytes": 1361,
+      "purpose": "Desktop Python source for unchanged-script comparison",
+      "expectedValues": "sla/Expected-values.json"
+    },
+    {
+      "path": "sla/Expected-values.json",
+      "sourcePath": "tests/ExcelLite.Tests/SlaShowcaseChecks.cs",
+      "sha256": "1a0b71a9a6eb20e7ecdfc9bf4cdce958ca9fc6610f16e495067383e82ea59323",
+      "bytes": 1180,
+      "purpose": "Derived behavioral expectations",
+      "expectedValues": "tests/ExcelLite.Tests/SlaShowcaseChecks.cs"
+    },
+    {
+      "path": "formulas/Expected-values.json",
+      "sourcePath": "tests/ExcelLite.Tests/Program.cs",
+      "sha256": "71da2f6d160d1f52e1a23801ed7cb234ef4a482851323a2f1d47bc2226a23cc1",
+      "bytes": 1298,
+      "purpose": "Derived behavioral expectations",
+      "expectedValues": "tests/ExcelLite.Tests/Program.cs"
+    }
+  ]
+}

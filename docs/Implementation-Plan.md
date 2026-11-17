@@ -10,38 +10,36 @@ This deliverable contains the planning set, directory boundaries, React shell, s
 
 Use one slice as one sprint. S01 freezes the observable baseline; S02/S03 retire the biggest feasibility risks before committing to a full port. Then follow numerical order S04–S26. Dependencies below also document the minimum prerequisites, but numerical order is the recommended single-agent workflow. Each sprint is a usable or verifiable increment, ends with tests and a handover, and must not leave simulated working features in the UI.
 
-Estimates are rough focused engineering days, assuming one implementation agent with human review and access to the source. They are sizing aids, not promised elapsed agent runtime. If acceptance cannot fit in a sprint, split its remaining work explicitly with traceable IDs (e.g. S12a/S12b) and update dependencies before starting; do not weaken tests. Expect a multi-month full-parity project, dominated by spreadsheet semantics and Python/file compatibility, rather than a frontend reskin.
-
 ## Sprint sequence
 
-| Sprint | Deliverable | Prerequisites | Size |
-| --- | --- | --- | --- |
-| [S01](sprints/S01.md) | Baseline and test fixtures | none | 3–5 days |
-| [S02](sprints/S02.md) | Browser Python feasibility gate | S01 | 3–5 days |
-| [S03](sprints/S03.md) | Formula and file adapter feasibility gate | S01 | 3–5 days |
-| [S04](sprints/S04.md) | Workbook model, session and history | S01, S03 | 3–5 days |
-| [S05](sprints/S05.md) | Dark shell and virtual worksheet | S04 | 3–5 days |
-| [S06](sprints/S06.md) | Editing, clipboard and fill | S05 | 3–5 days |
-| [S07](sprints/S07.md) | Structural edits and dimensions | S06 | 3–5 days |
-| [S08](sprints/S08.md) | Formula language and functions | S03, S07 | 3–5 days |
-| [S09](sprints/S09.md) | Native dependency engine and formula UI | S08 | 3–5 days |
-| [S10](sprints/S10.md) | Number, date and special formats | S09 | 3–5 days |
-| [S11](sprints/S11.md) | Fonts, fills and Format Painter | S10 | 3–5 days |
-| [S12](sprints/S12.md) | Borders and drawing tools | S11 | 3–5 days |
-| [S13](sprints/S13.md) | Alignment and merged ranges | S12 | 3–5 days |
-| [S14](sprints/S14.md) | Names and tables | S13 | 3–5 days |
-| [S15](sprints/S15.md) | Sort, filter and statistics | S14 | 3–5 days |
-| [S16](sprints/S16.md) | Find, view and navigation polish | S15 | 2–4 days |
-| [S17](sprints/S17.md) | Native .exlt persistence | S03, S16 | 3–5 days |
-| [S18](sprints/S18.md) | Browser file lifecycle and local recovery | S17 | 3–5 days |
-| [S19](sprints/S19.md) | XLSX exchange and loss reports | S03, S18 | 3–5 days |
-| [S20](sprints/S20.md) | Monaco Python authoring and references | S02, S19 | 3–5 days |
-| [S21](sprints/S21.md) | Python execution, tables and spills | S20 | 3–5 days |
-| [S22](sprints/S22.md) | Mixed native/Python recalculation | S09, S21 | 3–5 days |
-| [S23](sprints/S23.md) | Figures, placements and redraw | S22 | 3–5 days |
-| [S24](sprints/S24.md) | Offline packaging and hardening | S23 | 3–5 days |
-| [S25](sprints/S25.md) | Cross-browser parity and performance | S24 | 3–5 days |
-| [S26](sprints/S26.md) | Release and GitHub Pages acceptance | S25 | 2–3 days |
+| Sprint | Deliverable | Prerequisites |
+| --- | --- | --- |
+| [S01](sprints/S01.md) | Baseline and test fixtures (complete) | none |
+| [S02](sprints/S02.md) | Browser Python feasibility gate (complete) | S01 |
+| [S03](sprints/S03.md) | Formula and file adapter feasibility gate (complete) | S01 |
+| [S04](sprints/S04.md) | Workbook model, session and history | S01, S03 |
+| [S05](sprints/S05.md) | Dark shell and virtual worksheet | S04 |
+| [S06](sprints/S06.md) | Editing, clipboard and fill | S05 |
+| [S07](sprints/S07.md) | Structural edits and dimensions | S06 |
+| [S08](sprints/S08.md) | Formula language and functions | S03, S07 |
+| [S09](sprints/S09.md) | Native dependency engine and formula UI | S08 |
+| [S10](sprints/S10.md) | Number, date and special formats | S09 |
+| [S11](sprints/S11.md) | Fonts, fills and Format Painter | S10 |
+| [S12](sprints/S12.md) | Borders and drawing tools | S11 |
+| [S13](sprints/S13.md) | Alignment and merged ranges | S12 |
+| [S14](sprints/S14.md) | Names and tables | S13 |
+| [S15](sprints/S15.md) | Sort, filter and statistics | S14 |
+| [S16](sprints/S16.md) | Find, view and navigation polish | S15 |
+| [S17](sprints/S17.md) | Native .exlt persistence | S03, S16 |
+| [S18](sprints/S18.md) | Browser file lifecycle and local recovery | S17 |
+| [S19](sprints/S19.md) | XLSX exchange and loss reports | S03, S18 |
+| [S20](sprints/S20.md) | Monaco Python authoring and references | S02, S19 |
+| [S21](sprints/S21.md) | Python execution, tables and spills | S20 |
+| [S22](sprints/S22.md) | Mixed native/Python recalculation | S09, S21 |
+| [S23](sprints/S23.md) | Figures, placements and redraw | S22 |
+| [S24](sprints/S24.md) | Offline packaging and hardening | S23 |
+| [S25](sprints/S25.md) | Cross-browser parity and performance | S24 |
+| [S26](sprints/S26.md) | Release and GitHub Pages acceptance | S25 |
 
 ## Milestones and gates
 

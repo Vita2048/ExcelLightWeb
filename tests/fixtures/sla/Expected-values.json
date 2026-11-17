@@ -1,0 +1,45 @@
+{
+  "workbookSha256": "6a4e1258701b2be5c72bb14e710bbf92edc6f279f1241ac386313fb258d98c02",
+  "snapshotUtc": "2026-07-01T00:00:00Z",
+  "targetCell": "Dashboard!P9",
+  "dashboardCells": {
+    "opened": "B6",
+    "breachRate": "E6",
+    "open": "H6",
+    "resolutionP90Hours": "K6"
+  },
+  "derivation": "Independently calculated from Tickets input cells using the Breached, Rate and P90 rules in SlaShowcaseChecks.cs. The initial dashboard values also match the saved caches.",
+  "tolerance": 1e-09,
+  "scenarios": [
+    {
+      "p2TargetHours": 4,
+      "kpis": {
+        "opened": 610,
+        "breachRate": 0.24752475247524752,
+        "open": 8,
+        "resolutionP90Hours": 76.956
+      },
+      "pending": 4,
+      "assessed": 606
+    },
+    {
+      "p2TargetHours": 2,
+      "kpis": {
+        "opened": 610,
+        "breachRate": 0.3207236842105263,
+        "open": 8,
+        "resolutionP90Hours": 76.956
+      },
+      "pending": 2,
+      "assessed": 608
+    }
+  ],
+  "invalidTarget": {
+    "p2TargetHours": 0,
+    "errorContains": "positive number of hours"
+  },
+  "chartAnchors": [
+    "Analysis!B52",
+    "Analysis!B53"
+  ]
+}

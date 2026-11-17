@@ -1,0 +1,54 @@
+{
+  "source": "tests/ExcelLite.Tests/Program.cs",
+  "scope": "Selected FeasibilityWorkbook source assertions. These cases capture the asserted evaluator behavior.",
+  "cases": [
+    {
+      "id": "sum-range",
+      "expression": "=SUM(B1:B2)",
+      "inputs": {
+        "B1": 15,
+        "B2": 20
+      },
+      "value": 35
+    },
+    {
+      "id": "lazy-if",
+      "expression": "=IF(TRUE,42,1/0)",
+      "inputs": {},
+      "value": 42
+    },
+    {
+      "id": "division-error",
+      "expression": "=1/0",
+      "inputs": {},
+      "errorPrefix": "#DIV/0"
+    },
+    {
+      "id": "unsupported-function",
+      "expression": "=UNSUPPORTED_FUNCTION(1)",
+      "inputs": {},
+      "errorPrefix": "#"
+    },
+    {
+      "id": "malformed-source",
+      "expression": "=SUM(",
+      "inputs": {},
+      "errorPrefix": "#",
+      "retainedSource": "=SUM("
+    },
+    {
+      "id": "relative-copy",
+      "expression": "=$B1+B$2+$B$1",
+      "origin": "E1",
+      "destination": "F2",
+      "translated": "=$B2+C$2+$B$1"
+    },
+    {
+      "id": "range-insert-row",
+      "expression": "=SUM(B2:B3)",
+      "origin": "C2",
+      "insertRow": 1,
+      "notes": "Expected source in C2 after the row insertion, per the desktop assertion."
+    }
+  ]
+}

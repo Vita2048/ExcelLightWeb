@@ -1,6 +1,6 @@
 # Feature parity and browser adaptations
 
-Status on scaffold delivery: all product rows below are **planned**, not implemented. The runnable page is only a scaffold. S01 expands each row into command-level/test-level cases and freezes a source manifest; it must not delete rows merely because they are difficult.
+S01 captured the [command inventory](source-baseline/Command-Inventory.md), [desktop test inventory](source-baseline/Test-Inventory.md), and [source hashes](source-baseline/source-manifest.json). Product rows remain planned. The S01 checks confirm the fixture baseline. [Verification](../tests/parity/baseline.test.ts) · [Handover](handovers/S01.md)
 
 References below are filenames under the source src/ExcelLite.*, tests or docs tree. Locate them from C:/Temp/ExcelLight. Treat current source and assertions as authority when high-level documentation differs. Columns for evidence/status must be updated by each sprint.
 
@@ -13,7 +13,7 @@ References below are filenames under the source src/ExcelLite.*, tests or docs t
 | F05 | Inline/formula entry; paste/all/values/formulas; cut/copy; clear variants; AutoSum; Fill | GridClipboard.cs; FillChecks.cs; ClearChecks.cs | S06 | Planned; no parity evidence yet |
 | F06 | Sheet create/delete/rename/move/copy; axis and lane insert/delete; reference transforms | StructuralReferences.cs; CellShiftChecks.cs; StructureSmoke.cs | S07 | Planned; no parity evidence yet |
 | F07 | Row/column resize/autofit/hide/unhide, header cursors, clicked-sheet contexts | NavigationSizingSmoke.cs; StructureCommands.cs | S07 | Planned; no parity evidence yet |
-| F08 | 31 formulas, coercions/errors, exact lookup, lazy branches, subtotals | FormulaSubset.cs; NativeCalculator.cs; SubtotalEvaluation.cs | S08 | Planned; no parity evidence yet |
+| F08 | 31 formulas, coercions/errors, exact lookup, lazy branches, subtotals | FormulaSubset.cs; NativeCalculator.cs; SubtotalEvaluation.cs | S08 | S03 verifies selected lazy branches, rounding, coercion and errors. Full evaluation remains in S08. [Formula tests](../tests/parity/formula-probe.test.ts) |
 | F09 | Native Automatic/Manual; Calculate Sheet/Now; dependency cycles; TODAY; locale separators | NativeCalculationGeneration.cs; FormulaPresentation.cs; FormulaRibbon.cs | S09 | Planned; no parity evidence yet |
 | F10 | Number/currency/accounting/date/time/fraction/scientific/custom/special format catalogs; temporal editing | NumberFormatChecks.cs; TemporalFormatOptions.cs; SpecialFormatOptions.cs | S10 | Planned; no parity evidence yet |
 | F11 | Fonts 6–72pt, effects, underline variants, custom colors, patterns/gradients; painter | FontFillChecks.cs; FormatPainterChecks.cs; CellAppearanceDraft.cs | S11 | Planned; no parity evidence yet |
@@ -26,20 +26,20 @@ References below are filenames under the source src/ExcelLite.*, tests or docs t
 | F18 | Selection stats with manual/filter hidden rows; nested SUBTOTAL visibility | SubtotalEvaluation.cs; EverydayCommands.cs | S15 | Planned; no parity evidence yet |
 | F19 | Find/Replace scopes/options/navigation, 15-entry histories, Replace All undo | SearchDialog.cs; EverydayUiSmoke.cs | S16 | Planned; no parity evidence yet |
 | F20 | Formula Bar/Gridlines/Headings; Show Formulas; zoom 10–400; fit; freeze two axes | FreezeChecks.cs; FormulaZoomSmoke.cs; NativeGridViewCommands.cs | S09, S16 | Planned; no parity evidence yet |
-| F21 | Full native .exlt v1 incl legacy fields, Python caches/spills/placements/images; hostile ZIP rejection | NativePackage.cs; tests/TestSheet/TestSheet.exlt | S17 | Planned; no parity evidence yet |
+| F21 | Full native .exlt v1 incl legacy fields, Python caches/spills/placements/images; hostile ZIP rejection | NativePackage.cs; tests/TestSheet/TestSheet.exlt | S17 | S03 verifies GUIDs and freeze encodings, byte-equivalent repackaging and streamed ZIP limits. S17 owns full mapping and validation. [File tests](../tests/parity/file-adapter-probe.test.ts) |
 | F22 | Local settings, independent native/Python modes, Recent and save lifecycle | LocalSettings.cs; FileLifecycle.cs | S18 | Planned; no parity evidence yet |
-| F23 | XLSX scalar/formula caches, full supported styles, merges/dimensions/visibility/freeze/date conversion | Xlsx-Compatibility.md; XlsxExchange.cs; XlsxStyles.cs; XlsxGradients.cs | S19 | Planned; no parity evidence yet |
+| F23 | XLSX scalar/formula caches, full supported styles, merges/dimensions/visibility/freeze/date conversion | Xlsx-Compatibility.md; XlsxExchange.cs; XlsxStyles.cs; XlsxGradients.cs | S19 | S03 verifies desktop reimport of extended styles and serial 60. S19 implements data mapping, the full style subset and loss reports. [Desktop harness](../tests/desktop-interchange/Program.cs) |
 | F24 | XLSX reviewed loss reports/rejections; Python materialized values only; export never executes | Xlsx-Compatibility.md; XlsxExchange.cs | S19 | Planned; no parity evidence yet |
 | F25 | =PY anchors, Monaco drafts/local undo, panel clearing, xl caret range picking, legacy bindings | EditorSession.cs; PythonBlocks.cs; PythonReferences.cs; MonacoPrototype tests | S20 | Planned; no parity evidence yet |
 | F26 | Literal xl references/names/#All/#Data; preflight syntax/headers; source rewrite spans | PythonReferences.cs; Python-Capabilities.md; worker/excellite_worker.py | S20–S21 | Planned; no parity evidence yet |
-| F27 | Fresh namespace; final expression/fallback; scalar/Series/DataFrame/2D/Figure; errors/logs/limits | PythonExecution.cs; worker/excellite_worker.py | S02, S21 | Planned; no parity evidence yet |
+| F27 | Fresh namespace; final expression/fallback; scalar/Series/DataFrame/2D/Figure; errors/logs/limits | PythonExecution.cs; worker/excellite_worker.py | S02, S21 | S02 feasibility covers result conversion and Arrow IPC. Application limits and error lifecycle are planned in S21. [Probe cases](../tests/python-browser/python.spec.ts) |
 | F28 | Spill occupancy/shrink/ownership; read-only children; Copy/Insert as Values; freshness/last success | PythonSpills.cs; PythonTablePreview.cs; S17Checks.cs | S21 | Planned; no parity evidence yet |
-| F29 | Consent, local Automatic/Manual, 75/220ms debounce, stop/restart, stale generations | PythonScheduling.cs; MixedCalculationChecks.cs | S21–S22 | Planned; no parity evidence yet |
+| F29 | Consent, local Automatic/Manual, 75/220ms debounce, stop/restart, stale generations | PythonScheduling.cs; MixedCalculationChecks.cs | S21–S22 | S02 exercises the 30-second deadline, worker termination and fresh execution after restart. Scheduling and consent remain planned. [Probe cases](../tests/python-browser/python.spec.ts) |
 | F30 | Mixed native/Python graph, prerequisites, spill replanning, atomic undo/save; no execute on undo | MixedPythonCalculation.cs; MixedCalculationChecks.cs | S22 | Planned; no parity evidence yet |
-| F31 | Figure preview/save/place/move/resize/delete; multiple linked placements; cache recovery | FigureInteractions.cs; tests/Python/chart_redraw.py; chart_cache_recovery.py | S23 | Planned; no parity evidence yet |
-| F32 | Sales and SLA showcases end-to-end, including edits, KPIs, spills and chart redraw | docs/showcase/Expected-values.json; showcase/sla; SlaShowcaseChecks.cs | S02, S22–S25 | Planned; no parity evidence yet |
+| F31 | Figure preview/save/place/move/resize/delete; multiple linked placements; cache recovery | FigureInteractions.cs; tests/Python/chart_redraw.py; chart_cache_recovery.py | S23 | S02 redraws a simple Figure from a private in-memory serialization. Placement and recovery across worker restarts remain planned. [Probe cases](../tests/python-browser/python.spec.ts) |
+| F32 | Sales and SLA showcases end-to-end, including edits, KPIs, spills and chart redraw | docs/showcase/Expected-values.json; showcase/sla; SlaShowcaseChecks.cs | S02, S22–S25 | S02 runs the unchanged Python scripts with explicit snapshots and checks numeric output and PNGs. Workbook-level integration remains planned. [Probe cases](../tests/python-browser/python.spec.ts) |
 | F33 | Keyboard/focus/dialog semantics, accessible grid, forced colors, font/scaling fidelity | NativeGridAutomation.cs; Dialog*.cs; Design-Guidelines.md | S05–S16, S25 | Planned; no parity evidence yet |
-| F34 | Offline bundled runtime/assets/notices; browser cache/recovery adaptation | docs/dependencies; scripts; PythonRuntime.cs | S24 | Planned; no parity evidence yet |
+| F34 | Offline bundled runtime/assets/notices; browser cache/recovery adaptation | docs/dependencies; scripts; PythonRuntime.cs | S24 | S02 pins and verifies the same-origin probe closure. Offline production packaging remains planned. [Runtime lock](../src/python/runtime-lock.json) |
 
 ## Formula allowlist
 

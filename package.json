@@ -3,18 +3,28 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22.12.0 <23" },
+  "engines": {
+    "node": ">=22.12.0 <23"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:adapter-probe": "vite build --config vite.adapter-probe.config.ts && playwright test --config playwright.adapter-probe.config.ts",
+    "prepare:python-probe": "node scripts/prepare-python-probe.mjs",
+    "test:python-probe": "vite build --config vite.python-probe.config.ts && playwright test --config playwright.python-probe.config.ts",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "npm run typecheck && npm test && npm run build"
   },
-  "dependencies": { "react": "19.3.0", "react-dom": "19.3.0" },
+  "dependencies": {
+    "@xmldom/xmldom": "0.9.12",
+    "@zip.js/zip.js": "2.25.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
   "devDependencies": {
     "@playwright/test": "1.61.0",
     "@types/node": "^22.0.0",

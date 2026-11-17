@@ -1,0 +1,2071 @@
+{
+  "source_sha256": "274acbb92a5300368da7a1a887fa3789c2c97e628931c6790b1fc95c697108a3",
+  "cells": [
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 1,
+      "value": "1001"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 2,
+      "value": "101"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 3,
+      "value": "Acme Corporation"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 4,
+      "value": "201"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 5,
+      "value": "UltraBook Pro 15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 6,
+      "value": "1499.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 7,
+      "value": "5"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 8,
+      "value": "7499.95"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 9,
+      "value": "2026-01-10"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 4,
+      "column": 10,
+      "value": "North"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 1,
+      "value": "1002"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 2,
+      "value": "104"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 3,
+      "value": "Cloud9 Logistics"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 4,
+      "value": "203"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 5,
+      "value": "4K Monitor 27-inch"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 6,
+      "value": "389"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 7,
+      "value": "12"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 8,
+      "value": "4668"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 9,
+      "value": "2026-01-12"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 5,
+      "column": 10,
+      "value": "East"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 1,
+      "value": "1003"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 2,
+      "value": "102"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 3,
+      "value": "Apex Tech Solutions"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 4,
+      "value": "202"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 5,
+      "value": "Ergonomic Office Chair"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 6,
+      "value": "299.5"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 7,
+      "value": "8"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 8,
+      "value": "2396.0"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 9,
+      "value": "2026-01-15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 6,
+      "column": 10,
+      "value": "West"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 1,
+      "value": "1004"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 2,
+      "value": "110"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 3,
+      "value": "Ironclad Security"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 4,
+      "value": "209"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 5,
+      "value": "Portable External SSD 1TB"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 6,
+      "value": "129.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 7,
+      "value": "15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 8,
+      "value": "1949.85"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 9,
+      "value": "2026-01-18"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 7,
+      "column": 10,
+      "value": "South"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 1,
+      "value": "1005"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 2,
+      "value": "105"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 3,
+      "value": "Delta Global Enterprises"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 4,
+      "value": "205"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 5,
+      "value": "Wireless Noise-Canceling Headset"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 6,
+      "value": "199.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 7,
+      "value": "10"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 8,
+      "value": "1999.90"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 9,
+      "value": "2026-01-20"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 8,
+      "column": 10,
+      "value": "Central"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 1,
+      "value": "1006"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 2,
+      "value": "108"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 3,
+      "value": "GreenScape Systems"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 4,
+      "value": "208"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 5,
+      "value": "Standing Desk Converter"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 6,
+      "value": "249"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 7,
+      "value": "4"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 8,
+      "value": "996"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 9,
+      "value": "2026-01-22"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 9,
+      "column": 10,
+      "value": "North"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 1,
+      "value": "1007"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 2,
+      "value": "103"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 3,
+      "value": "BlueSky Dynamics"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 4,
+      "value": "204"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 5,
+      "value": "Mechanical Keyboard"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 6,
+      "value": "119.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 7,
+      "value": "25"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 8,
+      "value": "2999.75"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 9,
+      "value": "2026-01-25"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 10,
+      "column": 10,
+      "value": "East"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 1,
+      "value": "1008"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 2,
+      "value": "107"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 3,
+      "value": "Frontier Innovations"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 4,
+      "value": "214"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 5,
+      "value": "Bluetooth Conference Speaker"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 6,
+      "value": "149.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 7,
+      "value": "6"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 8,
+      "value": "899.94"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 9,
+      "value": "2026-02-01"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 11,
+      "column": 10,
+      "value": "West"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 1,
+      "value": "1009"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 2,
+      "value": "112"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 3,
+      "value": "Keystone Consulting"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 4,
+      "value": "201"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 5,
+      "value": "UltraBook Pro 15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 6,
+      "value": "1499.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 7,
+      "value": "3"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 8,
+      "value": "4499.97"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 9,
+      "value": "2026-02-03"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 12,
+      "column": 10,
+      "value": "Central"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 1,
+      "value": "1010"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 2,
+      "value": "106"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 3,
+      "value": "Echo Valley Retail"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 4,
+      "value": "211"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 5,
+      "value": "Vertical Ergonomic Mouse"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 6,
+      "value": "59.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 7,
+      "value": "20"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 8,
+      "value": "1199.80"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 9,
+      "value": "2026-02-05"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 13,
+      "column": 10,
+      "value": "South"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 1,
+      "value": "1011"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 2,
+      "value": "115"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 3,
+      "value": "Nova Financial"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 4,
+      "value": "203"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 5,
+      "value": "4K Monitor 27-inch"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 6,
+      "value": "389"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 7,
+      "value": "7"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 8,
+      "value": "2723"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 9,
+      "value": "2026-02-08"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 14,
+      "column": 10,
+      "value": "North"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 1,
+      "value": "1012"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 2,
+      "value": "119"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 3,
+      "value": "Redwood Ventures"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 4,
+      "value": "218"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 5,
+      "value": "Uninterruptible Power Supply (UPS)"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 6,
+      "value": "179.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 7,
+      "value": "5"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 8,
+      "value": "899.95"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 9,
+      "value": "2026-02-10"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 15,
+      "column": 10,
+      "value": "West"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 1,
+      "value": "1013"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 2,
+      "value": "111"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 3,
+      "value": "Jupiter Media"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 4,
+      "value": "206"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 5,
+      "value": "USB-C Multi-Port Hub"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 6,
+      "value": "49.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 7,
+      "value": "30"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 8,
+      "value": "1499.70"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 9,
+      "value": "2026-02-14"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 16,
+      "column": 10,
+      "value": "East"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 1,
+      "value": "1014"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 2,
+      "value": "114"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 3,
+      "value": "Matrix Analytics"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 4,
+      "value": "205"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 5,
+      "value": "Wireless Noise-Canceling Headset"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 6,
+      "value": "199.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 7,
+      "value": "14"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 8,
+      "value": "2799.86"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 9,
+      "value": "2026-02-18"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 17,
+      "column": 10,
+      "value": "Central"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 1,
+      "value": "1015"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 2,
+      "value": "120"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 3,
+      "value": "Summit Partners"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 4,
+      "value": "202"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 5,
+      "value": "Ergonomic Office Chair"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 6,
+      "value": "299.5"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 7,
+      "value": "10"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 8,
+      "value": "2995.0"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 9,
+      "value": "2026-02-20"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 18,
+      "column": 10,
+      "value": "South"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 1,
+      "value": "1016"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 2,
+      "value": "113"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 3,
+      "value": "Lumina Energy"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 4,
+      "value": "212"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 5,
+      "value": "Dual Monitor Arm Mount"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 6,
+      "value": "89"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 7,
+      "value": "12"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 8,
+      "value": "1068"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 9,
+      "value": "2026-02-22"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 19,
+      "column": 10,
+      "value": "North"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 1,
+      "value": "1017"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 2,
+      "value": "117"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 3,
+      "value": "Pinnacle Supplies"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 4,
+      "value": "209"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 5,
+      "value": "Portable External SSD 1TB"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 6,
+      "value": "129.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 7,
+      "value": "18"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 8,
+      "value": "2339.82"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 9,
+      "value": "2026-02-25"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 20,
+      "column": 10,
+      "value": "East"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 1,
+      "value": "1018"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 2,
+      "value": "109"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 3,
+      "value": "Horizon Health"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 4,
+      "value": "207"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 5,
+      "value": "HD Web Camera 1080p"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 6,
+      "value": "79.5"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 7,
+      "value": "15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 8,
+      "value": "1192.5"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 9,
+      "value": "2026-03-01"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 21,
+      "column": 10,
+      "value": "West"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 1,
+      "value": "1019"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 2,
+      "value": "116"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 3,
+      "value": "Omni Group"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 4,
+      "value": "210"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 5,
+      "value": "Smart Surge Protector"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 6,
+      "value": "34.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 7,
+      "value": "40"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 8,
+      "value": "1399.60"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 9,
+      "value": "2026-03-03"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 22,
+      "column": 10,
+      "value": "South"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 1,
+      "value": "1020"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 2,
+      "value": "118"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 3,
+      "value": "Quantum Robotics"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 4,
+      "value": "215"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 5,
+      "value": "Privacy Screen Filter 27in"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 6,
+      "value": "54.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 7,
+      "value": "22"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 8,
+      "value": "1209.78"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 9,
+      "value": "2026-03-05"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 23,
+      "column": 10,
+      "value": "Central"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 1,
+      "value": "1021"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 2,
+      "value": "101"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 3,
+      "value": "Acme Corporation"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 4,
+      "value": "203"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 5,
+      "value": "4K Monitor 27-inch"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 6,
+      "value": "389"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 7,
+      "value": "9"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 8,
+      "value": "3501"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 9,
+      "value": "2026-03-08"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 24,
+      "column": 10,
+      "value": "North"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 1,
+      "value": "1022"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 2,
+      "value": "104"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 3,
+      "value": "Cloud9 Logistics"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 4,
+      "value": "201"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 5,
+      "value": "UltraBook Pro 15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 6,
+      "value": "1499.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 7,
+      "value": "4"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 8,
+      "value": "5999.96"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 9,
+      "value": "2026-03-10"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 25,
+      "column": 10,
+      "value": "East"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 1,
+      "value": "1023"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 2,
+      "value": "102"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 3,
+      "value": "Apex Tech Solutions"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 4,
+      "value": "205"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 5,
+      "value": "Wireless Noise-Canceling Headset"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 6,
+      "value": "199.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 7,
+      "value": "15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 8,
+      "value": "2999.85"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 9,
+      "value": "2026-03-12"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 26,
+      "column": 10,
+      "value": "West"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 1,
+      "value": "1024"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 2,
+      "value": "110"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 3,
+      "value": "Ironclad Security"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 4,
+      "value": "204"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 5,
+      "value": "Mechanical Keyboard"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 6,
+      "value": "119.99"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 7,
+      "value": "18"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 8,
+      "value": "2159.82"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 9,
+      "value": "2026-03-15"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 27,
+      "column": 10,
+      "value": "South"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 1,
+      "value": "1025"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 2,
+      "value": "105"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 3,
+      "value": "Delta Global Enterprises"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 4,
+      "value": "208"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 5,
+      "value": "Standing Desk Converter"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 6,
+      "value": "249"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 7,
+      "value": "6"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 8,
+      "value": "1494"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 9,
+      "value": "2026-03-18"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 28,
+      "column": 10,
+      "value": "Central"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 1,
+      "value": "Total"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 2,
+      "value": ""
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 3,
+      "value": ""
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 4,
+      "value": ""
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 5,
+      "value": ""
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 6,
+      "value": ""
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 7,
+      "value": "333"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 8,
+      "value": "63391.00"
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 9,
+      "value": ""
+    },
+    {
+      "sheet": "Sales Analysis",
+      "row": 29,
+      "column": 10,
+      "value": ""
+    },
+    {
+      "sheet": "Rankings",
+      "row": 4,
+      "column": 1,
+      "value": "Acme Corporation"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 4,
+      "column": 2,
+      "value": "11000.95"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 5,
+      "column": 1,
+      "value": "Cloud9 Logistics"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 5,
+      "column": 2,
+      "value": "10667.96"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 6,
+      "column": 1,
+      "value": "Apex Tech Solutions"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 6,
+      "column": 2,
+      "value": "5395.85"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 7,
+      "column": 1,
+      "value": "Keystone Consulting"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 7,
+      "column": 2,
+      "value": "4499.97"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 8,
+      "column": 1,
+      "value": "Ironclad Security"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 8,
+      "column": 2,
+      "value": "4109.67"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 4,
+      "column": 5,
+      "value": "UltraBook Pro 15"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 4,
+      "column": 6,
+      "value": "17999.88"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 5,
+      "column": 5,
+      "value": "4K Monitor 27-inch"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 5,
+      "column": 6,
+      "value": "10892"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 6,
+      "column": 5,
+      "value": "Wireless Noise-Canceling Headset"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 6,
+      "column": 6,
+      "value": "7799.61"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 7,
+      "column": 5,
+      "value": "Ergonomic Office Chair"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 7,
+      "column": 6,
+      "value": "5391.0"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 8,
+      "column": 5,
+      "value": "Mechanical Keyboard"
+    },
+    {
+      "sheet": "Rankings",
+      "row": 8,
+      "column": 6,
+      "value": "5159.57"
+    },
+    {
+      "sheet": "Charts",
+      "row": 4,
+      "column": 1,
+      "value": "North"
+    },
+    {
+      "sheet": "Charts",
+      "row": 4,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Charts",
+      "row": 4,
+      "column": 3,
+      "value": "37"
+    },
+    {
+      "sheet": "Charts",
+      "row": 4,
+      "column": 4,
+      "value": "15787.95"
+    },
+    {
+      "sheet": "Charts",
+      "row": 5,
+      "column": 1,
+      "value": "South"
+    },
+    {
+      "sheet": "Charts",
+      "row": 5,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Charts",
+      "row": 5,
+      "column": 3,
+      "value": "103"
+    },
+    {
+      "sheet": "Charts",
+      "row": 5,
+      "column": 4,
+      "value": "9704.07"
+    },
+    {
+      "sheet": "Charts",
+      "row": 6,
+      "column": 1,
+      "value": "East"
+    },
+    {
+      "sheet": "Charts",
+      "row": 6,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Charts",
+      "row": 6,
+      "column": 3,
+      "value": "89"
+    },
+    {
+      "sheet": "Charts",
+      "row": 6,
+      "column": 4,
+      "value": "17507.23"
+    },
+    {
+      "sheet": "Charts",
+      "row": 7,
+      "column": 1,
+      "value": "West"
+    },
+    {
+      "sheet": "Charts",
+      "row": 7,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Charts",
+      "row": 7,
+      "column": 3,
+      "value": "49"
+    },
+    {
+      "sheet": "Charts",
+      "row": 7,
+      "column": 4,
+      "value": "8388.24"
+    },
+    {
+      "sheet": "Charts",
+      "row": 8,
+      "column": 1,
+      "value": "Central"
+    },
+    {
+      "sheet": "Charts",
+      "row": 8,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Charts",
+      "row": 8,
+      "column": 3,
+      "value": "55"
+    },
+    {
+      "sheet": "Charts",
+      "row": 8,
+      "column": 4,
+      "value": "12003.51"
+    },
+    {
+      "sheet": "Charts",
+      "row": 9,
+      "column": 1,
+      "value": "Total"
+    },
+    {
+      "sheet": "Charts",
+      "row": 9,
+      "column": 2,
+      "value": "25"
+    },
+    {
+      "sheet": "Charts",
+      "row": 9,
+      "column": 3,
+      "value": "333"
+    },
+    {
+      "sheet": "Charts",
+      "row": 9,
+      "column": 4,
+      "value": "63391.00"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 9,
+      "column": 1,
+      "value": "North"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 9,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 9,
+      "column": 3,
+      "value": "37"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 9,
+      "column": 4,
+      "value": "15787.95"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 10,
+      "column": 1,
+      "value": "South"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 10,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 10,
+      "column": 3,
+      "value": "103"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 10,
+      "column": 4,
+      "value": "9704.07"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 11,
+      "column": 1,
+      "value": "East"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 11,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 11,
+      "column": 3,
+      "value": "89"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 11,
+      "column": 4,
+      "value": "17507.23"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 12,
+      "column": 1,
+      "value": "West"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 12,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 12,
+      "column": 3,
+      "value": "49"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 12,
+      "column": 4,
+      "value": "8388.24"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 13,
+      "column": 1,
+      "value": "Central"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 13,
+      "column": 2,
+      "value": "5"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 13,
+      "column": 3,
+      "value": "55"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 13,
+      "column": 4,
+      "value": "12003.51"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 14,
+      "column": 1,
+      "value": "Total"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 14,
+      "column": 2,
+      "value": "25"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 14,
+      "column": 3,
+      "value": "333"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 14,
+      "column": 4,
+      "value": "63391.00"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 19,
+      "column": 1,
+      "value": "Acme Corporation"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 19,
+      "column": 2,
+      "value": "11000.95"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 20,
+      "column": 1,
+      "value": "Cloud9 Logistics"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 20,
+      "column": 2,
+      "value": "10667.96"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 21,
+      "column": 1,
+      "value": "Apex Tech Solutions"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 21,
+      "column": 2,
+      "value": "5395.85"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 22,
+      "column": 1,
+      "value": "Keystone Consulting"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 22,
+      "column": 2,
+      "value": "4499.97"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 23,
+      "column": 1,
+      "value": "Ironclad Security"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 23,
+      "column": 2,
+      "value": "4109.67"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 4,
+      "column": 1,
+      "value": "63391.00"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 4,
+      "column": 4,
+      "value": "333"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 4,
+      "column": 7,
+      "value": "25"
+    },
+    {
+      "sheet": "Dashboard",
+      "row": 4,
+      "column": 10,
+      "value": "2535.64"
+    }
+  ],
+  "monthly": [
+    [
+      "2026-01",
+      "22509.45"
+    ],
+    [
+      "2026-02",
+      "20925.04"
+    ],
+    [
+      "2026-03",
+      "19956.51"
+    ]
+  ]
+}

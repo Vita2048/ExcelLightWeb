@@ -1,0 +1,1037 @@
+{
+  "captured": "2026-11-17",
+  "sourceRoot": "C:\\Temp\\ExcelLight",
+  "gitRevision": null,
+  "files": [
+    {
+      "path": "docs/Architecture.md",
+      "sha256": "1d73b2df9e86fd899284ec4a11e39840eb8a9be0759f1ebdef0c9684650f6a5c",
+      "snapshot": "snapshots/docs/Architecture.md"
+    },
+    {
+      "path": "docs/Design-Guidelines.md",
+      "sha256": "8bd6004c88b71b1caae6bb4c775919b0b8996b1c15490ec19a27af7cbf93a64f",
+      "snapshot": "snapshots/docs/Design-Guidelines.md"
+    },
+    {
+      "path": "docs/Development.md",
+      "sha256": "79d00c2d1f9c859880ee6f6d7f7573b78f8a7ddc15fcb86d4030f064e03683e7",
+      "snapshot": "snapshots/docs/Development.md"
+    },
+    {
+      "path": "docs/Menu-Structure.md",
+      "sha256": "2e20ca356b739f1d6e8a511aefaf98747c3c7123334fab59f3e3f42acbab0090",
+      "snapshot": "snapshots/docs/Menu-Structure.md"
+    },
+    {
+      "path": "docs/Python-Capabilities.md",
+      "sha256": "04d8fa06565489b918d65f676759c5bd7202a1fa1cdf70c70af4bbbacfc22648",
+      "snapshot": "snapshots/docs/Python-Capabilities.md"
+    },
+    {
+      "path": "docs/Xlsx-Compatibility.md",
+      "sha256": "86cb3995ac355cf0e2f785f4ad7a9cf7fd5ef0c19c2c04584bd48ceef72ad073",
+      "snapshot": "snapshots/docs/Xlsx-Compatibility.md"
+    },
+    {
+      "path": "docs/dependencies/Calculation.md",
+      "sha256": "fcf3d1965612f1f6303b320569ff5f6d9595a2c82cd24fd5a9ceeddb6d20ee05"
+    },
+    {
+      "path": "docs/dependencies/Distribution.md",
+      "sha256": "e43e21fcca4387ef1803b72178e139d8e09f7e09a921a4e65c0ba28714594902"
+    },
+    {
+      "path": "docs/dependencies/Python.md",
+      "sha256": "c842c4816fb656abd3ced75178879be03f1aeab14778dd16180228b17d1e717b"
+    },
+    {
+      "path": "docs/dependencies/README.md",
+      "sha256": "7796cf72f621351e87fbbdfc80ae4f3fee7ae5f4fc2269da6ed76a8a4a6edf59"
+    },
+    {
+      "path": "docs/showcase/Expected-values.json",
+      "sha256": "1a746ecf5a24de12f15bb50ba770166573df1927d522f5b5867815c515f81c0a"
+    },
+    {
+      "path": "docs/showcase/README.md",
+      "sha256": "0b9c23a156d9832bbdf3af9ea03134b7253261be110cbaa856ba8eb7d8a1f2ea",
+      "snapshot": "snapshots/docs/showcase/README.md"
+    },
+    {
+      "path": "docs/showcase/Showcase.exlt",
+      "sha256": "bee81a60d0d0ed9ed203f42184e34bec5ffc15546b28a1bc857b261343db3ebf"
+    },
+    {
+      "path": "docs/showcase/python/monthly-revenue.py",
+      "sha256": "bdc2e8dfc73a8c5f7ae8a0d2cd3737a025765568b7162098cea100a392fea670"
+    },
+    {
+      "path": "docs/showcase/python/regional-revenue.py",
+      "sha256": "e0b53e35120cb2657382d9e5ebf42097c5ad50d780bb50c5ba58f652e6a87037"
+    },
+    {
+      "path": "docs/showcase/python/regional-statistics.py",
+      "sha256": "b0830561471530ff2c4e80c290a962bed23f451396ce22d8fcb0ad009bdef6fc"
+    },
+    {
+      "path": "docs/showcase/showcase_data.xlsx",
+      "sha256": "274acbb92a5300368da7a1a887fa3789c2c97e628931c6790b1fc95c697108a3"
+    },
+    {
+      "path": "docs/showcase/sla/README.md",
+      "sha256": "561b209dd6e064fea26f367c59158e702cdaf30fdad65cc74463225982d4f5ad",
+      "snapshot": "snapshots/docs/showcase/sla/README.md"
+    },
+    {
+      "path": "docs/showcase/sla/Support-SLA.exlt",
+      "sha256": "6a4e1258701b2be5c72bb14e710bbf92edc6f279f1241ac386313fb258d98c02"
+    },
+    {
+      "path": "docs/showcase/sla/analysis.py",
+      "sha256": "3db8d845d36bdc464b40e37c292a659a89daf78936924d6ce8e00d35d08574bd"
+    },
+    {
+      "path": "docs/showcase/sla/heatmap.py",
+      "sha256": "3327545b639911fb4e6fb8f4b8d4ded42d781470a3ee221499b13c687c454235"
+    },
+    {
+      "path": "docs/showcase/sla/trend.py",
+      "sha256": "7fdda0d887927e97fbb9c18e182305771fdd5a2c28c309159386aadd91a4e868"
+    },
+    {
+      "path": "docs/showcase/tools/inspect_showcase_data.py",
+      "sha256": "42bdf5fd4d5ba81d67398e221bbcb22599adeb3cf63d5e1c714c16222ab403f1"
+    },
+    {
+      "path": "docs/showcase/tools/showcase_expectations.py",
+      "sha256": "3c207799ed59cbabd8ce7a269f7611a2e5b79fd2f7301d82ca505ae8bb07fe48"
+    },
+    {
+      "path": "docs/showcase/tools/verify_showcase.py",
+      "sha256": "b1ae2d954532294397eced291adc14229507428d46df34513df1c4a9acc29dae"
+    },
+    {
+      "path": "scripts/build.ps1",
+      "sha256": "2c390579e886f9d90d40a339303fe4f69abb755f8d3c327c30ee8a63fdc0accb"
+    },
+    {
+      "path": "scripts/offline-setup.ps1",
+      "sha256": "4de01b238c166464891edd7ee56445612645f0ff3a7758fe83928e5376e067f9"
+    },
+    {
+      "path": "scripts/package-offline.ps1",
+      "sha256": "7fceaeb9b46dd7084f813cdb0805ccd6932eef4def8b4fd7930b05dda29e478a"
+    },
+    {
+      "path": "scripts/prepare-monaco.ps1",
+      "sha256": "9d709f193027b40cdfcd843c0b835194a1ec0bed45f679e696aeb6d3c1f24cb9"
+    },
+    {
+      "path": "scripts/prepare-prerequisites.ps1",
+      "sha256": "225492d0517d9b47413654894b2e795bd531eaf98802f05d3d4242178c84f0e8"
+    },
+    {
+      "path": "scripts/prepare-python.ps1",
+      "sha256": "b106fabb281200acb0ff5e2867a6d8d284729b9f9cc0f345fce9ab975c4eb357"
+    },
+    {
+      "path": "scripts/test-win2d.ps1",
+      "sha256": "8c5825dd6db293698483d6ff62c2d6c20f96591384f5bfcae1bb34c9ffdc52c7"
+    },
+    {
+      "path": "scripts/test.ps1",
+      "sha256": "5815bcdef2c1bf5af6e41a9b5b0a59fd7e4e2465c6ddbf7cbb110cb9ffeb67db"
+    },
+    {
+      "path": "src/ExcelLite.App/AlignmentControls.cs",
+      "sha256": "9a58bca80de0375bc133cea8dc2173a2f3878ec4d3398c846c321b81fb90950f"
+    },
+    {
+      "path": "src/ExcelLite.App/AlignmentGlyph.cs",
+      "sha256": "d10c97b1bdecd5e9889110b579b8c4871f365d9ca2e0c9d56886ec461c9d284d"
+    },
+    {
+      "path": "src/ExcelLite.App/AlignmentMenuSmoke.cs",
+      "sha256": "bece4f0affb7ba0734c825725a71e2b38ce53c9407fdcd162aa8bc1f3e5e6828"
+    },
+    {
+      "path": "src/ExcelLite.App/AlignmentSmoke.cs",
+      "sha256": "f5c9c576af20b751fae894667f2b7ebdd10c4d034e623c911f222a130e0d9025"
+    },
+    {
+      "path": "src/ExcelLite.App/AppearanceFillPreview.cs",
+      "sha256": "b7ae19392cb7691ad5743f27465c8781be6e78ed806080fd83df12488f1d2d94"
+    },
+    {
+      "path": "src/ExcelLite.App/BorderDrawing.cs",
+      "sha256": "9df00d3e560fb970d6ce5a5587dfb3d9d8fe8de6924801d3902d357cec2e5e18"
+    },
+    {
+      "path": "src/ExcelLite.App/BorderLayoutSmoke.cs",
+      "sha256": "ddfcd295a932843c638719d4f270edfc81def6444fc954629cd6a07225c02a0c"
+    },
+    {
+      "path": "src/ExcelLite.App/BorderOpeningSmoke.cs",
+      "sha256": "e77b8c1834eee34ee56530d1ec3c6d01917686a6397273e5887c05c22153ae60"
+    },
+    {
+      "path": "src/ExcelLite.App/BorderToolsSmoke.cs",
+      "sha256": "b4dab5e76452586131e850772aff51c36a10863bc54478eb3eb6523e10cb8e8e"
+    },
+    {
+      "path": "src/ExcelLite.App/BordersMenu.cs",
+      "sha256": "e722025720e88b92702a0ef8ca4d195297349fb47e39cd6626c895f4a67ccc2c"
+    },
+    {
+      "path": "src/ExcelLite.App/ClipboardFontGlyph.cs",
+      "sha256": "f764afa9cd773cbb84df0eb812ca5980e2043111b3472084dbc75c266f7b5d5f"
+    },
+    {
+      "path": "src/ExcelLite.App/ClipboardSmoke.cs",
+      "sha256": "8567cf29f106fa47fa5779556ae9a9f17e26d0c739a860b935361bf88c3afc99"
+    },
+    {
+      "path": "src/ExcelLite.App/ColorPaletteSmoke.cs",
+      "sha256": "af3c1ba7b45827c07f1f066941374d08c2e929b49cc2a8aea0534cf74a7cba3a"
+    },
+    {
+      "path": "src/ExcelLite.App/ColorSwatchTemplate.cs",
+      "sha256": "d5e48c8bbc5f88d0811ed06f91db58b2e30a77d52aa3be511c25fdf651c8ec79"
+    },
+    {
+      "path": "src/ExcelLite.App/DataRibbon.cs",
+      "sha256": "40f3bc700b00825ad90ae78778c34499a6dd426159173c049c21810b2ab733c4"
+    },
+    {
+      "path": "src/ExcelLite.App/DesignResources.cs",
+      "sha256": "863c335230f005637e16e90ed1be4638dc3c827dc65a57d2942c65149c3a58ad"
+    },
+    {
+      "path": "src/ExcelLite.App/DialogDragging.cs",
+      "sha256": "2b3ee95d37d3c40945acb0bfb9c561efe8a7cc46cd34533ae6051d456f911573"
+    },
+    {
+      "path": "src/ExcelLite.App/DialogLayout.cs",
+      "sha256": "d0d7f51b693673c5e208c91f1225321887ecdb3c57d642dfcfb77f2cb1a1a290"
+    },
+    {
+      "path": "src/ExcelLite.App/DialogRepairSmoke.cs",
+      "sha256": "51134d66220e3227adcd1b5362f530b1f2d818d47d1cb4aa472352fb2478f7de"
+    },
+    {
+      "path": "src/ExcelLite.App/DialogStyleSmoke.cs",
+      "sha256": "429ac9841a1656cfbe92ce97ec21bb4bcb9cc0c8ede2942e952fbccbfa1f8dae"
+    },
+    {
+      "path": "src/ExcelLite.App/DialogTabs.cs",
+      "sha256": "bdc0ff786939121e742ca71c87bc59aa50d23b379902749bc42ccd55795a0b02"
+    },
+    {
+      "path": "src/ExcelLite.App/DropdownSmoke.cs",
+      "sha256": "374fa86c12163f077489025801547975b7b5f55364e70d4edb6d038b00bb79a1"
+    },
+    {
+      "path": "src/ExcelLite.App/EditingGlyph.cs",
+      "sha256": "9de7a3c44e428689fe8a3df898433f42bf6946a515981d2cea62e4368a1e9dae"
+    },
+    {
+      "path": "src/ExcelLite.App/EditingMenuSmoke.cs",
+      "sha256": "30cfdf7e40eac51891d1d6d93b2850e105e1866b45b1d7f9e976df9df5e61e2a"
+    },
+    {
+      "path": "src/ExcelLite.App/EditingRibbon.cs",
+      "sha256": "f23d6b5d46bf9d2159a7ef1442a4940ca2e4b562059b5b8b40119e3fcef272b2"
+    },
+    {
+      "path": "src/ExcelLite.App/EverydayCommands.cs",
+      "sha256": "364b0e4b13f83cbbcb31112363da72ae2a51b85058f49ddf83a4851fa3e7f92d"
+    },
+    {
+      "path": "src/ExcelLite.App/EverydaySmoke.cs",
+      "sha256": "3762dc34d2f3ac2fad15c055496bbbc88d7683b535966af0005a227d8b2ad697"
+    },
+    {
+      "path": "src/ExcelLite.App/EverydayUiSmoke.cs",
+      "sha256": "b88432e8dcbadf07fbd645ac5ef819b71acbfbadeb3c6605727209c200fcd2bb"
+    },
+    {
+      "path": "src/ExcelLite.App/ExcelLite.App.csproj",
+      "sha256": "b49e5dead35314841cc74f20329f35e7aabe59c968e2bf4be21140574cb5da22"
+    },
+    {
+      "path": "src/ExcelLite.App/FigureInteractions.cs",
+      "sha256": "adf255b145fcb4a41ca353d9cad84012b0c07683d9341d9990bb863b38f2239a"
+    },
+    {
+      "path": "src/ExcelLite.App/FileHarness.cs",
+      "sha256": "8785145bea4287a44839f1a62fd5a8bc0785d19bf810de8d1cb881fca1b399f1"
+    },
+    {
+      "path": "src/ExcelLite.App/FileLifecycle.cs",
+      "sha256": "e54977b0173607f879c57bd33edba2cfe7b5d6b6351ab61b6cae7ae15076c569"
+    },
+    {
+      "path": "src/ExcelLite.App/FileLifecycleSmoke.cs",
+      "sha256": "fb955f0d396ba3c1098ecc120f4aa62a3b6e25f19893594ab9be8e7bf44dd740"
+    },
+    {
+      "path": "src/ExcelLite.App/FillEffectsEditor.cs",
+      "sha256": "f0e3f33ef75f879e8cd5f831d6ff7a616558dc37f1aa83cd7e496afacde44ed1"
+    },
+    {
+      "path": "src/ExcelLite.App/FontControls.cs",
+      "sha256": "082eaaf6a48a50efbdd056cc30913c9751b4b9855c7c4f44e43b906e584f1fc1"
+    },
+    {
+      "path": "src/ExcelLite.App/FontDropdownLayout.cs",
+      "sha256": "3513e429cf1141ff67c5df63fc3fa4fbe15736ef05303e7c19688576dbc5a1a6"
+    },
+    {
+      "path": "src/ExcelLite.App/FontPalettes.cs",
+      "sha256": "60ce3a637632eb100c0e94d40ada71cfa7b43b3e660209ff666ced4d1fbd1519"
+    },
+    {
+      "path": "src/ExcelLite.App/FormatAlignmentTab.cs",
+      "sha256": "719dd215ff09d6440895c6e0acdef7dc476f1d54b2d56a55abb244dab3ac126d"
+    },
+    {
+      "path": "src/ExcelLite.App/FormatAppearanceTabs.cs",
+      "sha256": "1cca236c63b69b7b18cf51a208696c598b7e66a9829e3bc1d7529dbd2d582c4a"
+    },
+    {
+      "path": "src/ExcelLite.App/FormatBorderTab.cs",
+      "sha256": "9e987dbf72d03f6b7971b24909d06afab9bfbed570c924206243b4cbe0ce0064"
+    },
+    {
+      "path": "src/ExcelLite.App/FormatColorSelector.cs",
+      "sha256": "4050bafc81a5a15276781ea4920d760b333de9ec7f38e975b49857366921494d"
+    },
+    {
+      "path": "src/ExcelLite.App/FormatDialogControls.cs",
+      "sha256": "9f47e70f9c315b2ba04fe25056fc0ccca62179d6b1de96a159b5cd0937dd8b71"
+    },
+    {
+      "path": "src/ExcelLite.App/FormulaHints.cs",
+      "sha256": "44fb2b89aacf1fa239fd0a076ec4e7a7997e30c52e87adc12b6312bf9ef24b63"
+    },
+    {
+      "path": "src/ExcelLite.App/FormulaRibbon.cs",
+      "sha256": "3674546c21205d9beabaaccbf0b34d2cdd3433db32dbaae2a7fb50a14d87d7c2"
+    },
+    {
+      "path": "src/ExcelLite.App/FormulaRibbonSmoke.cs",
+      "sha256": "e200b99c64720328bcc7233afba056cb510ca9cd90e98a73dd4b715e486f29be"
+    },
+    {
+      "path": "src/ExcelLite.App/FormulaZoomSmoke.cs",
+      "sha256": "12256a23c88d2db9366fafad2aa1a1c5ae20253f4a1ae6cfa4508161df33aa08"
+    },
+    {
+      "path": "src/ExcelLite.App/GridContextMenu.cs",
+      "sha256": "76c916ee5b997c4523461301928b48602e57e40b7366009696a2f84ed976a279"
+    },
+    {
+      "path": "src/ExcelLite.App/GridContextSmoke.cs",
+      "sha256": "bc948833fc3b3c833ff865555b8a5704453156a84c2486c42000308553967361"
+    },
+    {
+      "path": "src/ExcelLite.App/GridPrototype.cs",
+      "sha256": "d74fd78807a078d5fc409e72f5c48025b743687997d6c21b41f824c2e0aa90b4"
+    },
+    {
+      "path": "src/ExcelLite.App/MainWindow.cs",
+      "sha256": "8672fc1b5b4991f6d76053e477a195f6b4fd5582ac637e412dbcbcabf12fc747"
+    },
+    {
+      "path": "src/ExcelLite.App/NameCommands.cs",
+      "sha256": "a9e423427a1fd5e7f7b54033ee936283ac0261386f0c5d4b51d5ec82130c1376"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeCellPainter.cs",
+      "sha256": "550f429d8ed98e30478f6c92289e95b56c3a3bb00514b8db7410a3b2e54fb971"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridAutomation.cs",
+      "sha256": "733967ab36ddb5cc87ad68aa4d27b7e27355d2219e6f5c76e1da76168a2d20df"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridCharts.cs",
+      "sha256": "f543939ae91edbb243ce36b2bd1fe90c086f12261b669b52793fa0af2f4437a0"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridCommands.cs",
+      "sha256": "365cbcd729cd8b246eeb4ca084d7f11849eee7dcb89e49f9d91c4dd86d31623b"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridDataControls.cs",
+      "sha256": "a1679c3286a4b5f13949861a243a2b3a2182c870b2608c3743036e78d5814334"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridDraft.cs",
+      "sha256": "0649d738254b3a286fd6acabd329f89c6df819e4a2561038fe65ae332bcadd2a"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridInput.cs",
+      "sha256": "24d285045f47190c6ae6572ae97e34945cfeafff1bfafd061ccf978ae55f5bb4"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridInputChecks.cs",
+      "sha256": "6b07a9a388fc4a91d2deb2107d459e6c488cd55f8050d0e54dcd30556a5f1b49"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridParityChecks.cs",
+      "sha256": "bbc09176a1efb767d4a540bdb60e940353c00a98aac8119f163bab65331720a5"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridPreview.cs",
+      "sha256": "752299247b759771e837e3b433dda76f0f0de3cf9a81e9afa382286693a8d3cb"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridPython.cs",
+      "sha256": "07d1cdbe5ee0ad9845e382379e58bb5cb6072dff34d4e28c291c8d912958d134"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridPythonChecks.cs",
+      "sha256": "59c2e1748a2ffb15e1e074ea22ebe0ca599b6ba834d65a0ecbaec0430ade8845"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridRenderingChecks.cs",
+      "sha256": "c9e3ec48588fc2b3757cd5280d55c0125553ac53fe71bf3a117e867e346b5cba"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridScrollbars.cs",
+      "sha256": "348018141aba2156bca9f4c84cfc5302503000eba89fb91971c294d449777a39"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridShellChecks.cs",
+      "sha256": "4c07a6629604196b3f8b35d8e6de3f8476443e056b2f29afbacccfe3a9600a70"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridTools.cs",
+      "sha256": "09ea02155c0533f80ce8b474e1d79619b8ac2804503604fe7ffdad530305d4c5"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeGridViewCommands.cs",
+      "sha256": "a19a7f19a8387e9e15c1641ce7b1156cbbe72323612bc6fa6f2c6416c3cbf593"
+    },
+    {
+      "path": "src/ExcelLite.App/NativeWorksheetHost.cs",
+      "sha256": "03d59da84124abbcddcc2e71123e13e3c87cb2057c7549f8e503a0e8cd2abf75"
+    },
+    {
+      "path": "src/ExcelLite.App/NavigationSizingSmoke.cs",
+      "sha256": "606c2795fece9a321c60fafd545f8b5757f68beb65eba64b31d755da7b68b7e7"
+    },
+    {
+      "path": "src/ExcelLite.App/NumberCellsGlyph.cs",
+      "sha256": "b6c6c45b673264eeab65fed996bf5bceec89fb7131309f2886cd4193d782cd33"
+    },
+    {
+      "path": "src/ExcelLite.App/NumberCellsSmoke.cs",
+      "sha256": "7f2944754d08eb2b741250d34b72666dde5a469aabf20f678f2ce5730f93891e"
+    },
+    {
+      "path": "src/ExcelLite.App/NumberFormatDialog.cs",
+      "sha256": "94bfd2aa41c974b9160848d6b58bb1f3fbf49e350e8eab67256142418169edb1"
+    },
+    {
+      "path": "src/ExcelLite.App/NumberRibbon.cs",
+      "sha256": "2f908ee991f523cf4f02c351acf9dc78744fd528b0a39328ae4169684663cbc9"
+    },
+    {
+      "path": "src/ExcelLite.App/NumberRibbonSmoke.cs",
+      "sha256": "348fd77f7371cb2ab27eacace9758d97d9d16f4fa6d1418a36fc9643541aeade"
+    },
+    {
+      "path": "src/ExcelLite.App/PopupPlacement.cs",
+      "sha256": "2f5e08bf4e7fac8168f65a3a599bcc24ab65a974551c5f5cff6fc50bf71067cf"
+    },
+    {
+      "path": "src/ExcelLite.App/Program.cs",
+      "sha256": "293f86abee270c4dcfb86756ea27d724c0791e5fc4d9bda4d40363f251843580"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonBlocks.cs",
+      "sha256": "2763334e4ed5b2bd213edd35f694c0334353eaeba7da016fb8ea5b26c7885bbe"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonFigurePreview.cs",
+      "sha256": "8dc0a38e2f549bcece1aeb894f3e5f1e371340678a071be2a6913eae45d8c9d5"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonFigureRendering.cs",
+      "sha256": "8225e8a06cc8601d4a76393456892c437b815d132e3c14a218ed33222378908b"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonPanelSizing.cs",
+      "sha256": "f88a367fad42f7e052a29fc7b68a0931be5a627030283a2ac3fc249ed62d67e3"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonPrototype.cs",
+      "sha256": "64ca0c148b691d2162e5392a582098cc5a66e42c6a470dc339e221a3715433a5"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonScheduling.cs",
+      "sha256": "f4bd3ad3f2b7ff57ba0919cbd63b9644f221586a4103919c810444ccd124418f"
+    },
+    {
+      "path": "src/ExcelLite.App/PythonTablePreview.cs",
+      "sha256": "2ce845407ae33af13575696661a7490b8015ad44b129181f03ada8e7b015a4d0"
+    },
+    {
+      "path": "src/ExcelLite.App/RangePicking.cs",
+      "sha256": "a5ad9286a86cf0c913e7e76b43f3194569ed9d67ace73b30898f18d69000cc70"
+    },
+    {
+      "path": "src/ExcelLite.App/ResponsivenessSmoke.cs",
+      "sha256": "5459d081f4482cbf1331dee0113de80a1954fe84a01c9dd312424d23e0a5b6cb"
+    },
+    {
+      "path": "src/ExcelLite.App/RibbonFocusSmoke.cs",
+      "sha256": "8a72cc3eb4f49d2d7b7f227c2d3653279908340a79661abb07cd5c87d55f4926"
+    },
+    {
+      "path": "src/ExcelLite.App/RibbonIcon.cs",
+      "sha256": "373399e246204e434f103efc5aeaa3b7cfdc696b42b4c6cd462f3df9e557ba1d"
+    },
+    {
+      "path": "src/ExcelLite.App/RibbonMenuTemplate.cs",
+      "sha256": "3fe800c25895c3f65cd33beb34a434eb929f5788cbe14cc8ee80514ded9aaa07"
+    },
+    {
+      "path": "src/ExcelLite.App/RibbonReferenceGlyph.cs",
+      "sha256": "681f9a067a9ebf04270743df7350238a1da63bafad86f6f090406947e2655ac6"
+    },
+    {
+      "path": "src/ExcelLite.App/S12Smoke.cs",
+      "sha256": "145f71f6001f93d5be75fcc74719a61c5475d1c3eebbd560f0182c402c47dd48"
+    },
+    {
+      "path": "src/ExcelLite.App/S13Smoke.cs",
+      "sha256": "02419bab41cb598d253b9ca6b599fbb05b6c1863a9181e29ade77fd1004d492c"
+    },
+    {
+      "path": "src/ExcelLite.App/S15Smoke.cs",
+      "sha256": "b293ad249618d7608c02a65e4e2da0638d44e0d10749965c8764ede47c222e50"
+    },
+    {
+      "path": "src/ExcelLite.App/S16Smoke.cs",
+      "sha256": "02ccff67608eba1354b293c951df079eda48c9555d683debd9e79a63f550c3a1"
+    },
+    {
+      "path": "src/ExcelLite.App/S17Smoke.cs",
+      "sha256": "c6e2eaa75067547bf201f874445bffccc2d88943cec10fe0aa8351f5e1b24680"
+    },
+    {
+      "path": "src/ExcelLite.App/S18Smoke.cs",
+      "sha256": "e26ce81c5592afc63bee4e129069ef21a47b8c6cd3d3dff24d32767f7dd440d9"
+    },
+    {
+      "path": "src/ExcelLite.App/S18TableUiSmoke.cs",
+      "sha256": "02fb239f1bf0a0d8b053e8b1a9c6c9861020d4a1360c47655c3f03e9ee75977e"
+    },
+    {
+      "path": "src/ExcelLite.App/S19Smoke.cs",
+      "sha256": "9c33e315ca89c3fcc922c2ea414c1738d2eabc9a10479cbd00efecbe7c0ad14d"
+    },
+    {
+      "path": "src/ExcelLite.App/SearchDialog.cs",
+      "sha256": "13f3eda059911d744286f6c50bb86b14d3a5feffbabd71f7e8c8b658126600db"
+    },
+    {
+      "path": "src/ExcelLite.App/SearchDialogLayout.cs",
+      "sha256": "2aca22ec0ca6ba2aec048d3060a2e4ea044588af5160dcda6bc39cda25291fb1"
+    },
+    {
+      "path": "src/ExcelLite.App/ShellMenus.cs",
+      "sha256": "14dbb952b744fcc747469ea89da5b219e3e8a53cbbffeec3174a085d3b27deea"
+    },
+    {
+      "path": "src/ExcelLite.App/ShowcaseCandidate.cs",
+      "sha256": "00f17c84e953d4634203493d21d803213abcaccef1ae5efc4dc544f82da1c180"
+    },
+    {
+      "path": "src/ExcelLite.App/SlaRecalculationBenchmark.cs",
+      "sha256": "080ef7d5e2775c97c781a3f7b1fe829d18d66f2a6376f2bf8c42598a4c1b9173"
+    },
+    {
+      "path": "src/ExcelLite.App/StructureCommands.cs",
+      "sha256": "8d3108326b2077948e20c883d6429d737b93a60190337fe556aae265a6e2d381"
+    },
+    {
+      "path": "src/ExcelLite.App/StructureSmoke.cs",
+      "sha256": "ca41d4ca8dff9493692c7a5c9b58e1302a4f0b656c7456cc91c16d35db8fb238"
+    },
+    {
+      "path": "src/ExcelLite.App/TableDesignRibbon.cs",
+      "sha256": "d059b20cb76f7a539deafb62dcf1cc90af109929df6edac33fb9693522504bb5"
+    },
+    {
+      "path": "src/ExcelLite.App/WorksheetCommandFocus.cs",
+      "sha256": "deea41b93ba9ff647daab5a54e6140355c7fee301281ca0ec4da4567a38a2b97"
+    },
+    {
+      "path": "src/ExcelLite.App/WorksheetCursor.cs",
+      "sha256": "a5a815db30830e7fe038aefb9cda5b7d2d76abde1cb09517046aa9edd5d54627"
+    },
+    {
+      "path": "src/ExcelLite.App/WorksheetWindowFocus.cs",
+      "sha256": "231669bf11301389d74afd03b1ec892b426ad90499bb489c9aa71c2a2c3be8cb"
+    },
+    {
+      "path": "src/ExcelLite.App/ZoomDialog.cs",
+      "sha256": "37ae4c1bda36e82c8bcdbbcbfd9560e8cfbcfc55376c356868882796296c6cd9"
+    },
+    {
+      "path": "src/ExcelLite.Application/EditorSession.cs",
+      "sha256": "e755471c1ed57d110d50d8d86a052fbae036acba0ad2a33b4f143f2dfd667bae"
+    },
+    {
+      "path": "src/ExcelLite.Application/ExcelLite.Application.csproj",
+      "sha256": "01590996b8c5d59504dcd8dc15fbab8b06a79c734fb63b0ac75ead05a70d51b7"
+    },
+    {
+      "path": "src/ExcelLite.Application/PythonExecution.cs",
+      "sha256": "b4e4f22f5b38d3de3ce3318ad8488278bcea942fddce24b08475f09b67abd117"
+    },
+    {
+      "path": "src/ExcelLite.Application/ShellViewModel.cs",
+      "sha256": "6e8c4427ff33a66241a6ef551389b642c505fec20bcd815108a8895398801abf"
+    },
+    {
+      "path": "src/ExcelLite.Application/WorkbookSession.cs",
+      "sha256": "d8de6eb7d32af237afc9ad5adbd8254647acc232820a536933d8e8f469032c39"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/ClipboardReferences.cs",
+      "sha256": "1245bc5ebf05fc5d2868b8380fb951cc5611545dab90c6cfc8c76c62ceb723c3"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/ExcelLite.Calculation.csproj",
+      "sha256": "f0f40f6bf5167efb9f630ab21892b21593856f0c89bf04268c11dbb829c0b55c"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/FeasibilityWorkbook.cs",
+      "sha256": "00c22bd9862fb961b0675cfcb2d1b08aa11c14813fcd5a07f625ca1e159fc5e2"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/NativeCalculationGeneration.cs",
+      "sha256": "7eccbae3f27c63218ebb9d73d2e24062ce53946ee0aec16b34e066cccec5b682"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/NativeCalculator.cs",
+      "sha256": "ae4385cfc81f68565b26b8b684d29eeac26d92c468d728eff6c4bad0f23d8dd8"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/StructuralReferences.cs",
+      "sha256": "40ef4de38440c2eae9290f0cd3aaaabc32e677980905870a2ee21c20e71c63a7"
+    },
+    {
+      "path": "src/ExcelLite.Calculation/SubtotalEvaluation.cs",
+      "sha256": "c3e35823a84c71570362951a3e7d69e6db733d59bd540ca7b79d8a4a16b4ac57"
+    },
+    {
+      "path": "src/ExcelLite.Core/CellBorders.cs",
+      "sha256": "64668b30de7dd005d3924d69e0c171092e1014a65f6f72e1b711d8af915288b6"
+    },
+    {
+      "path": "src/ExcelLite.Core/CellRectangle.cs",
+      "sha256": "e446b53832c1c72d96564e8a87cab301a2e90c7c68dc46f7d1e901cb43851bbd"
+    },
+    {
+      "path": "src/ExcelLite.Core/CommandRegistry.cs",
+      "sha256": "ee4b43a4b10c96b253be17f5225d9dcb06d1d8aea795e14ab8b8e458d1e68f6d"
+    },
+    {
+      "path": "src/ExcelLite.Core/DateConventions.cs",
+      "sha256": "abe732474de24951180a65a8f2099de7e4f1ceba60a7e3544274e4f57bf99f0a"
+    },
+    {
+      "path": "src/ExcelLite.Core/DocumentContracts.cs",
+      "sha256": "0d7c76ad237a0f5553340a45e7ba203d438941644ac99e457526f9de9ee92365"
+    },
+    {
+      "path": "src/ExcelLite.Core/DocumentModel.cs",
+      "sha256": "62b4db37d9f6a684219d9d2ec05f4a65fcbeb8f418674fbc0e0d697ce17c8f73"
+    },
+    {
+      "path": "src/ExcelLite.Core/ExcelLite.Core.csproj",
+      "sha256": "70c34fafea2e093c458e3d2014ec7d305658813bd4e5ec4d80b6b87fddb1bdb2"
+    },
+    {
+      "path": "src/ExcelLite.Core/FormulaSubset.cs",
+      "sha256": "d260d64ff553012667b1cf467899462db83b440081862fa6b60fb27b87fda9b7",
+      "snapshot": "snapshots/src/ExcelLite.Core/FormulaSubset.cs"
+    },
+    {
+      "path": "src/ExcelLite.Core/MergedCells.cs",
+      "sha256": "cf37c979ca5b32c6f5ece51d5486d9b704543d565a85199adb65bbd4621fd332"
+    },
+    {
+      "path": "src/ExcelLite.Core/PythonCells.cs",
+      "sha256": "25d55d550b67d0bed1a38f785d65d6ce61c7cd9b678a24d93452ef638721a4ce"
+    },
+    {
+      "path": "src/ExcelLite.Core/PythonFigures.cs",
+      "sha256": "63625ccea2f38ac9ef2f1abd77d00643cc9744f0230ae0b0bab4be081f52907d"
+    },
+    {
+      "path": "src/ExcelLite.Core/PythonReferences.cs",
+      "sha256": "3b9942eecc1ec1a7a76afb894b31a80c635975c97c0f60b275dd3f1748d8b00c"
+    },
+    {
+      "path": "src/ExcelLite.Core/PythonSpills.cs",
+      "sha256": "ed5bf01f62e069cbc4630a495d161cce463115e1a7092a7849e5d8c0652f3376"
+    },
+    {
+      "path": "src/ExcelLite.Core/StructuralReferences.cs",
+      "sha256": "0495b10005f3a2eebcea849e7f8ff4512ab89b181f9e407509b28b7bd33753c0"
+    },
+    {
+      "path": "src/ExcelLite.Core/TemporalFormats.cs",
+      "sha256": "3e2acab2d5474ec135c0d6653497430a60c08179ea19a2c9f1532450aa7984ab"
+    },
+    {
+      "path": "src/ExcelLite.Core/WorkbookNames.cs",
+      "sha256": "825bcef22269f78bd062e8607e9bfe11803670e8d517931967064be4ed907e9e"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/AlignmentCommands.cs",
+      "sha256": "9835d1723e43ec19fe40621b1b5958ce7c8544764c86506d06deafe4e54bf295"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/BorderCommands.cs",
+      "sha256": "1cd493b054e9b7bfeb60f9f55c06b32597149b3293bc173e43af2ac6ee71dcde"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/BorderFormatDraft.cs",
+      "sha256": "9fa0c758384371cf5a97e018c6d05f4bcdf92ca0fc38793277d649dc19547a0d"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/BorderFormatEditor.cs",
+      "sha256": "779d8ad920a6cb85a8707e4aa7819b5e513aa47617a61f16e69ccb8c39f57320"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/CellAppearanceDraft.cs",
+      "sha256": "8465abae6580a488c0e876e753f8ab3893a71db718179327c660f8017d9fa25f"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/DataCommands.cs",
+      "sha256": "59f8fd32714358ca8d815febffac10ee9b3bc5bb5deb71cba46a4a6d13c3f77b"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/EverydayCommands.cs",
+      "sha256": "a05aeb375625dc474604eb02ea8c03742d1be8acbdeda7739d11c651a6a414a5"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/ExcelLite.Foundation.csproj",
+      "sha256": "41c779c1d7d12169e2a536cf9f7f0ff9b72be299510e489f07f928d75e869a38"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/FormatPainter.cs",
+      "sha256": "9517c7b985d3affd96df4071367a55ecf07065aefde217a8f2ad8f188c8aacb7"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/FormulaPresentation.cs",
+      "sha256": "c7e444ce742e7e60274cfbe55b4aa2cc061ad232d53f84f2ccc43973183de35f"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/FoundationSession.cs",
+      "sha256": "b836895b8f100da3ed9b7329a645d1d9163d3502fe208663dc25990806dbefd7"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/GridClipboard.cs",
+      "sha256": "a589c10f52ba5e57d4c1f142eb31a4aee89eb5b942261469f0abc5f3b4eb9c80"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/MixedPythonCalculation.cs",
+      "sha256": "addb73974fc5e315ca378b2832366caaeb29eba64988f034c36b4977fa623a63"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/NumberFormatDialogOptions.cs",
+      "sha256": "d35f79a03a35a73ba297aacb8805d720881fd4918c356e174294faeebc7c25ad"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/NumberFormats.cs",
+      "sha256": "85bf7fa7a4deac634a969400850a604a4334266a899e3019a87ebae424d2c58d"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/SpecialFormatOptions.cs",
+      "sha256": "a0e81b2bf4c2d52e07b71cd5a1399dac1728b5549c270f872659cbd1c8d528b6"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/TableCommands.cs",
+      "sha256": "609a1415c5296f0d695ca790be737365d57a3aa56b792628d19b6bc55b2fdb67"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/TableDesignCommands.cs",
+      "sha256": "a9ae2855594c57c29df515e66c580f2b8ed1b2d2e85cc75ac4e5d92a19b089bc"
+    },
+    {
+      "path": "src/ExcelLite.Foundation/TemporalFormatOptions.cs",
+      "sha256": "1ac1d1775817f8c58c6662f9e6f37ab266d54b154de49732b4860a36fb61d191"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/DocumentSession.cs",
+      "sha256": "a327711807c02748306e75278b426c4f64fe195e3950c4b8fe6255718cbc810b"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/ExcelLite.Persistence.csproj",
+      "sha256": "d1c8c839d7f61062381f2edeef505308164440e824eb8625e999f373fe7087ff"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/FeasibilityDocument.cs",
+      "sha256": "868f37718531b054046388f06d72ac806fd2ded168ae3ccbd09a5d466dca6e13"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/LocalSettings.cs",
+      "sha256": "dd2249efe7caf0e2689eb76458cc1235ee5c112b5dce4ba0d42ba2da15208645"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/NativePackage.cs",
+      "sha256": "fdaa3c10294a03a1e265c0d936309fa68d6b17553cc97b101dd552c6284fe77c"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/PackageException.cs",
+      "sha256": "8628c2acf3559efecf38ce4d46828a4fb54e00aefc4fa4be60ea27a1d6fa2e1b"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/XlsxExchange.cs",
+      "sha256": "6279fcf14fda8997f8a212af82abd345158f58dfaa80bced3e3c810007a9cc09"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/XlsxGradients.cs",
+      "sha256": "a7560fd51e60fe051d086372591b502cc758114eac1c6d9d5dc07266c50517e2"
+    },
+    {
+      "path": "src/ExcelLite.Persistence/XlsxStyles.cs",
+      "sha256": "8df200c40a46a2c2a3178a9c287b2d3ea6d4aa6a22973c6b1e74d415af3bb9cb"
+    },
+    {
+      "path": "src/ExcelLite.Python/ArrowTransport.cs",
+      "sha256": "9ef70615ae943b422ea6aa3d831708466e066b4a32983f58f330da6362c23d77"
+    },
+    {
+      "path": "src/ExcelLite.Python/ExcelLite.Python.csproj",
+      "sha256": "7a67a1c13639ef02ba5c962763f4b6ecac35f904d8f541954a62d9d24bdac2db"
+    },
+    {
+      "path": "src/ExcelLite.Python/ProcessJob.cs",
+      "sha256": "05e4aa4d84c0ed3d28f9137a2ffac56b4f9542f394754f72913272bb222257c2"
+    },
+    {
+      "path": "src/ExcelLite.Python/ProtocolCodec.cs",
+      "sha256": "cad318cf038d77096dd431cb8b49d3720cfa2a2f0a0481245319c166d694adc8"
+    },
+    {
+      "path": "src/ExcelLite.Python/PythonRuntime.cs",
+      "sha256": "b68dff74c2c31b94ce75f228e3831a706886d513dcc97cf7fbc119c418c37a32"
+    },
+    {
+      "path": "src/ExcelLite.Python/PythonWorkerClient.cs",
+      "sha256": "c4b56ce611f913569bb760eabee4bd85635b3f94cf57b0ea02e97815d46dc762"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/AlignmentChecks.cs",
+      "sha256": "b2d81f9c3a332c738a397dcd965f9c37779dd65db42ca05dd1cb87e73d2d7d83"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/ArrowTransportChecks.cs",
+      "sha256": "ee3f31a79b22d59e49274af4a9667b00fbdbaa490341a99db7a1d231d089fbe2"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/BorderChecks.cs",
+      "sha256": "984444f75e16bed944d9708fee3029147a20cad5e763765746458c265eb06a14"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/BorderToolChecks.cs",
+      "sha256": "a94d95f391156c54f32578bb1afbdb981ed877d324e334f875d9774377498d5a"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/CellShiftChecks.cs",
+      "sha256": "c1fe5d2475aa6de498067336778be8406a401369b383ccc50473bddac9f3c526"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/ClearChecks.cs",
+      "sha256": "e7d698901882f1519514eed77b5f4ba767ac2d6eebcb864a468167a92e05e5ff"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FigureRecoveryProbe.cs",
+      "sha256": "3ac5e11331518dae83849de485c58c8e571130fbcaeb30275799f88c4f04869f"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FillChecks.cs",
+      "sha256": "23d1424945482c94d81a8f3c0dbd984bbfa1f980afd33d7c1b5e1a40f1906924"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/Fixtures/bad_version_worker.py",
+      "sha256": "8e0e57d460e076219162d4f786e48d33e70767e70488e894f52e2e38286124dd"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/Fixtures/malformed_worker.py",
+      "sha256": "a7edb8dccc237e4c8b4115ef3284a6cb5f769cc4fa17e4388b56f82252cdac64"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/Fixtures/s16_scalar.py",
+      "sha256": "44c871e52446ce6648565550b8e62a76339ae25997219d177657e71c9070c36b"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FontFillChecks.cs",
+      "sha256": "70fd7cc6d72586b901e32ceda9ce123ad35ab78476969b5ed52b04b0c70c5cf6"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FormatDialogOptionsChecks.cs",
+      "sha256": "8399fca2fa91d2f781c71fb03246cd2a9abe6811d301c5d80b870aaa916aa362"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FormatPainterChecks.cs",
+      "sha256": "274f74eaad15d3110c5c382c72133f2f4c01d00dc7c0192392f315c4e8aecd16"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FormulaPresentationChecks.cs",
+      "sha256": "61ab04451d1a4968708fe18dc65361a6aed5c6119e10162c81432d9422d5bd16"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/FreezeChecks.cs",
+      "sha256": "91083c93e2557fadd2583ed559ba6a92ce931965bb94a1894ca6ba7e2c78eab5"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/MixedCalculationChecks.cs",
+      "sha256": "236849b82a54e35867ade38bea090cfb70f8dd7850e6bd322445ef49ad113391"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/NumberFormatChecks.cs",
+      "sha256": "b6ae063eddadb771ee4b36078d53708fc004a441c3b927d1c56f9d17e9919b3f"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/Program.cs",
+      "sha256": "ea27a6ce4efce0333c3f16fce794ab8b965f4c32142f9e96ce28c46aafb7053c"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S03Checks.cs",
+      "sha256": "8b0da5d0176f64dfac56c1ea4281effd891e2415162e468d172d9687a589bf72"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S04Checks.cs",
+      "sha256": "f927f7d1c81452ad3e9cf97bb436b78048f0456b89f5e5e97bac01e340f69d4d"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S05Checks.cs",
+      "sha256": "43979ae3bfa6c930370319982fcd3e7e836788bb4ad4e6bae00bab08081b817c"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S06Checks.cs",
+      "sha256": "c571762b55cf153bb417b606fdf05b12ae0ff66219b82f73e31d9812a770464c"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S07Checks.cs",
+      "sha256": "bf1d5ed8cb3bb8a9f333f5da0e3d394c762f0d19f3eecc9ba67125e7f65a211e"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S08Checks.cs",
+      "sha256": "ab7193704ca37e29b826891c8dc8f5885df89661d3ed76a2a897e40c3f183959"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S09Checks.cs",
+      "sha256": "57ab2b7510c5c502867357fbb97dc49ef628d9c13ec28c3bb1c30956fc578a39"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S10Checks.cs",
+      "sha256": "f75ef7d9939471e70c8156964ebd5cbefe96803958db19e52de74eaf48a90ba5"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S11Checks.cs",
+      "sha256": "1a592ed924b5a3719d1aefb3795d7cd532f96f8b847dd1ec4ce9357aa940717d"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S12Checks.cs",
+      "sha256": "08f042a97e76334676f00dcc0e020f0c6440ce557a856fec8bc1ca774bb47abf"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S13Checks.cs",
+      "sha256": "09f9d151f7089219957bb2c88927feee86ff3e6ce32ce569a71e03e1997ee957"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S15Checks.cs",
+      "sha256": "3a4d1ee5837a6ff42d6f7c3f82d6a5cca03e45b70a2ed6825fbb891514213c57"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S16Checks.cs",
+      "sha256": "031eefd4d28fed767186c8006fa951a6cfdf8a6772198bea6bdc797756efa107"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S17Checks.cs",
+      "sha256": "7ad4bb1ef4224cc59dad948179a8fb8a53e250bd34f5582cd95a6e6a096368cb"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S18Checks.cs",
+      "sha256": "4d722ce16c28ee83175070e5ea3c28b0cfe41e7de00b205c52f2e5ec4bb5ff9f"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S18TableUiChecks.cs",
+      "sha256": "3448448bde24add112729dc0863e4714751462f12a671f507de056b5be12b4b2"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S19Checks.cs",
+      "sha256": "b11080b08fdb3a1267c65dbccd50f576b7a28faa8905d4ead0c57a52130fa877"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S20Checks.cs",
+      "sha256": "8c7f83118e006666772b917d52c56a21cb9ff4542a4c336b17c87331760e0bbc"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/S21Checks.cs",
+      "sha256": "24c57bc5ab27538918e93c385f8d9c3aa8e70d419cb5791ec334039da9bceb07"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/SlaShowcase.cs",
+      "sha256": "341ca5c7c18c67bf2d7ff3e3ed477f04ccc84acc0496e0a154e9cc98f3ca9c6c"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/SlaShowcaseChecks.cs",
+      "sha256": "3509c891010430ad80b140ef86d4219b04f41f2afbe5e801469d3e98661bf3a9",
+      "snapshot": "snapshots/tests/ExcelLite.Tests/SlaShowcaseChecks.cs"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/SpecialFormatChecks.cs",
+      "sha256": "7abbf813eda4e463c70ec7d93be9ce83666613bdfbd2a89fdcd109f3cd34c71d"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/TableDesignChecks.cs",
+      "sha256": "ef587c8c2976e1a1a50b80f4fb6578ab73172b07dfe41b9bad7c680d26a54265"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/TemporalFormatChecks.cs",
+      "sha256": "f6c29dafbce4791bea8d812df8bab1277aae73c5cbf6c0d88a726a5088472cd0"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/UxRefinementChecks.cs",
+      "sha256": "cb853458262d3a3f169c0b29fd996cf44b2002b596f91134807c4dc2e3027e4a"
+    },
+    {
+      "path": "tests/ExcelLite.Tests/WorksheetRefreshChecks.cs",
+      "sha256": "2b3f2568a08a9f9c6487df1f09104bc482c883a6741636e62a5ad752a025b3cb"
+    },
+    {
+      "path": "tests/MonacoPrototype/editor.test.cjs",
+      "sha256": "b1fe969b2b9402fb3b6809dbfb67dca5bd4e969e00f056b5ce44bc2411c93427"
+    },
+    {
+      "path": "tests/Python/border_eraser_cursor.py",
+      "sha256": "51ba287212913d3da603cfda3ca8b2a323db56f812da004b1b6c8d9a39a62920"
+    },
+    {
+      "path": "tests/Python/chart_cache_recovery.py",
+      "sha256": "c23f79f723d04a7cec4c65686809f9073b05982ab5552dfa4227d94a771b672b"
+    },
+    {
+      "path": "tests/Python/chart_redraw.py",
+      "sha256": "fb30416681798c2bc55317e3f964b678c7296b9bcf7293d9616e48b5e641f520"
+    },
+    {
+      "path": "worker/excellite_worker.py",
+      "sha256": "8a03522398ab95b92b7eb6970469b745f88b24327c56daeb2466c31c6a0e20bc"
+    }
+  ]
+}

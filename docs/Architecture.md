@@ -1,6 +1,6 @@
 # ExcelLight Web architecture
 
-Status: proposed target architecture; initial React/Vite scaffold exists. Reviewed 2026-11-17 against the local desktop tree. Feasibility gates S02/S03 must pass before the target is considered proven.
+The React/Vite scaffold exists. S02 verified browser Python for the showcase scripts. S03 verified selected formula semantics and native and XLSX interchange. The following architecture guides the rest of the port.
 
 ## 1. Backend decision
 
@@ -19,12 +19,12 @@ Exact desktop process parity is impossible under that constraint: browsers canno
 | Calculation | TypeScript tokenizer/AST, dependency graph and exact supported function subset in a worker | ClosedXML is a .NET dependency, not a drop-in JS engine; prove semantics before implementation |
 | Python | Lazy-loaded pinned Pyodide in a module Web Worker | NumPy/pandas/Matplotlib in-browser; use explicit Agg PNG backend; probe pyarrow rather than assuming availability |
 | Editor | Lazy-loaded Monaco with locally bundled workers | Preserve source editing, range picking and draft barriers |
-| Native format | Version-1 ZIP/JSON adapter; evaluate zip.js bounded streaming in S03 | Existing desktop .exlt interoperability is required; avoid a web-only JSON replacement |
-| XLSX | Evaluate ExcelJS plus focused OOXML extensions in S03 | Preserve the existing documented subset, including detailed styles; library support alone is insufficient |
+| Native format | Version-1 ZIP/JSON adapter with bounded zip.js streaming | Keep desktop .exlt interoperability |
+| XLSX | OOXML over zip.js with namespace-aware xmldom for small metadata parts | Preserve the desktop-supported subset, including detailed styles |
 | Storage | IndexedDB (thin idb adapter); File API download/upload fallback | Browser-local workspaces and portable files; optional File System Access when available |
 | Tests | Vitest + Playwright; differential fixtures from desktop | Domain behavior, actual WASM runtime, browser interactions and static deployment |
 
-Only React/build/test dependencies are installed now. Add Monaco, Pyodide, ZIP/XLSX and storage dependencies in their sprints after license/version/size checks. S03 may substitute an adapter library with documented evidence. Do not adopt a generic formula engine without confirming coercion, lazy IF/IFERROR, errors, license and the exact allowlist. A Blazor/.NET WASM approach could reuse more C#, but still needs browser-specific I/O, rendering and Python; retain it only as a measured S03 fallback, not a second simultaneous implementation.
+The production scaffold uses React and its build and test tooling. S02 adds a separate Pyodide probe and a checksum lock. S03 adds the formula probe and pins zip.js and xmldom for the file adapters. [Formula and file adapter decision](decisions/ADR-003-formula-and-file-adapters.md)
 
 ## 3. Components and dependency direction
 
@@ -64,7 +64,7 @@ Native and Python Automatic/Manual settings remain independent. A mixed generati
 
 Port `worker/excellite_worker.py` behavior, not its process/file plumbing. Each run has a fresh namespace; literal xl() inputs and headers are validated before user statements. Final expression wins over legacy result assignment. Normalize scalar/Series/DataFrame/2D-array/Figure output; preserve errors, stdout/stderr, last success, stale states and spill ownership. Reserved xl forms remain constrained as in the desktop documentation.
 
-Load all runtime/package assets from a versioned same-origin runtime directory. S02 records actual Python/NumPy/pandas/Matplotlib versions and compares both sales/SLA workflows; desktop version strings must not be copied into a web manifest. No runtime pip or external CDN dependency for the release. Use a normal module worker without SharedArrayBuffer. Stop/timeout terminates and replaces the worker, invalidates runtime handles and cancels queued generations. Graceful KeyboardInterrupt is not a baseline promise because shared-memory interrupts have deployment requirements; do not assume GitHub Pages can supply custom isolation headers.
+Load the runtime and packages from a versioned same-origin directory. The S02 probe uses Pyodide 314.0.8, CPython 3.14.2, NumPy 2.4.6, pandas 3.0.2 and Matplotlib 3.10.8. PyArrow 22.0.0 loads on demand for the optional IPC test. JSON is the default transport for S21. Verify broader script compatibility separately from the two showcased workflows. Use a module worker without SharedArrayBuffer. Stop or timeout terminates it, invalidates runtime handles and cancels queued generations. Start a new worker when execution is requested again. [Runtime lock](../src/python/runtime-lock.json)
 
 Charts are PNG figures, not interactive/native Excel charts. Preserve multiple placements, cell anchor + offsets + independent dimensions, eight resize handles, drag/drop, delete-only-placement and Save Image. A live Figure redraws at placement size without re-executing analysis. Keep bounded session-only retained figures; prototype recovery snapshots inside worker memory in S02/S23. Worker termination loses that memory, so rebuild missing figures through the authorized scheduler with visible status. Never load pickles from workbook files. Preserve cached PNG as a fallback, with an explicit error if redraw fails. Never silently rerun code after Stop.
 
