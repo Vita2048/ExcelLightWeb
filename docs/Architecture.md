@@ -1,0 +1,99 @@
+# ExcelLight Web architecture
+
+Status: proposed target architecture; initial React/Vite scaffold exists. Reviewed 2026-11-17 against the local desktop tree. Feasibility gates S02/S03 must pass before the target is considered proven.
+
+## 1. Backend decision
+
+**No application backend is planned.** GitHub stores source and runs CI; GitHub Pages serves the static build. React, the spreadsheet engine, file adapters and Python all run in the browser. Workbooks are never uploaded by application code. This is suitable for the requested local-data product.
+
+Exact desktop process parity is impossible under that constraint: browsers cannot launch arbitrary Windows processes, read arbitrary disk paths, or load arbitrary native CPython wheels. Pyodide is the recommended Python implementation, subject to S02 validation. If unchanged scripts require those desktop facilities, retain the desktop app or explicitly reconsider a local companion/server architecture. Do not quietly add a backend or call those scripts supported. A backend would also conflict with GitHub Pages-only execution and the local-data requirement.
+
+## 2. Stack and alternatives
+
+| Area | Recommendation | Reason / qualification |
+| --- | --- | --- |
+| App | React + strict TypeScript + Vite | Static output; familiar agent tooling; typed boundaries |
+| Styling | Shared CSS variables, dark only | Preserve black top bars, dark sheet/panels and blue focus; no styling framework required |
+| Worksheet | Custom virtualized Canvas 2D plus DOM editor and accessible grid projection | Existing Win2D semantics are specialized; avoid coupling the model to a commercial grid |
+| Model | Pure TypeScript sparse immutable snapshots and command transactions | Port source semantics, not UI framework types |
+| Calculation | TypeScript tokenizer/AST, dependency graph and exact supported function subset in a worker | ClosedXML is a .NET dependency, not a drop-in JS engine; prove semantics before implementation |
+| Python | Lazy-loaded pinned Pyodide in a module Web Worker | NumPy/pandas/Matplotlib in-browser; use explicit Agg PNG backend; probe pyarrow rather than assuming availability |
+| Editor | Lazy-loaded Monaco with locally bundled workers | Preserve source editing, range picking and draft barriers |
+| Native format | Version-1 ZIP/JSON adapter; evaluate zip.js bounded streaming in S03 | Existing desktop .exlt interoperability is required; avoid a web-only JSON replacement |
+| XLSX | Evaluate ExcelJS plus focused OOXML extensions in S03 | Preserve the existing documented subset, including detailed styles; library support alone is insufficient |
+| Storage | IndexedDB (thin idb adapter); File API download/upload fallback | Browser-local workspaces and portable files; optional File System Access when available |
+| Tests | Vitest + Playwright; differential fixtures from desktop | Domain behavior, actual WASM runtime, browser interactions and static deployment |
+
+Only React/build/test dependencies are installed now. Add Monaco, Pyodide, ZIP/XLSX and storage dependencies in their sprints after license/version/size checks. S03 may substitute an adapter library with documented evidence. Do not adopt a generic formula engine without confirming coercion, lazy IF/IFERROR, errors, license and the exact allowlist. A Blazor/.NET WASM approach could reuse more C#, but still needs browser-specific I/O, rendering and Python; retain it only as a measured S03 fallback, not a second simultaneous implementation.
+
+## 3. Components and dependency direction
+
+```mermaid
+flowchart TD
+  UI[React shell / Canvas grid / Monaco] --> SESSION[Application session and commands]
+  SESSION --> CORE[Core model and validation]
+  SESSION --> CALC[Calculation worker]
+  SESSION --> PY[Pyodide worker]
+  SESSION --> FILES[Persistence adapters]
+  FILES --> DB[IndexedDB]
+  FILES --> DISK[User selected files / downloads]
+  CALC --> CORE
+  PY --> DTO[Validated immutable inputs / result DTOs]
+  HOST[GitHub Pages static assets] -. loads code only .-> UI
+```
+
+`core` imports no React, browser APIs or adapters. `application` depends on core and abstract ports. Calculation, persistence and Python implement ports; `app` wires them. `features` translates UI intent into commands. `grid` owns projection and input, never an independent editable data store. Dependencies must not cycle. Large calculation, decode/encode and Python work must not block input.
+
+## 4. State, history and worker contract
+
+- Retain stable workbook/sheet/cell/block/name identities and one-based coordinates. Separate blank from empty text, finite number, Boolean, native formula and Python anchor. Keep authored source separate from derived caches and UI view state.
+- Session owns document, authored identity, saved identity, monotonic revision and bounded history (100 transactions / 64 MiB). Compound edits, structural changes and Python result generations are atomic. Native derived recalc adds no Undo entry. Oversized history edits reject before mutation. Undo never rewinds revision.
+- Workers receive immutable snapshots or validated deltas with `protocolVersion`, `requestId`, `sessionId`, `revision`, `generation`, `sourceFingerprint` and `runtimeFingerprint`. Replies must match the current basis and limits before one transaction commits. Ignore late work after editing, undo, load, cancellation or worker replacement.
+- Retain source bounds: 10 sheets, 10,000 rows x 100 columns, 200,000 populated cells, 10,000 formulas. Baseline visible projection remains A1:Z1000; expanding it is a separately measured improvement, never required to prove existing parity. Named definitions <=1,000. Python input/output <=100,000 cells, preview <=500 rows, source/logs <=1 MiB, messages <=32 MiB, PNG <=16 MiB and 16 million pixels, default timeout 30 seconds.
+- Serialized outputs use validated plain DTOs, typed arrays and transferable ArrayBuffers, not Node files or Windows pipes. JSON-first table transport is acceptable; Arrow is an optimization only if packaged and measured. Preserve values/nulls/date conversion independently of transport.
+
+## 5. Calculation and references
+
+Implement the FormulaSubset allowlist recorded in Feature-Parity. English names/comma separators are canonical; locale presentation only changes actual argument separators. Parsed reference tokens, never search-and-replace strings, drive copy, cut/move, fill, structural edits and rename. Structural edits adjust absolute coordinates too; deleted targets become #REF!. Python xl literals need syntax-aware source spans.
+
+Use explicit error values: circular dependencies #REF! with detail, malformed source #VALUE!, unsupported functions #NAME?. IF/IFERROR are lazy; inactive branch references still contribute dependency edges. VLOOKUP is exact-only. SUBTOTAL handles filter visibility, manual visibility and nested subtotals. Match desktop coercion, rounding, date serial 60 and 1904 conversion through fixtures. Intl helps presentation but is not an Excel number-format engine; implement/test the documented formatting subset.
+
+Native and Python Automatic/Manual settings remain independent. A mixed generation shares one dependency graph and native context, replans after spill topology changes, executes Python sequentially, and commits atomically. Debounce 75 ms isolated edits / 220 ms compound or queued edits. Selection, source drafts, Undo/Redo and Restart never execute scripts. TODAY uses an injected clock and refreshes once per generation.
+
+## 6. Python and charts
+
+Port `worker/excellite_worker.py` behavior, not its process/file plumbing. Each run has a fresh namespace; literal xl() inputs and headers are validated before user statements. Final expression wins over legacy result assignment. Normalize scalar/Series/DataFrame/2D-array/Figure output; preserve errors, stdout/stderr, last success, stale states and spill ownership. Reserved xl forms remain constrained as in the desktop documentation.
+
+Load all runtime/package assets from a versioned same-origin runtime directory. S02 records actual Python/NumPy/pandas/Matplotlib versions and compares both sales/SLA workflows; desktop version strings must not be copied into a web manifest. No runtime pip or external CDN dependency for the release. Use a normal module worker without SharedArrayBuffer. Stop/timeout terminates and replaces the worker, invalidates runtime handles and cancels queued generations. Graceful KeyboardInterrupt is not a baseline promise because shared-memory interrupts have deployment requirements; do not assume GitHub Pages can supply custom isolation headers.
+
+Charts are PNG figures, not interactive/native Excel charts. Preserve multiple placements, cell anchor + offsets + independent dimensions, eight resize handles, drag/drop, delete-only-placement and Save Image. A live Figure redraws at placement size without re-executing analysis. Keep bounded session-only retained figures; prototype recovery snapshots inside worker memory in S02/S23. Worker termination loses that memory, so rebuild missing figures through the authorized scheduler with visible status. Never load pickles from workbook files. Preserve cached PNG as a fallback, with an explicit error if redraw fails. Never silently rerun code after Stop.
+
+## 7. Files, local storage and privacy
+
+Native .exlt v1 contains `manifest.json`, `workbook.json`, `sheets/<guid>.json`; Python metadata/results/images are embedded in sheet records. Implement exact desktop field shapes, including legacy reads, using source snapshots and fixture hashes. New incompatible schemas require a migration/version decision. Read-only source examples and deliberately malformed fixtures prove desktop->web->desktop roundtrips. Validate ZIP entries, duplicates, traversal, streamed expanded byte counts, nesting, dimensions and object integrity before adoption. Limits: 128 MiB compressed, 512 MiB expanded, 32 MiB/entry, 10,000 entries. Stream rejection must occur before decompression exhausts memory.
+
+Separate three identities: authored content, locally persisted snapshot, and exported file snapshot. IndexedDB transactions provide local Save and migration boundaries; optional file handles provide direct Save/Save As after permission. A download fallback cannot confirm the user retained the file or atomically replace a disk destination: label it as an export/download and never claim Windows atomic-write parity. New/Open/Close still honor draft flush and Save/Don't Save/Cancel; cancelled pickers, failed persistence and changed save basis must preserve current data/dirty status. Browser tab close offers best-effort beforeunload, not an asynchronous custom Save dialog guarantee.
+
+Recent (up to 10) refers to local workspace records and optional permissioned handles, not arbitrary file paths. Retain separate native and imported-XLSX provenance; XLSX export does not mark native content saved or intentionally overwrite the imported source. Retain Find/Replace history (15 each), view and native/Python mode preferences. S18 adds explicit local recovery as a web adaptation; it is not an existing desktop feature claim.
+
+Storage is origin scoped and subject to quota/eviction/private-mode loss; request persistence where available and show failures. Export remains the portable backup. Different GitHub project paths on one origin share browser storage permissions: namespace DB/cache names per app and do not treat path separation as a security boundary. A dedicated custom origin is preferable for untrusted script isolation. No analytics, workbook uploads or secrets in build variables.
+
+Pyodide executes user code and is **not a security sandbox**: workers may access network/browser capabilities. Trusted-source consent still matters. Keep imported code inert until the session is authorized; record a locally chosen Automatic preference explicitly. Render workbook text with escaped DOM APIs, validate PNGs and never render arbitrary output HTML. S24 adds a tested restrictive policy compatible with same-origin WASM/workers; do not promise all hostile scripts are isolated by that policy.
+
+## 8. Dark UI and accessibility
+
+Preserve existing command families, contextual Table Design, black title/tab/ribbon/formula areas, dark default sheet and panels, blue selection, 26 px rows and 96 px columns at 100%. Grid zoom 10–400% does not scale the ribbon. No Light or Follow System setting. Authored cell colors remain intact, including white fills. Forced-colors accessibility is allowed.
+
+Canvas needs a synchronized accessible DOM grid, active-cell announcements, keyboard navigation, editable overlay/IME, focus restoration and dialog focus traps. Test cross-sheet range picking, multi-area selection, context actions and browser-reserved shortcut conflicts. Desktop Chrome/Edge are primary; Firefox/WebKit must support File API fallback and core workflows. Mobile is a usable narrow layout, not a new touch-first parity requirement.
+
+## 9. GitHub and offline operation
+
+Vite emits static `dist/` with relative URLs (`base: './'`). No history routes/server rewrite dependency; use the single entry page and hash URLs if navigation is later needed. Worker/runtime/service-worker paths must use the build base or import.meta.url. CI verifies root and repository-subpath production serving. Deployment is manual from main, after the same checks, via Pages artifact upload. No deployment has been performed by scaffolding.
+
+S24 adds versioned service-worker caching for the app and explicitly downloaded Python packages. First use needs connectivity; only claim offline support after the complete selected runtime is cached and verified. Never force-reload a dirty workbook during an update. Test offline reopen, runtime cache miss and interrupted updates. Measure compressed/uncompressed runtime assets against Pages limits before release.
+
+## 10. Sources and unresolved gates
+
+Desktop authorities: `docs/Architecture.md`, `Menu-Structure.md`, `Design-Guidelines.md`, `Python-Capabilities.md`, `Xlsx-Compatibility.md`; `Core/FormulaSubset.cs`, `DocumentModel.cs`, `DocumentContracts.cs`; `Persistence/NativePackage.cs`; worker and existing tests. Paths are relative to C:/Temp/ExcelLight. S01 hashes this working-tree baseline because Git metadata was not accessible during planning.
+
+External platform checks (2026-11-17): [Vite static deployment](https://vite.dev/guide/static-deploy), [Pyodide module workers](https://pyodide.org/en/stable/usage/webworker.html), [Pyodide interrupts](https://pyodide.org/en/stable/usage/keyboard-interrupts.html), [browser storage quotas](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria), [GitHub Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits). Recheck before release. These establish platform capabilities; they do not prove this application's compatibility. Open gates: actual WASM package/API parity, figure recovery, exact formula semantics, extended XLSX styles, browser memory/performance. S02/S03 must record pass/fail and alternatives before feature work relies on them.

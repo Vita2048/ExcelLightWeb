@@ -1,0 +1,15 @@
+* { box-sizing: border-box; }
+body { margin: 0; }
+.app-shell { min-height: 100dvh; display: flex; flex-direction: column; }
+.title-bar { display: flex; align-items: center; gap: 12px; background: var(--top-bar); padding: 12px 20px; font-weight: 600; }
+.brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; }
+main { width: min(760px, 100%); margin: auto; padding: 48px 24px; }
+.eyebrow { color: var(--accent); font-weight: 600; }
+h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 600; line-height: 1.2; }
+.intro { font-size: 17px; line-height: 1.6; color: var(--muted); }
+.status-panel { margin-top: 32px; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 24px; line-height: 1.6; }
+h2 { margin-top: 0; font-size: 18px; }
+code { overflow-wrap: anywhere; }
+footer { color: var(--muted); padding: 12px 20px; border-top: 1px solid var(--border); font-size: 13px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (forced-colors: active) { .brand-mark, .status-panel { border-color: CanvasText; } }
