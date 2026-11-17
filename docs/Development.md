@@ -17,7 +17,19 @@ npm run test:e2e
 
 `npm run check` combines typecheck, unit/integration tests and production build. E2E is separate because browsers must be installed. CI runs both and installs the three browser engines. The Pages workflow repeats them before uploading the exact tested dist directory. The E2E server serves real static files at `/` and `/ExcelLightWeb/`, with no missing-asset SPA fallback. This catches relative asset-path errors hidden by a development server.
 
-The scaffold tests verify build paths and dark rendering. S01 adds fixture integrity, snapshot and expectation loading checks. Spreadsheet, Python and file-compatibility suites arrive in their implementation sprints. Vite's manual preview server is for local development.
+The production browser suite verifies hosting paths, dark rendering, worksheet input, virtualization and accessibility. S01 adds fixture integrity, snapshot and expectation loading checks. Vite's manual preview server is for local development.
+
+## Workbook model and session
+
+`npm run typecheck` first compiles core and application with `tsconfig.model.json` using only the ECMAScript library. It then typechecks the entire project. Run the focused S04 suites with `npx vitest run tests/unit/workbook-model.test.ts tests/integration/workbook-session.test.ts`.
+
+The unit suite exercises the source limits and uses deterministic generated cell edits and reorders to verify forward and inverse deltas. The integration suite covers atomic edits, bounded history, asynchronous save completions and native cache reply guards. A Node worker thread returns a fixed test reply to exercise structured cloning and edit-before-reply ordering. Browser calculation integration starts in S09.
+
+## Worksheet checks
+
+Run `npm run test:worksheet` to build and serve the fixed two-sheet worksheet fixture under the repository subpath. It checks rendered cell/header alignment at device-pixel boundaries, explicit white fills, hidden and resized tracks, cached formula display, selection statistics and sheet focus. Verify CI runs it after the production browser suite. The fixture builds under `test-results/` and is separate from `dist/`.
+
+The production suite injects the pinned axe-core development dependency to check the worksheet and ribbon. Manual screen-reader verification is scheduled in S25.
 
 ## Browser Python feasibility
 
@@ -57,7 +69,7 @@ S01 creates a fixture manifest with source path, SHA-256, expected-value source,
 
 Tests must cover cancellation/error paths as well as happy paths. Reference transformations should include generated inputs/property tests; native archive readers need corrupt and decompression-limit fixtures. Use deterministic fake clocks for TODAY/debounce and real workers for concurrency races. Real Pyodide tests run in browser workers against packaged same-origin assets; protocol mocks are supplementary. Figure checks compare dimensions and structural image properties/tolerances, not unjustified byte-exact PNG equality across Matplotlib versions.
 
-Use accessibility automation (add axe in S05/S25) with keyboard, focus and accessible active-cell assertions; it does not replace manual screen-reader smoke testing. Keep screenshots as optional diagnostic artifacts, not mandatory handover attachments. Verify dark UI even when OS preference is light. Preserve forced colors.
+Use axe with keyboard, focus and accessible active-cell assertions. Keep manual screen-reader smoke testing in the release checks. Screenshots are optional diagnostics. Verify dark UI even when OS preference is light. Preserve forced colors.
 
 ## Proposed performance targets
 

@@ -4,7 +4,7 @@
 
 The planned application is static: GitHub stores source, Actions installs/tests/builds, and Pages serves `dist/`. Workbooks and computation stay in the browser. There is no server API, server-side rendering, secret, cloud database or uploaded workbook. Pyodide/Monaco/runtime assets must be bundled with the build in their implementation sprints.
 
-The scaffold uses relative asset URLs (`base: './'`), so both `https://OWNER.github.io/REPOSITORY/` and a domain-root site work. Keep navigation on the entry page or use hash routes. Do not add history routing that requires a server fallback. VITE_BASE_PATH is an optional process environment override for a slash-delimited explicit base; default relative mode is what the checked-in browser tests exercise. Custom overrides need matching deployment tests.
+The app uses relative asset URLs (`base: './'`), so both `https://OWNER.github.io/REPOSITORY/` and a domain-root site work. Keep navigation on the entry page or use hash routes. Do not add history routing that requires a server fallback. VITE_BASE_PATH is an optional process environment override for a slash-delimited explicit base; default relative mode is what the checked-in browser tests exercise. Custom overrides need matching deployment tests.
 
 Workers use `new Worker(new URL(..., import.meta.url), { type: 'module' })`; runtime assets resolve against the configured build base; service worker registration uses the app base and scope. Never hardcode `/assets`, `/runtime` or a localhost API. No SharedArrayBuffer or custom COOP/COEP headers are required by this design. Stop uses worker termination.
 
@@ -14,7 +14,7 @@ Workers use `new Worker(new URL(..., import.meta.url), { type: 'module' })`; run
 2. Select repository **Settings → Pages → Source → GitHub Actions**. Ensure Pages is available for the selected repository/account visibility. Review who can read the published application separately from who can read the repository.
 3. Run **Verify** and resolve failures. The workflow runs on pull requests and pushes to main.
 4. In **Actions → Deploy GitHub Pages**, select **Run workflow** on main. The workflow installs with npm ci, typechecks/tests/builds, runs Chromium/Firefox/WebKit tests, uploads dist and deploys through the github-pages environment.
-5. Record the returned hosted URL and source revision in the release handover. Verify a reload at the repository URL, worker/runtime requests, local save/export/reopen and offline-ready behavior. The current scaffold only supports checking the landing page; product release acceptance belongs to S26.
+5. Record the returned hosted URL and source revision in the release handover. Verify a reload at the repository URL, worker/runtime requests, local save/export/reopen and offline-ready behavior. The current build supports worksheet and hosting checks. Product release acceptance belongs to S26.
 
 Deployment is manually triggered to avoid publishing partial sprint work on every push. It grants contents:read globally and pages:write/id-token:write only to the deployment job; main is required for deployment. The github-pages environment can hold GitHub-native review rules if desired. No personal deployment token is needed. Failed checks prevent deployment.
 

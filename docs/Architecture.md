@@ -1,6 +1,6 @@
 # ExcelLight Web architecture
 
-The React/Vite scaffold exists. S02 verified browser Python for the showcase scripts. S03 verified selected formula semantics and native and XLSX interchange. The following architecture guides the rest of the port.
+The React/Vite application opens a dark worksheet backed by the workbook session. S02 verified browser Python for the showcase scripts. S03 verified selected formula semantics and native and XLSX interchange. The following architecture guides the rest of the port.
 
 ## 1. Backend decision
 
@@ -24,7 +24,7 @@ Exact desktop process parity is impossible under that constraint: browsers canno
 | Storage | IndexedDB (thin idb adapter); File API download/upload fallback | Browser-local workspaces and portable files; optional File System Access when available |
 | Tests | Vitest + Playwright; differential fixtures from desktop | Domain behavior, actual WASM runtime, browser interactions and static deployment |
 
-The production scaffold uses React and its build and test tooling. S02 adds a separate Pyodide probe and a checksum lock. S03 adds the formula probe and pins zip.js and xmldom for the file adapters. [Formula and file adapter decision](decisions/ADR-003-formula-and-file-adapters.md)
+The production app uses React and its build and test tooling. S02 adds a separate Pyodide probe and a checksum lock. S03 adds the formula probe and pins zip.js and xmldom for the file adapters. [Formula and file adapter decision](decisions/ADR-003-formula-and-file-adapters.md)
 
 ## 3. Components and dependency direction
 
@@ -46,6 +46,10 @@ flowchart TD
 
 ## 4. State, history and worker contract
 
+- S04 implements the sparse workbook and session in TypeScript. The model stores plain, deeply immutable snapshots and shares unchanged records across transitions. Callers inject an ID factory. Worksheet view state belongs outside the document.
+- Indexed cell deltas retain sparse cell order for history. Structural proposals carry a detached workbook with the same workbook ID and can be submitted against a captured basis. The session validates the entire proposal before changing live state. The history byte budget counts estimated retained DTO size in both directions, including structural snapshots.
+- The web session issues a compact, session-scoped source fingerprint and compares authored content exactly when checking saved content. Equality ignores derived caches and the enumeration order of sparse cells, axis dimensions, merge records and filter criteria. A confirmed save records the captured snapshot that completed, even if edits advanced the session. A save from a previous session is ignored.
+- Native cache batches use the versioned workbook DTO in `src/application/workbook-protocol.ts`. The session checks the pending request and its full basis, then validates the whole update batch before applying it. Cancel, superseding requests, edits and adoption invalidate pending work. Calculators and persistence adapters operate on detached inputs and report completions to the session.
 - Retain stable workbook/sheet/cell/block/name identities and one-based coordinates. Separate blank from empty text, finite number, Boolean, native formula and Python anchor. Keep authored source separate from derived caches and UI view state.
 - Session owns document, authored identity, saved identity, monotonic revision and bounded history (100 transactions / 64 MiB). Compound edits, structural changes and Python result generations are atomic. Native derived recalc adds no Undo entry. Oversized history edits reject before mutation. Undo never rewinds revision.
 - Workers receive immutable snapshots or validated deltas with `protocolVersion`, `requestId`, `sessionId`, `revision`, `generation`, `sourceFingerprint` and `runtimeFingerprint`. Replies must match the current basis and limits before one transaction commits. Ignore late work after editing, undo, load, cancellation or worker replacement.
@@ -83,6 +87,8 @@ Pyodide executes user code and is **not a security sandbox**: workers may access
 ## 8. Dark UI and accessibility
 
 Preserve existing command families, contextual Table Design, black title/tab/ribbon/formula areas, dark default sheet and panels, blue selection, 26 px rows and 96 px columns at 100%. Grid zoom 10–400% does not scale the ribbon. No Light or Follow System setting. Authored cell colors remain intact, including white fills. Forced-colors accessibility is allowed.
+
+S05 uses browser-native two-axis scrolling with a viewport-sized canvas. A shared track map drives rendering, pointer hit testing and keyboard reveal. The semantic grid exposes a bounded set of viewport rows and always mounts its active descendant, even when the user scrolls it out of view. Canvas and chrome use system palette colors in forced-colors mode. Selection, scroll and zoom are view state. Tab moves between cells and Escape then Tab leaves the grid.
 
 Canvas needs a synchronized accessible DOM grid, active-cell announcements, keyboard navigation, editable overlay/IME, focus restoration and dialog focus traps. Test cross-sheet range picking, multi-area selection, context actions and browser-reserved shortcut conflicts. Desktop Chrome/Edge are primary; Firefox/WebKit must support File API fallback and core workflows. Mobile is a usable narrow layout, not a new touch-first parity requirement.
 

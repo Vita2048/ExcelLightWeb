@@ -1,15 +1,135 @@
 * { box-sizing: border-box; }
 body { margin: 0; }
-.app-shell { min-height: 100dvh; display: flex; flex-direction: column; }
-.title-bar { display: flex; align-items: center; gap: 12px; background: var(--top-bar); padding: 12px 20px; font-weight: 600; }
-.brand-mark { display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--accent); color: var(--accent); border-radius: 4px; }
-main { width: min(760px, 100%); margin: auto; padding: 48px 24px; }
-.eyebrow { color: var(--accent); font-weight: 600; }
-h1 { font-size: clamp(28px, 5vw, 40px); font-weight: 600; line-height: 1.2; }
-.intro { font-size: 17px; line-height: 1.6; color: var(--muted); }
-.status-panel { margin-top: 32px; border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 24px; line-height: 1.6; }
-h2 { margin-top: 0; font-size: 18px; }
-code { overflow-wrap: anywhere; }
-footer { color: var(--muted); padding: 12px 20px; border-top: 1px solid var(--border); font-size: 13px; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-@media (forced-colors: active) { .brand-mark, .status-panel { border-color: CanvasText; } }
+button, input { font: inherit; color: inherit; }
+button, input[type='checkbox'], input[type='range'] { accent-color: var(--accent); }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .5; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+[hidden] { display: none !important; }
+
+.app-shell { height: 100dvh; min-height: 320px; display: flex; flex-direction: column; overflow: hidden; }
+.title-bar, .ribbon, .formula-bar { background: var(--top-bar); }
+.title-bar {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  height: 39px; padding: 0 12px;
+}
+.brand-mark {
+  display: grid; place-items: center; width: 24px; height: 24px; color: var(--accent);
+  background: #12232e; border-radius: 4px;
+}
+.quick-access { display: flex; gap: 2px; }
+.icon-button {
+  width: 29px; height: 28px; display: inline-grid; place-items: center;
+  padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent;
+}
+.icon-button:not(:disabled):hover { background: var(--raised); }
+.workbook-title { border-left: 1px solid var(--border); padding-left: 12px; font-weight: 600; }
+.product-title { color: var(--muted); margin-left: auto; font-size: 12px; white-space: nowrap; }
+
+.ribbon { flex: none; }
+.ribbon-tabs {
+  display: flex; align-items: stretch; gap: 2px; padding-inline: 8px;
+  overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--top-field);
+}
+.ribbon-tabs button {
+  min-height: 33px; padding: 0 13px; white-space: nowrap;
+  background: transparent; border: 0; border-bottom: 2px solid transparent;
+}
+.ribbon-tabs button[aria-selected='true'] { border-bottom-color: var(--accent); font-weight: 600; }
+.ribbon-tabs button:hover { background: var(--top-field); }
+.ribbon-panel {
+  display: flex; align-items: center; gap: 8px; padding: 3px 12px 7px;
+  height: 77px; overflow-x: auto; scrollbar-width: thin;
+}
+.ribbon-panel p { color: var(--muted); font-size: 13px; margin: 0; }
+.ribbon-panel fieldset {
+  flex: none; height: 55px; margin: 0; padding: 0 12px 5px;
+  display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 4px;
+}
+.ribbon-panel legend { padding: 0 4px; color: var(--muted); font-size: 12px; }
+.ribbon-panel label { display: flex; align-items: center; gap: 4px; min-height: 28px; white-space: nowrap; }
+.ribbon-panel button {
+  background: var(--top-field); border: 1px solid var(--border); min-height: 29px;
+  border-radius: 4px; padding-inline: 8px;
+}
+.ribbon-panel button:hover { background: var(--raised); }
+
+.workbook { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.formula-bar {
+  flex: none; display: flex; align-items: center; gap: 7px; padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.formula-bar input {
+  height: 30px; min-width: 0; padding: 2px 7px;
+  background: var(--top-field); border: 1px solid var(--border); border-radius: 3px;
+}
+.name-box { width: clamp(76px, 16vw, 133px); }
+.formula-symbol { text-align: center; width: 24px; color: var(--muted); font: italic 16px Georgia, serif; }
+.formula-value { flex: 1; }
+
+.worksheet { position: relative; flex: 1; min-height: 0; background: var(--sheet); }
+.worksheet-scroll {
+  position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: #737373 var(--panel);
+  user-select: none;
+}
+.worksheet-scroll:focus-visible { outline: none; }
+.worksheet:has(.worksheet-scroll:focus-visible)::after {
+  content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none;
+}
+.worksheet-canvas { position: absolute; top: 0; left: 0; display: block; pointer-events: none; }
+.worksheet-projection {
+  position: absolute; top: 0; left: 0; width: 1px; height: 1px;
+  margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.sheet-strip {
+  display: flex; flex: none; align-items: center; gap: 6px; min-height: 35px;
+  padding: 2px 8px 3px; background: var(--panel); border-block: 1px solid var(--border);
+}
+.sheet-navigation { display: flex; flex: none; }
+.sheet-tabs { display: flex; min-width: 0; gap: 4px; overflow-x: auto; scrollbar-width: thin; }
+.sheet-tabs button {
+  border-radius: 0 0 4px 4px; border: 1px solid var(--border); white-space: nowrap;
+  min-height: 28px; padding: 0 13px; background: var(--top-field);
+}
+.sheet-tabs button:hover { background: var(--raised); }
+.sheet-tabs button[aria-current] { border-bottom: 2px solid var(--accent); background: var(--sheet); font-weight: 600; }
+
+.status-bar {
+  display: flex; flex: none; align-items: center; gap: 10px;
+  min-height: 32px; padding: 0 9px; background: var(--canvas);
+  font-size: 12px; color: var(--muted);
+}
+.grid-keyboard-hint, .app-shell:has(.worksheet-scroll:focus-visible) .ready { display: none; }
+.app-shell:has(.worksheet-scroll:focus-visible) .grid-keyboard-hint { display: inline; }
+.selection-stats { margin-left: auto; display: flex; gap: 12px; flex-wrap: wrap; }
+.zoom-controls { display: flex; align-items: center; flex: none; gap: 4px; }
+.zoom-controls input { width: 94px; margin: 0; }
+.zoom-controls button { font-size: 17px; }
+.zoom-value { min-width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 540px) {
+  .status-bar { gap: 5px; }
+  .selection-stats { column-gap: 6px; row-gap: 0; }
+  .zoom-controls input { width: 56px; }
+  .zoom-controls { gap: 0; }
+}
+@media (forced-colors: active) {
+  :root {
+    --top-bar: Canvas;
+    --top-field: Field;
+    --canvas: Canvas;
+    --sheet: Canvas;
+    --panel: Canvas;
+    --raised: Canvas;
+    --text: CanvasText;
+    --muted: CanvasText;
+    --border: GrayText;
+    --accent: Highlight;
+  }
+  :focus-visible { outline-color: Highlight; }
+  .brand-mark { background: Canvas; border: 1px solid CanvasText; }
+  .ribbon-tabs button[aria-selected='true'], .sheet-tabs button[aria-current] { border-bottom-color: Highlight; }
+  .worksheet-scroll { scrollbar-color: auto; }
+  .worksheet:has(.worksheet-scroll:focus-visible)::after { box-shadow: none; border: 2px solid Highlight; }
+}
