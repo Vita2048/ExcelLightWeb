@@ -8,7 +8,7 @@ The app uses relative asset URLs (`base: './'`), so both `https://OWNER.github.i
 
 Workers use `new Worker(new URL(..., import.meta.url), { type: 'module' })`; runtime assets resolve against the configured build base; service worker registration uses the app base and scope. Never hardcode `/assets`, `/runtime` or a localhost API. No SharedArrayBuffer or custom COOP/COEP headers are required by this design. Stop uses worker termination.
 
-The S09 production browser suite loads the native calculation worker from the built assets at the repository subpath. Vite packages it with the worksheet. Native calculation needs no separate runtime asset staging.
+The S09 production browser suite loads the native calculation worker from the built assets at the repository subpath. Vite packages it with the worksheet. Native calculation needs no separate runtime asset staging. S10 bundles the format engine and locale catalog into the application and worker. Formatting makes no network requests. S11 uses browser-local fonts and canvas for font and fill previews. The app needs no hosted font files.
 
 ## First publication (user-managed Git)
 

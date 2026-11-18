@@ -4,6 +4,8 @@ coverage/
 test-results/
 tests/desktop-interchange/obj/
 tests/desktop-formulas/obj/
+tests/desktop-formats/obj/
+tests/desktop-appearance/obj/
 playwright-report/
 .env*
 !.env.example

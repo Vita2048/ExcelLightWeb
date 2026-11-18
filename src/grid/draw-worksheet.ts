@@ -1,6 +1,7 @@
 import { findCell, type SheetDocument } from '../core/workbook';
+import { drawCellFill, drawCellText, usesLightPaper } from './cell-appearance';
 import { columnName, gridMetrics, type Track } from './grid-geometry';
-import { cellDisplay, includes, type Area, type GridSelection } from './grid-selection';
+import { presentCell, includes, type Area, type GridSelection } from './grid-selection';
 
 export interface GridViewport {
   readonly x: number;
@@ -69,27 +70,25 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
       const active = point.row === selection.anchor.row && point.column === selection.anchor.column;
       const cellX = x(column);
       const cellY = y(row);
-      if (!forced && cell?.style?.fillRgb) {
-        context.fillStyle = '#' + cell.style.fillRgb;
-        context.fillRect(cellX, cellY, column.size, row.size);
-      }
+      if (!forced) drawCellFill(context, cell?.style, cellX, cellY, column.size, row.size, scale);
       if (selected && !active) {
         context.fillStyle = tint;
         context.fillRect(cellX, cellY, column.size, row.size);
       }
       if (!cell) continue;
-      const label = cellDisplay(cell, frame.showFormulas, frame.separator);
+      const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator);
       const value = frame.showFormulas ? cell.content : cell.cache ?? cell.content;
       context.save();
       context.beginPath();
       context.rect(cellX, cellY, column.size, row.size);
       context.clip();
-      context.textAlign = value.kind === 'number' ? 'right' : 'left';
-      context.font = font((cell.style?.fontSize ?? 10.5) * 4 / 3, cell.style?.bold ? '600' : '');
+      const right = value.kind === 'number';
+      const authoredColor = color ?? cell.style?.textRgb;
       context.fillStyle = forced ? selected && !active ? 'HighlightText' : textColor :
-        cell.style?.textRgb ? '#' + cell.style.textRgb : cell.style?.fillRgb === 'FFFFFF' ? '#1b1b1b' : textColor;
-      context.fillText(label, context.textAlign === 'right' ? cellX + column.size - 5 * scale : cellX + 5 * scale,
-        cellY + row.size / 2);
+        authoredColor ? '#' + authoredColor : usesLightPaper(cell.style) ? '#1b1b1b' : textColor;
+      drawCellText(context, label, cell.style, styles.fontFamily, scale,
+        right ? cellX + column.size - 5 * scale : cellX + 5 * scale, cellY + row.size / 2, right ? 'right' : 'left',
+        cellY + row.size - 2 * scale);
       if (frame.staleCells.has(cell.id)) {
         context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');
         context.lineWidth = 1;

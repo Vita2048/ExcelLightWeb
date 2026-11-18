@@ -1,3 +1,4 @@
+import { fillPatterns, fillShadings, isFontFamily } from './formats/appearance';
 import {
   cellKey, documentLimits as limits, DocumentError, formulaErrors, inRange, isCoordinate,
   type AxisDimension, type CellCache, type CellContent, type CellExtent, type CellReference,
@@ -75,9 +76,7 @@ export function validateCellValue(value: CellContent | CellCache, cache = false)
 const borderStyles = new Set(['hair', 'dotted', 'dashDotDot', 'dashDot', 'dashed', 'thin', 'mediumDashDotDot',
   'slantDashDot', 'mediumDashDot', 'mediumDashed', 'medium', 'thick', 'double']);
 const borderEdges = new Set(['top', 'right', 'bottom', 'left', 'diagonalUp', 'diagonalDown']);
-const fillPatterns = new Set(['none', 'darkGray', 'mediumGray', 'lightGray', 'gray125', 'gray0625',
-  'darkHorizontal', 'darkVertical', 'darkDown', 'darkUp', 'darkGrid', 'darkTrellis',
-  'lightHorizontal', 'lightVertical', 'lightDown', 'lightUp', 'lightGrid', 'lightTrellis']);
+
 
 function validColor(value: string | undefined): boolean {
   return value === undefined || typeof value === 'string' && /^[0-9A-F]{6}$/u.test(value);
@@ -89,8 +88,7 @@ function validateStyle(style: CellStyle): void {
   requireDocument(style.script === undefined || ['superscript', 'subscript'].includes(style.script), 'Invalid font script.');
   requireDocument(style.underlineKind === undefined || style.underline &&
     ['singleAccounting', 'doubleAccounting'].includes(style.underlineKind), 'Invalid underline style.');
-  requireDocument(style.fontFamily === undefined || validText(style.fontFamily, 100) &&
-    style.fontFamily.trim() && !/\p{Cc}/u.test(style.fontFamily), 'Invalid font family.');
+  requireDocument(style.fontFamily === undefined || typeof style.fontFamily === 'string' && isFontFamily(style.fontFamily), 'Invalid font family.');
   requireDocument(style.fontSize === undefined || Number.isFinite(style.fontSize) &&
     style.fontSize >= 6 && style.fontSize <= 72, 'Font size must be 6 to 72 points.');
   requireDocument(style.alignment === undefined || ['left', 'center', 'right', 'fill', 'justify',
@@ -108,10 +106,10 @@ function validateStyle(style: CellStyle): void {
   requireDocument(validColor(style.textRgb) && validColor(style.fillRgb), 'Colors must be six uppercase hex digits.');
   if (style.fillDetails !== undefined) {
     const fill = style.fillDetails;
-    requireDocument(fill && fillPatterns.has(fill.pattern) && inRange(fill.variant ?? 0, 0, 3) &&
+    requireDocument(fill && typeof fill.pattern === 'string' && Object.hasOwn(fillPatterns, fill.pattern) && inRange(fill.variant ?? 0, 0, 3) &&
       validColor(fill.patternRgb) && validColor(fill.gradientRgb), 'Invalid fill effect.');
     requireDocument(fill.shading === undefined || fill.pattern === 'none' && fill.gradientRgb &&
-      ['horizontal', 'vertical', 'diagonalUp', 'diagonalDown', 'corner', 'center'].includes(fill.shading), 'Invalid gradient.');
+      typeof fill.shading === 'string' && Object.hasOwn(fillShadings, fill.shading), 'Invalid gradient.');
   }
   if (style.borderDetails !== undefined) {
     requireDocument(style.borderDetails && typeof style.borderDetails === 'object', 'Invalid border detail.');

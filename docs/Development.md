@@ -41,6 +41,35 @@ The production suite injects the pinned axe-core development dependency to check
 
 `npx vitest run tests/integration/structure-commands.test.ts` covers the four desktop lane-shift scenarios and checks calculated results, stable identities, axis metadata, overflow and undo. The production Playwright suite exercises clicked-sheet context commands, cell-shift dialogs, header cursor zones and direct header sizing and visibility.
 
+## Number format checks
+
+Run the S10 model and fixture checks with the following command.
+
+```powershell
+npx vitest run tests/unit/number-formats.test.ts tests/integration/number-format-command.test.ts tests/parity/number-formats.test.ts tests/parity/format-exchange.test.ts tests/unit/native-generation.test.ts
+```
+
+After a production build, run `npm run test:e2e -- tests/e2e/number-formats.spec.ts` for dialog drafts, undo, localized entry, cached formula display and canvas color across the installed engines.
+
+The desktop format oracle uses existing Release binaries and .NET 10. It checks the captured formatter results under `en-US` with explicit tags for each tested region, and verifies the independent 1904 fixture through the desktop XLSX importer. Pass `-p:DesktopBin=<absolute path>` if the binaries are in another directory.
+
+```powershell
+dotnet run --project tests/desktop-formats/Oracle.csproj -- tests/fixtures/formats/S10-desktop.json
+dotnet run --project tests/desktop-formats/Oracle.csproj -- --check-1904 tests/fixtures/formats/Desktop1904.xlsx
+```
+
+The oracle's `--locales` mode writes the Gregorian locale table with the format patterns and standard separators. Use a scratch file to compare a new capture with `src/core/formats/locales.json`. The production bundle includes this data locally.
+
+## Appearance and Format Painter checks
+
+Run `npx vitest run tests/integration/appearance-commands.test.ts` for all modeled patterns and gradients, font effects, shared drafts, painter tiling, merge and formula preservation, atomic undo and workbook adoption. After building, run `npm run test:e2e -- tests/e2e/appearance.spec.ts` for production ribbon and dialog interactions, canvas pixels, font fallback and locked and single painting across sheets. The dialog cases also cover desktop tab order, narrow panes, font catalog selection, the inline palette, the visual pattern picker and Fill Effects radios.
+
+Run the existing desktop Font/Fill and Format Painter source assertions against the desktop Release assemblies with the following command. The harness links the read-only source test files. Pass `-p:DesktopSource=<absolute path>` and, when needed, `-p:DesktopBin=<absolute path>` for a different checkout.
+
+```powershell
+dotnet run --project tests/desktop-appearance/Oracle.csproj
+```
+
 ## Browser Python feasibility
 
 Run the S02 probe with Node, Python 3, curl and the Playwright browsers listed above. Set the process variable `PYTHON` if your Python executable uses another name.

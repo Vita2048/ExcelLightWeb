@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { EditRange } from '../application/editing-commands';
+import { applyNumberFormat, type NumberFormatChange } from '../application/number-format-command';
+import { FormatCellsDialog, type FormatTab } from '../features/formatting/FormatCellsDialog';
+import { activeFormatBrush, captureFormatBrush, formatStyles, paintStyles, type FormatBrush } from '../application/style-commands';
+import { underlinePatch, type AppearancePatch } from '../core/formats/appearance';
 import { changeDimensions, changeSheet, editAxis } from '../application/structure-commands';
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
-import { WorkbookSession, type StructureCommand } from '../application/workbook-session';
+import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
 import { NativeScheduler, type CalculationStatus } from '../calculation/native-scheduler';
-import { findCell, newWorkbook, worksheetViewport, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
+import { findCell, findReferencedCell, newWorkbook, worksheetViewport, type CellReference, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
 import { requireDocument } from '../core/workbook-validation';
 import { Ribbon, type SheetView } from '../features/shell/Ribbon';
 import { CellEditor, type CellEditorProps } from '../features/editing/CellEditor';
@@ -17,7 +21,7 @@ import { StructureDialog, StructureMenu, type DialogAction, type StructureAction
 import { fitDimensions } from '../grid/autofit';
 import { address, clamp, gridMetrics } from '../grid/grid-geometry';
 import {
-  includes, parseAddress, primaryArea, selectionAddress, selectionAreas, selectionStatistics, singleSelection, type GridSelection,
+  includes, parseAddress, primaryArea, selectionAddress, selectionAreas, selectionStatistics, singleSelection, type Area, type GridSelection,
 } from '../grid/grid-selection';
 
 const defaultSelection = singleSelection();
@@ -108,8 +112,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const root = useRef<HTMLDivElement>(null);
   const requestedFocus = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; target: StructureTarget; actions: readonly StructureAction[] }>();
+  const [formatDraft, setFormatDraft] = useState<{ basis: WorkbookSnapshot; ranges: readonly EditRange[]; cell: CellReference; tab: FormatTab }>();
+  const [brush, setBrush] = useState<(FormatBrush & { readonly locked: boolean })>();
+  const painter = activeFormatBrush(snapshot, brush);
   const [structure, setStructure] = useState<{ action: DialogAction; target: StructureTarget; basis: WorkbookSnapshot }>();
   const [rename, setRename] = useState<{ id: string; basis: WorkbookSnapshot }>();
+  const usedNumberCodes = useMemo(() => [...new Set(formatDraft?.basis.document.sheets.flatMap(item =>
+    item.cells.flatMap(cell => cell.style?.numberFormat ?? [])))], [formatDraft]);
   const renaming = useRef(false);
   const sheet = sheets.find(candidate => candidate.id === activeSheetId) ?? sheets[0]!;
   const sheetIndex = sheets.indexOf(sheet);
@@ -122,7 +131,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
   const focusGrid = () => worksheet.current?.focus();
-  const editing = useWorksheetEditing(session, compound => scheduler.current?.changed(compound), separator, focusGrid, surface => {
+  const editing = useWorksheetEditing(session, compound => scheduler.current?.changed(compound), separator, locale, focusGrid, surface => {
     root.current?.querySelector<HTMLTextAreaElement>('[data-cell-editor="' + surface + '"]')?.focus({ preventScroll: true });
   });
 
@@ -160,6 +169,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       return;
     }
     editing.selectionChanged();
+    if (!painter?.locked) setBrush(undefined);
     requestedFocus.current = true;
     setActiveSheetId(nextSheetId);
   }
@@ -209,6 +219,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       scheduler.current?.changed(true);
     }
     if (active && active !== sheet.id) {
+      if (!painter?.locked) setBrush(undefined);
       requestedFocus.current = true;
       setActiveSheetId(active);
     } else requestAnimationFrame(focusGrid);
@@ -217,6 +228,62 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   function currentAuthoredBasis(basis: WorkbookSnapshot) {
     requireDocument(session.isCurrentAuthored(basis), 'The workbook changed. Open the command again.');
     return session.capture();
+  }
+
+  function applyStyleCommand(command: SetCellsCommand) {
+    const outcome = session.execute(command);
+    editing.clearStatus();
+    if (outcome.changed) {
+      editing.selectionChanged();
+      editing.clearCut();
+      scheduler.current?.changed(true);
+    }
+  }
+
+  function runNumberFormat(change: NumberFormatChange) {
+    if (!editing.commit()) return;
+    setBrush(undefined);
+    try { applyStyleCommand(applyNumberFormat(session.capture(), ranges(), change)); }
+    catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
+  function runAppearance(patch: AppearancePatch, focus = true) {
+    if (!editing.commit()) return;
+    if (Object.keys(patch).length) {
+      setBrush(undefined);
+      try { applyStyleCommand(formatStyles(session.capture(), ranges(), patch)); }
+      catch (error) { editing.reject(error); }
+    }
+    if (focus) requestAnimationFrame(focusGrid);
+  }
+
+  function armPainter(locked: boolean) {
+    if (!editing.commit()) return;
+    try {
+      if (painter && (!locked || painter.locked)) setBrush(undefined);
+      else {
+        const selected = ranges();
+        requireDocument(selected.length === 1, 'Format Painter needs a contiguous source range.');
+        setBrush({ ...(painter ?? captureFormatBrush(session.capture(), selected[0]!)), locked });
+      }
+      editing.clearStatus();
+    } catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
+  function paint(area: Area) {
+    if (!painter || !editing.commit()) return;
+    try {
+      const target = { sheetId: sheet.id, row: area.top, column: area.left, rows: area.bottom - area.top + 1,
+        columns: area.right - area.left + 1 };
+      if (target.rows === 1 && target.columns === 1) {
+        requireDocument(target.row + painter.rows - 1 <= worksheetViewport.rows &&
+          target.column + painter.columns - 1 <= worksheetViewport.columns, 'Format Painter destination is outside the worksheet view.');
+      }
+      applyStyleCommand(paintStyles(session.capture(), target, painter));
+      if (!painter.locked) setBrush(undefined);
+    } catch (error) { editing.reject(error); }
   }
 
   function targetHeader(axis: Axis, index: number): StructureTarget {
@@ -274,12 +341,20 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     applyStructure(basis, changeDimensions(basis, target.id, axis, patches));
   }
 
-  function openStructure(action: StructureAction, target: StructureTarget = { id: sheet.id, ranges: ranges() }) {
+  function openStructure(action: StructureAction, target: StructureTarget = { id: sheet.id, ranges: ranges() }, tab: FormatTab = 'Number') {
     setMenu(undefined);
     if (!editing.commit()) return;
     editing.selectionChanged();
     const basis = session.capture();
-    if (action === 'rename-sheet') {
+    if (action === 'format-cells') {
+      setBrush(undefined);
+      const first = target.ranges[0]!;
+      const inside = target.ranges.some(range => activeTarget.sheetId === range.sheetId &&
+        activeTarget.row >= range.row && activeTarget.row < range.row + range.rows &&
+        activeTarget.column >= range.column && activeTarget.column < range.column + range.columns);
+      setFormatDraft({ basis, tab, ranges: target.ranges, cell: inside ? activeTarget :
+        { sheetId: first.sheetId, row: first.row, column: first.column } });
+    } else if (action === 'rename-sheet') {
       renaming.current = true;
       setRename({ id: target.id, basis });
     } else if (dialogActions.has(action)) {
@@ -308,10 +383,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         ? [{ sheetId: sheet.id, ...point, rows: 1, columns: 1 }] : ranges() };
     setMenu({ x, y, target, actions: axis ? [
       `insert-${axis}`, `delete-${axis}`, `size-${axis}`, `fit-${axis}`, `hide-${axis}`, `show-${axis}`,
-    ] : ['insert-cells', 'delete-cells'] });
+    ] : ['insert-cells', 'delete-cells', 'format-cells'] });
   }
 
   function run(action: EditAction, event?: DataTransfer) {
+    setBrush(undefined);
     void editing.run(action, ranges(), event).then(target => { if (target) worksheet.current?.goTo(target); });
   }
 
@@ -321,6 +397,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function beginInline(text?: string) {
+    setBrush(undefined);
     editing.begin(activeTarget, 'inline', text);
   }
 
@@ -343,7 +420,15 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }
     if (event.altKey && key !== '=' && !event.getModifierState('AltGraph')) return false;
     let handle: (() => void) | undefined;
-    if (control && (key === 'z' || key === 'y')) {
+    if (painter && key === 'enter' && !control && selection.kind === 'cells' && !selection.additional.length) {
+      handle = () => paint(primaryArea(selection));
+    } else if (control && ['b', 'i', 'u'].includes(key)) {
+      const style = findCell(sheet, selection.anchor)?.style;
+      handle = () => runAppearance(key === 'b' ? { bold: style?.bold ? undefined : true } :
+        key === 'i' ? { italic: style?.italic ? undefined : true } : underlinePatch(style?.underline ? 'None' : 'Single'));
+    } else if (control && key === '1') {
+      handle = () => openStructure('format-cells');
+    } else if (control && (key === 'z' || key === 'y')) {
       handle = () => editing.moveHistory(key === 'z' && !event.shiftKey);
     } else if (control && (key === 'd' || key === 'r')) {
       handle = () => run({ kind: 'fill', direction: key === 'd' ? 'down' : 'right' });
@@ -400,7 +485,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       calculation.stale.size ? 'Calculation needed' : '');
 
   return (
-    <div className="app-shell" ref={root}>
+    <div className="app-shell" ref={root} onKeyDownCapture={event => {
+      if (event.key === 'Escape' && painter && !(event.target instanceof Element && event.target.closest('dialog'))) {
+        event.preventDefault();
+        event.stopPropagation();
+        setBrush(undefined);
+        editing.clearStatus();
+      }
+    }}>
       <header className="title-bar">
         <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none"
           stroke="currentColor" strokeWidth="1.4"><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M3 12h14M8 3v14" /></svg></span>
@@ -414,7 +506,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         <span className="product-title">ExcelLight Web</span>
       </header>
 
-      <Ribbon view={view} onView={onView} onEdit={run} onStructure={openStructure}
+      <Ribbon cell={findCell(sheet, selection.anchor)} onNumberFormat={runNumberFormat} onAppearance={runAppearance}
+        onAppearanceError={(error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); }}
+        onFormatDialog={tab => openStructure('format-cells', undefined, tab)}
+        painter={painter ? painter.locked ? 'locked' : 'single' : undefined} onPainter={armPainter} view={view} onView={onView} onEdit={run} onStructure={openStructure}
         calculationMode={calculation.mode} onCalculationMode={mode => {
           if (editing.commit()) scheduler.current?.setMode(mode);
         }} onCalculate={scope => {
@@ -441,6 +536,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             requestedFocus.current = false;
           }
         }} sheet={sheet} selection={selection} onSelection={setSelection} onAdjacentSheet={chooseAdjacent}
+          paintActive={!!painter} onPaint={paint}
           referenceArea={editing.draft?.pick?.sheetId === sheet.id ? editing.draft.pick.area : undefined}
           onReferencePick={() => {
             const caret = editorSelection();
@@ -512,7 +608,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
       <footer className="status-bar" aria-label="Worksheet status">
         <span className={editing.status || calculationMessage ? 'edit-status' : 'ready'} role="status">
-          {[editing.status, calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
+          {[editing.status, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
+            ' · Select a destination or press Enter · Esc cancels', calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
         </span>
         {!editing.status && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
         <output className="selection-stats" aria-label="Selection statistics" aria-live="off">
@@ -534,6 +631,19 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onSubmit={editing.submitManualPaste} onClose={editing.closeManualPaste} />}
       {menu && <StructureMenu {...menu} onAction={action => openStructure(action, menu.target)}
         onClose={() => { setMenu(undefined); requestAnimationFrame(focusGrid); }} />}
+      {formatDraft && <FormatCellsDialog cell={findReferencedCell(snapshot.document, formatDraft.cell)} locale={locale}
+        usedCodes={usedNumberCodes} initialTab={formatDraft.tab}
+        onCancel={() => { setFormatDraft(undefined); requestAnimationFrame(focusGrid); }}
+        onSubmit={(patch, code) => {
+          try {
+            if (code !== undefined || Object.keys(patch).length) {
+              const basis = currentAuthoredBasis(formatDraft.basis);
+              applyStyleCommand(formatStyles(basis, formatDraft.ranges, patch, code));
+            }
+            setFormatDraft(undefined);
+            requestAnimationFrame(focusGrid);
+          } catch (error) { return error instanceof Error ? error.message : 'The number format could not be applied.'; }
+        }} />}
       {structure && <StructureDialog action={structure.action} sheets={structure.basis.document.sheets}
         target={structure.basis.document.sheets.find(item => item.id === structure.target.id)!}
         initialSize={(() => {

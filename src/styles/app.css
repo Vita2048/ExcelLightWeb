@@ -183,3 +183,127 @@ button:disabled { cursor: default; opacity: .5; }
 .dimension-guide { position: absolute; z-index: 2; pointer-events: none; background: var(--accent); }
 .dimension-guide.row { left: 0; right: 0; height: 1px; }
 .dimension-guide.column { top: 0; bottom: 0; width: 1px; }
+.number-ribbon select:first-of-type { max-width: 188px; }
+.number-ribbon select:nth-of-type(2) { width: 96px; }
+.number-dialog { width: min(570px, calc(100% - 24px)); max-height: calc(100dvh - 24px); }
+.number-dialog-body { display: grid; grid-template-columns: minmax(85px, 136px) minmax(0, 1fr); gap: 16px; }
+.number-dialog-body > label { align-content: start; }
+.number-dialog-fields { display: grid; gap: 9px; align-content: start; min-height: 330px; }
+.number-dialog select, .number-dialog input:not([type='checkbox']), .number-dialog output {
+  width: 100%; min-width: 0; padding: 5px 7px; border: 1px solid var(--border); border-radius: 3px;
+  background: var(--top-field); color: var(--text);
+}
+.number-dialog select[size] { padding: 3px; }
+.number-dialog option { padding: 2px 4px; }
+.number-dialog output { display: block; min-height: 30px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.number-dialog label.number-checkbox { display: flex; align-items: center; gap: 6px; }
+.number-dialog .dialog-actions { margin-top: 14px; }
+.ribbon-panel .font-ribbon { height: 65px; display: grid; align-content: center; gap: 2px; padding-inline: 6px; }
+.font-ribbon-row { display: flex; gap: 3px; align-items: center; }
+.ribbon-panel .font-ribbon-row button, .ribbon-panel .font-ribbon-row select, .font-ribbon-row input {
+  min-height: 23px; height: 23px; padding-inline: 4px;
+}
+.font-ribbon-row input { width: 104px; background: var(--top-field); border: 1px solid var(--border); border-radius: 3px; }
+.font-ribbon-row input + input { width: 50px; }
+.font-ribbon-row select { width: 28px; }
+.appearance-tabs { display: flex; gap: 6px; margin-bottom: 12px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.appearance-tabs button[aria-selected='true'], .gradient-variants button[aria-pressed='true'] { border-color: var(--accent); }
+.appearance-fields { display: grid; align-content: start; gap: 12px; min-height: 330px; }
+.appearance-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.appearance-color { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.color-swatch { display: inline-block; width: 16px; height: 16px; border: 1px solid var(--border); border-radius: 2px; }
+.font-effects { display: flex; gap: 8px 14px; flex-wrap: wrap; }
+.paste-dialog .font-effects label { display: flex; align-items: center; }
+.appearance-preview { max-width: 100%; display: block; background: var(--top-field); border: 1px solid var(--border); }
+.appearance-popover, .gradient-dialog { width: min(360px, calc(100% - 24px)); max-height: calc(100dvh - 24px); }
+.appearance-popover fieldset, .gradient-dialog fieldset { margin: 10px 0; border: 1px solid var(--border); min-width: 0; }
+.color-palette { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.paste-dialog .color-palette button { width: 100%; aspect-ratio: 1; height: auto; padding: 0; }
+.custom-color { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.custom-color input, .gradient-dialog select { background: var(--top-field); border: 1px solid var(--border); }
+.gradient-dialog label { margin-top: 10px; }
+.gradient-variants { display: flex; flex-wrap: wrap; gap: 5px; }
+.gradient-variants button { padding: 2px; }
+.gradient-dialog .dialog-actions { margin-top: 12px; }
+@media (forced-colors: active) {
+  .appearance-tabs button[aria-selected='true'], .gradient-variants button[aria-pressed='true'] { border-color: Highlight; }
+  .color-swatch { forced-color-adjust: none; border-color: GrayText; }
+}
+/* Format Cells keeps the tab strip and actions in place as its panes scroll. */
+.number-dialog {
+  width: min(690px, calc(100% - 24px));
+  height: min(620px, calc(100dvh - 24px));
+  padding: 0; overflow: hidden;
+}
+.number-dialog > form { height: 100%; display: flex; flex-direction: column; }
+.format-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.format-dialog-heading h2 { margin: 0; }
+.number-dialog .format-dialog-heading { padding: 12px 16px; }
+.paste-dialog .format-dialog-close { padding: 0; width: 30px; height: 30px; font-size: 19px; border-color: transparent; background: transparent; }
+.paste-dialog .format-dialog-close:hover { background: var(--raised); }
+.appearance-tabs { flex: none; gap: 2px; margin: 0 16px; padding: 0 4px; border-color: var(--accent); }
+.number-dialog .appearance-tabs button { min-height: 30px; padding: 4px 8px; border-radius: 6px 6px 0 0; border-bottom: 0; font-size: 13px; }
+.number-dialog .appearance-tabs button[aria-selected='true'] { background: var(--raised); font-weight: 600; }
+.format-dialog-panes { flex: 1; min-height: 0; overflow: auto; padding: 12px 22px; }
+.number-dialog > form > .dialog-actions { flex: none; margin: 0; padding: 11px 16px; background: var(--sheet); border-top: 1px solid var(--border); }
+.number-dialog .dialog-actions button { min-width: 84px; }
+.number-dialog .dialog-actions button[type='submit'], .gradient-dialog .format-primary {
+  background: var(--accent); border-color: var(--accent); color: var(--top-bar);
+}
+.appearance-fields { min-height: 0; gap: 14px; }
+.appearance-choice { display: grid; min-width: 0; align-content: start; gap: 6px; }
+.font-dialog-columns { display: grid; grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr)); gap: 12px; }
+.font-dialog-columns select[size] { height: 134px; }
+.number-dialog input:not([type='checkbox']), .number-dialog select:not([size]), .appearance-choice > button, .pattern-picker summary { min-height: 32px; }
+.paste-dialog .normal-font { display: flex; flex-flow: row wrap; align-items: center; align-self: end; min-height: 32px; }
+.font-effects, .font-preview { margin: 0; padding: 8px; border: 1px solid var(--border); min-width: 0; }
+.font-effects { display: grid; align-content: start; gap: 10px; }
+.font-preview { grid-column: span 2; }
+.fill-dialog-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.fill-background > button, .fill-background .color-palette { width: min(100%, 255px); }
+.fill-background .color-palette { margin-block: 4px; }
+.color-palette button[aria-pressed='true'] { outline: 1px solid var(--accent); outline-offset: 1px; }
+.appearance-combo, .number-dialog label:has(> select:not([size])) { position: relative; }
+.paste-dialog .appearance-combo, .number-dialog select:not([size]) {
+  width: 100%; height: 32px; padding: 0 30px 0 10px;
+  background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; text-align: start;
+}
+.paste-dialog .appearance-combo { display: flex; align-items: center; gap: 6px; }
+.number-dialog select:not([size]) { appearance: none; }
+.appearance-combo::after, .number-dialog label:has(> select:not([size]))::after {
+  content: ''; position: absolute; pointer-events: none;
+  inset-inline-end: 14px; inset-block-end: 13px; width: 6px; height: 6px;
+  border: solid var(--muted); border-width: 0 1px 1px 0; transform: rotate(45deg);
+}
+.appearance-combo::after { inset-inline-end: 13px; inset-block-end: 12px; }
+.appearance-combo .color-swatch-bar, .pattern-picker summary canvas { min-width: 0; flex: 1; border: 0; }
+.appearance-combo .color-swatch-bar { height: 18px; border-radius: 0; }
+.pattern-picker { position: relative; }
+.pattern-picker summary { cursor: pointer; list-style: none; }
+.pattern-picker summary::-webkit-details-marker { display: none; }
+.pattern-options {
+  position: absolute; z-index: 1; inset-inline: 0; top: 100%; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 4px; padding: 6px; background: var(--panel); border: 1px solid var(--border);
+}
+.paste-dialog .pattern-options button { padding: 2px; }
+.pattern-options button[aria-pressed='true'] { border-color: var(--accent); }
+.gradient-dialog { width: min(450px, calc(100% - 24px)); }
+.gradient-dialog .format-dialog-heading { margin-bottom: 10px; }
+.gradient-choices { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 12px; }
+.paste-dialog .gradient-shading label { display: flex; align-items: center; gap: 6px; margin: 3px 0; min-height: 24px; }
+.gradient-variants { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.paste-dialog .gradient-variants button { padding: 2px; }
+@media (max-width: 470px) {
+  .format-dialog-panes { padding-inline: 12px; }
+  .font-dialog-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .font-dialog-columns > :first-child { grid-column: span 2; }
+  .fill-dialog-columns { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .pattern-options { position: static; }
+}
+@media (forced-colors: active) {
+  .appearance-combo::after, .number-dialog label:has(> select:not([size]))::after { border-color: ButtonText; }
+  .number-dialog .appearance-tabs button[aria-selected='true'] { border-color: Highlight; }
+  .number-dialog .dialog-actions button[type='submit'], .gradient-dialog .format-primary {
+    background: Highlight; color: HighlightText; border-color: Highlight;
+  }
+}

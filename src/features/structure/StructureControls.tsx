@@ -5,9 +5,10 @@ import { DialogActions } from '../dialogs/DialogActions';
 
 export type StructureAction = 'insert-cells' | 'delete-cells' | 'insert-row' | 'insert-column' |
   'delete-row' | 'delete-column' | 'insert-sheet' | 'delete-sheet' | 'rename-sheet' | 'place-sheet' |
-  'size-row' | 'size-column' | 'fit-row' | 'fit-column' | 'hide-row' | 'hide-column' | 'show-row' | 'show-column';
+  'format-cells' | 'size-row' | 'size-column' | 'fit-row' | 'fit-column' | 'hide-row' | 'hide-column' | 'show-row' | 'show-column';
 
 export const structureLabels: Record<StructureAction, string> = {
+  'format-cells': 'Format Cells…',
   'insert-cells': 'Insert Cells…', 'delete-cells': 'Delete Cells…',
   'insert-row': 'Insert Sheet Rows', 'insert-column': 'Insert Sheet Columns',
   'delete-row': 'Delete Sheet Rows', 'delete-column': 'Delete Sheet Columns',
@@ -22,7 +23,7 @@ export function StructureRibbon({ onAction }: { onAction: (action: StructureActi
     ['Insert', ['insert-cells', 'insert-row', 'insert-column', 'insert-sheet']],
     ['Delete', ['delete-cells', 'delete-row', 'delete-column', 'delete-sheet']],
     ['Format', ['size-row', 'fit-row', 'size-column', 'fit-column', 'hide-row', 'hide-column',
-      'show-row', 'show-column', 'rename-sheet', 'place-sheet']],
+      'show-row', 'show-column', 'rename-sheet', 'place-sheet', 'format-cells']],
   ];
   return <fieldset><legend>Cells</legend>{groups.map(([label, actions]) =>
     <select key={label} aria-label={label} value="" onChange={event => onAction(event.target.value as StructureAction)}>

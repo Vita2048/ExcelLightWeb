@@ -6,4 +6,6 @@ The [manifest](manifest.json) records the origin, SHA-256, and expected-value so
 - `sla/` holds the synthetic tickets workbook, its three Python scripts, and KPIs independently calculated from the input rows for both target values. The saved Dashboard caches agree with the initial KPIs. The desktop SLA assertions also specify both pivots and chart scenarios.
 - `formulas/` holds selected desktop source assertions for S03 and synthetic workbook cases evaluated by the desktop NativeCalculator for S08. The [oracle project](../desktop-formulas/Oracle.csproj) verifies the captured S08 output against the Release binaries.
 
+- `formats/` holds synthetic desktop number format outputs and a five-cell 1904 XLSX generated with ClosedXML. The desktop importer verifies the converted date and date-time serials and the original clock, elapsed and ordinary numeric serials. The 1900 comparison uses the existing DesktopStyles XLSX with serial 60. [Format oracle](../desktop-formats/Oracle.csproj)
+
 Run `npm test` to verify fixture loads, provenance hashes and frozen snapshot bytes. Git attributes preserve the captured line endings across checkouts.

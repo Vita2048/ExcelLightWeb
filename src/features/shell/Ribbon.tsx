@@ -2,6 +2,12 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
+import type { CellDocument } from '../../core/workbook';
+import type { NumberFormatChange } from '../../application/number-format-command';
+import { FontRibbon } from '../formatting/FontRibbon';
+import type { FormatTab } from '../formatting/FormatCellsDialog';
+import type { AppearancePatch } from '../../core/formats/appearance';
+import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 
 const families = ['File', 'Home', 'Insert', 'Formulas', 'Data', 'View'] as const;
@@ -20,6 +26,13 @@ interface RibbonProps {
   readonly onView: (patch: Partial<SheetView>) => void;
   readonly onZoomToSelection: () => void;
   readonly onEdit: (action: EditAction) => void;
+  readonly cell: CellDocument | undefined;
+  readonly onAppearance: (patch: AppearancePatch, focus?: boolean) => void;
+  readonly onAppearanceError: (error: string, focus: boolean) => void;
+  readonly onFormatDialog: (tab: FormatTab) => void;
+  readonly painter: 'single' | 'locked' | undefined;
+  readonly onPainter: (locked: boolean) => void;
+  readonly onNumberFormat: (change: NumberFormatChange) => void;
   readonly onStructure: (action: StructureAction) => void;
   readonly calculationMode: CalculationMode;
   readonly onCalculationMode: (mode: CalculationMode) => void;
@@ -62,7 +75,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 }
 
 export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure, calculationMode,
-  onCalculationMode, onCalculate, onInsertFunction }: RibbonProps) {
+  onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter }: RibbonProps) {
   const [active, setActive] = useState<Family>('Home');
   const id = useId();
   const tabs = useRef(new Map<Family, HTMLButtonElement>());
@@ -121,7 +134,14 @@ export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure, c
               ]} />
               <button type="button" onClick={() => onEdit({ kind: 'cut' })}>Cut</button>
               <button type="button" onClick={() => onEdit({ kind: 'copy' })}>Copy</button>
+              <button type="button" title="Double-click to keep painting" aria-pressed={painter !== undefined}
+                onClick={event => onPainter(event.detail > 1)}>Format Painter</button>
+              <button type="button" aria-label="Lock Format Painter" title="Lock Format Painter" aria-pressed={painter === 'locked'}
+                onClick={() => onPainter(true)}>Lock</button>
             </fieldset>
+            <FontRibbon style={cell?.style} onApply={onAppearance} onInvalid={onAppearanceError}
+              onDialog={() => onFormatDialog('Font')} />
+            <NumberRibbon cell={cell} onFormat={onNumberFormat} onDialog={() => onStructure('format-cells')} />
             <StructureRibbon onAction={onStructure} />
             <fieldset>
               <legend>Editing</legend>

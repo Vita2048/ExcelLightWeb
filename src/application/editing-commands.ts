@@ -1,6 +1,7 @@
 import { cellKey, documentLimits as limits, findCell, ownDto, worksheetViewport,
   type CellContent, type CellDocument, type CellExtent, type CellReference, type CellStyle, type Coordinate, type SheetDocument,
 } from '../core/workbook';
+import { parseTemporalEntry, temporalEntry } from '../core/formats/temporal';
 import { requireDocument } from '../core/workbook-validation';
 import { copyReferences, formulaAddress, intersection, moveReferences, type ReferenceBox, type ReferenceMove } from '../core/formula-references';
 import type { WorkbookSnapshot } from './workbook-protocol';
@@ -23,15 +24,22 @@ export const clipboardTextLimit = 4 * 1024 * 1024;
 const blank = Object.freeze({ kind: 'blank' } as const);
 const numberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu;
 
-export function parseEntry(text: string, style?: CellStyle): CellContent {
+export function parseEntry(text: string, style?: CellStyle, locale?: string): CellContent {
   if (text === '') return blank;
   if (style?.numberFormat === '@') return { kind: 'text', value: text };
   requireDocument(!/^=PY(?:\(\))?$/iu.test(text.trim()), 'Python authoring is unavailable.');
   if (text.startsWith('=')) return { kind: 'formula', source: text };
   const trimmed = text.trim();
   if (numberPattern.test(trimmed) && Number.isFinite(Number(trimmed))) return { kind: 'number', value: Number(trimmed) };
+  const serial = parseTemporalEntry(trimmed, style?.numberFormat, locale);
+  if (serial !== undefined) return { kind: 'number', value: serial };
   if (/^(?:true|false)$/iu.test(trimmed)) return { kind: 'boolean', value: trimmed.toLowerCase() === 'true' };
   return { kind: 'text', value: text };
+}
+
+export function editorEntryText(cell: CellDocument | undefined, locale?: string): string {
+  return cell?.content.kind === 'number' ?
+    temporalEntry(cell.content.value, cell.style?.numberFormat, locale) ?? entryText(cell) : entryText(cell);
 }
 
 export function entryText(cell: CellDocument | undefined): string {
@@ -57,7 +65,7 @@ function includes(range: ReferenceBox, point: Coordinate): boolean {
 function contains(a: ReferenceBox, b: ReferenceBox): boolean {
   return includes(a, { row: b.top, column: b.left }) && includes(a, { row: b.bottom, column: b.right });
 }
-function checkedSheet(basis: WorkbookSnapshot, range: EditRange): SheetDocument {
+export function checkedSheet(basis: WorkbookSnapshot, range: EditRange): SheetDocument {
   const sheet = basis.document.sheets.find(sheet => sheet.id === range.sheetId);
   const { top, left, bottom, right } = box(range);
   requireDocument(sheet && [range.row, range.column, range.rows, range.columns].every(Number.isSafeInteger) &&
@@ -171,7 +179,7 @@ function destination(basis: WorkbookSnapshot, target: EditRange, rows: number, c
   return { sheet, range, scalarInMerge };
 }
 
-export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: string, mode: PasteMode): SetCellsCommand {
+export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: string, mode: PasteMode, locale?: string): SetCellsCommand {
   const fields = parseTsv(text);
   const { sheet, range } = destination(basis, target, fields.length, fields[0]!.length);
   const edits: CellEdit[] = [];
@@ -180,7 +188,7 @@ export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: stri
     if (mode === 'formulas' && !formula) return;
     const at = point(range.sheetId, range.row + y, range.column + x);
     const content: CellContent = field.quoted || mode === 'values' && formula ? { kind: 'text', value: field.text } :
-      parseEntry(field.text, mode === 'formulas' ? undefined : findCell(sheet, at)?.style);
+      parseEntry(field.text, mode === 'formulas' ? undefined : findCell(sheet, at)?.style, locale);
     edits.push({ target: at, content, resetCache: true });
   }));
   return command('Paste text', edits);

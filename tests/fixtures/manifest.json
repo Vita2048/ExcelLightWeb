@@ -108,6 +108,24 @@
       "purpose": "Synthetic formula workbooks and typed results captured from the desktop NativeCalculator",
       "expectedValues": "Desktop Release ExcelLite.Calculation.dll with ClosedXML 0.105.0, .NET SDK 10.0.402, cs-CZ",
       "oracleSha256": "2728501ff95db80173d493f57a8c32fa852a22d5704f30e94df9dfd8374f8cad"
+    },
+    {
+      "path": "formats/S10-desktop.json",
+      "sourcePath": "src/ExcelLite.Foundation/EverydayCommands.cs and src/ExcelLite.Core/TemporalFormats.cs",
+      "captured": "2026-11-18",
+      "sha256": "fd73abe9264834063f65bfc4df423d65ec69aeca0e5d604901069362afffa75b",
+      "bytes": 69092,
+      "purpose": "Synthetic numeric display, color and edit values captured from the desktop formatter",
+      "expectedValues": "Desktop Release ExcelNumberFormat 1.1.0.0, .NET 10.0.13, en-US default with explicit LCID tags"
+    },
+    {
+      "path": "formats/Desktop1904.xlsx",
+      "sourcePath": "../ExcelLightWeb/tests/desktop-formats/Program.cs",
+      "captured": "2026-11-18",
+      "sha256": "81ed5f15cb5d4d542d3ea4ca1dab7395644ca815f7bc8a18f0191fb6994106c2",
+      "bytes": 6414,
+      "purpose": "Synthetic five-cell workbook using the 1904 system with date, clock, elapsed, number and date-time formats",
+      "expectedValues": "Desktop Release XlsxExchange.Import, verified by tests/desktop-formats/Program.cs"
     }
   ]
 }

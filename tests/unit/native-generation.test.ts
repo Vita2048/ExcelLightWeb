@@ -109,3 +109,18 @@ test('TODAY uses one injected reading per generation and flows through clean dep
   expect(values(second)).toEqual([['s', 1, 1, day + 1], ['s', 1, 2, 0], ['s', 1, 3, day + 2]]);
   expect(clock).toHaveBeenCalledTimes(2);
 });
+
+test('a number-format edit changes active filter keys and invalidates SUBTOTAL without rebuilding the graph', () => {
+  const input = cell('a2', 2, 1, 1.25);
+  const document = book(input, cell('b2', 2, 2, 8), cell('subtotal', 1, 3, '=SUBTOTAL(9,B2:B2)'));
+  const filtered = { ...document, sheets: [{ ...document.sheets[0]!,
+    filter: { row: 1, column: 1, rows: 2, columns: 2, criteria: [{ column: 1, allowed: ['1.25'] }] } }] };
+  const first = runNativeGeneration(filtered, 'automatic');
+  expect(values(first)).toEqual([['s', 1, 3, 8]]);
+  const cached = apply(filtered, first);
+  const edited = { ...cached, sheets: [{ ...cached.sheets[0]!, cells: cached.sheets[0]!.cells.map(item =>
+    item.id === input.id ? { ...item, style: { numberFormat: '0.00%' } } : item) }] };
+  const second = runNativeGeneration(edited, 'automatic', first.generation);
+  expect(second.generation.graph).toBe(first.generation.graph);
+  expect(values(second)).toEqual([['s', 1, 3, 0]]);
+});

@@ -1,3 +1,4 @@
+import { formatCellValue } from '../core/formats/cell-format';
 import type { CacheUpdate } from '../application/workbook-protocol';
 import { parseFormula, referenceBox, UnsupportedFormulaReference, type FormulaExpression, type FormulaReference } from '../core/formula-references';
 import { cellKey, documentLimits, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
@@ -114,15 +115,13 @@ function filterVisibility(sheet: SheetDocument, display: (row: number, column: n
 }
 
 function defaultFilterText(cell: CellDocument | undefined): string {
-  const value = baseValue(cell);
-  if (isError(value)) return value.value;
-  return typeof value === 'number' ? String(Number(value.toPrecision(15))) : textValue(value);
+  return formatCellValue(cell).text;
 }
 
 export interface CalculationOptions {
   readonly clock?: () => Date;
   readonly locale?: string;
-  /** Use the formatted display key captured for the filter criteria. */
+  /** Override the shared display key for a caller-supplied set of filter criteria. */
   readonly filterText?: (cell: CellDocument | undefined) => string;
 }
 

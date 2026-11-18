@@ -25,6 +25,8 @@ interface WorksheetProps {
   readonly sheet: SheetDocument;
   readonly selection: GridSelection;
   readonly onSelection: (selection: GridSelection) => boolean;
+  readonly paintActive: boolean;
+  readonly onPaint: (area: Area) => void;
   readonly onReferencePick: () => ReferenceDrag | undefined;
   readonly referenceArea?: Area | undefined;
   readonly onAdjacentSheet: (direction: number) => void;
@@ -51,6 +53,7 @@ interface Drag {
   x: number;
   y: number;
   readonly reference?: ReferenceDrag;
+  readonly paint?: boolean;
 }
 
 interface ReferenceDrag {
@@ -253,10 +256,11 @@ export function Worksheet(props: WorksheetProps) {
     const next = select(selection, point, kind, event.shiftKey, additive);
     if (!onSelection(next)) return;
     focus();
-    if (event.pointerType === 'touch' || kind === 'sheet' || hitSelected) return;
+    const paint = props.paintActive && kind === 'cells' && !next.additional.length && !additive;
+    if (event.pointerType === 'touch' && !paint || kind === 'sheet' || hitSelected) return;
     event.preventDefault();
     node.setPointerCapture(event.pointerId);
-    drag.current = { id: event.pointerId, kind, selection: next, x: event.clientX, y: event.clientY };
+    drag.current = { id: event.pointerId, kind, selection: next, x: event.clientX, y: event.clientY, paint };
   }
 
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -267,7 +271,7 @@ export function Worksheet(props: WorksheetProps) {
     const heading = header ?? headerAt(event.clientX - bounds.left, event.clientY - bounds.top, false);
     node.style.cursor = axis === 'row' ? 'row-resize' : axis === 'column' ? 'col-resize' :
       heading?.axis === 'row' ? `url("${selectRowCursor}") 14 8, default` :
-      heading?.axis === 'column' ? `url("${selectColumnCursor}") 8 14, default` : '';
+      heading?.axis === 'column' ? `url("${selectColumnCursor}") 8 14, default` : props.paintActive ? 'crosshair' : '';
     if (resize.current?.id === event.pointerId) {
       const offset = axis === 'row' ? event.clientY - bounds.top : event.clientX - bounds.left;
       setGuide({ axis: axis!, offset });
@@ -294,16 +298,15 @@ export function Worksheet(props: WorksheetProps) {
     }
     const active = drag.current;
     if (active?.id !== event.pointerId) return;
-    if (active.reference) {
-      if (event.type === 'pointerup') {
-        active.x = event.clientX;
-        active.y = event.clientY;
-        cancelAnimationFrame(frame.current);
-        moveDrag();
-      } else active.reference.cancel();
-    }
+    if ((active.reference || active.paint) && event.type === 'pointerup') {
+      active.x = event.clientX;
+      active.y = event.clientY;
+      cancelAnimationFrame(frame.current);
+      moveDrag();
+    } else active.reference?.cancel();
     drag.current = null;
     cancelAnimationFrame(frame.current);
+    if (active.paint && event.type === 'pointerup') props.onPaint(primaryArea(active.selection));
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {

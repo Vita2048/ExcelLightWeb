@@ -49,7 +49,8 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
       if (contentChanged || cacheChanged) changes.push(cell);
       // Filter display uses the cache at the start of the generation.
       if (filter && criteria.has(cell.column) && cell.row > filter.row && cell.row < filter.row + filter.rows &&
-          (contentChanged || !equalDto(before?.cache, cell.cache))) visibilityChanged.add(sheetId);
+          (contentChanged || before?.style?.numberFormat !== cell.style?.numberFormat ||
+            !equalDto(before?.cache, cell.cache))) visibilityChanged.add(sheetId);
     }
     for (const [key, before] of prior.cells) {
       if (input.cells.has(key)) continue;

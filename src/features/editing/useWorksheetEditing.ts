@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { autoSum, captureClipboard, clear, clipboardText, entryText, expandMerges, fill, parseEntry, pasteBlock, pasteText,
+import { autoSum, captureClipboard, clear, clipboardText, editorEntryText, expandMerges, fill, parseEntry, pasteBlock, pasteText,
   type Aggregate, type ClearMode, type ClipboardBlock, type EditRange, type FillDirection, type PasteMode,
 } from '../../application/editing-commands';
 import type { WorkbookSession } from '../../application/workbook-session';
@@ -46,7 +46,7 @@ interface ManualPaste {
 const clipboardType = 'application/x-excellight-cells';
 
 export function useWorksheetEditing(
-  session: WorkbookSession, changed: (compound: boolean) => void, separator: ',' | ';', focusGrid: () => void,
+  session: WorkbookSession, changed: (compound: boolean) => void, separator: ',' | ';', locale: string, focusGrid: () => void,
   focusEditor: (surface: EditSurface) => void,
 ) {
   const liveDraft = useRef<Draft | null>(null);
@@ -63,7 +63,7 @@ export function useWorksheetEditing(
   }
 
   function editorText(cell: CellDocument | undefined) {
-    const source = entryText(cell);
+    const source = editorEntryText(cell, locale);
     return cell?.content.kind === 'formula' ? presentFormula(source, ',', separator) : source;
   }
 
@@ -147,7 +147,7 @@ export function useWorksheetEditing(
         'The cell changed while you were editing it.');
         const outcome = session.execute({ kind: 'set-cells', label: 'Edit cell', edits: [{
           target: current.target, content: parseEntry(actual?.style?.numberFormat === '@' ? current.text :
-            presentFormula(current.text, separator, ','), actual?.style),
+            presentFormula(current.text, separator, ','), actual?.style, locale),
         }] });
         if (outcome.changed) changed(false);
       }
@@ -182,7 +182,7 @@ export function useWorksheetEditing(
   }
 
   function paste(basis: WorkbookSnapshot, range: EditRange, mode: PasteMode, rich: LocalClipboard | null, text?: string) {
-    const operation = rich ? pasteBlock(basis, range, rich.block, mode) : pasteText(basis, range, text ?? '', mode);
+    const operation = rich ? pasteBlock(basis, range, rich.block, mode) : pasteText(basis, range, text ?? '', mode, locale);
     const outcome = session.execute(operation);
     if (rich?.block.cut && localClipboard.current === rich) localClipboard.current = null;
     if (outcome.changed) changed(outcome.delta.kind !== 'cells' || outcome.delta.changes.length > 1);

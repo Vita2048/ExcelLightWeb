@@ -1,6 +1,7 @@
 import type { Axis } from '../core/axis-edit';
 import type { AxisDimension, SheetDocument } from '../core/workbook';
 import { gridMetrics, clamp } from './grid-geometry';
+import { cellFont } from './cell-appearance';
 import { cellDisplay } from './grid-selection';
 
 export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonly number[], showFormulas = false,
@@ -18,9 +19,9 @@ export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonl
     if (!value) continue;
     const merge = sheet.merges.find(merge => merge.row === cell.row && merge.column === cell.column);
     if (axis === 'column' && merge && merge.columns > 1) continue;
-    const size = (cell.style?.fontSize ?? 10.5) * 4 / 3;
-    context.font = (cell.style?.italic ? 'italic ' : '') + (cell.style?.bold ? '600 ' : '') +
-      size + 'px ' + (cell.style?.fontFamily ? JSON.stringify(cell.style.fontFamily) + ', ' : '') + font;
+    const measured = cellFont(cell.style, font);
+    context.font = measured.css;
+    const size = measured.size + Math.abs(measured.shift);
     const indent = (cell.style?.indent ?? 0) * size * 1.5;
     const lines = value.split(/\r\n|\r|\n/u);
     let needed: number;

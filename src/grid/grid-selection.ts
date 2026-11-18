@@ -1,4 +1,5 @@
 import { cellKey, findCell, worksheetViewport as viewport, type CellDocument, type Coordinate, type SheetDocument } from '../core/workbook';
+import { formatCellValue, type FormattedCell } from '../core/formats/cell-format';
 import { presentFormula } from '../features/formulas/formula-presentation';
 import { address, type GridAxis } from './grid-geometry';
 
@@ -74,18 +75,15 @@ export function parseAddress(text: string): Coordinate | undefined {
 }
 
 export function cellDisplay(cell: CellDocument | undefined, source = false, separator: ',' | ';' = ','): string {
-  if (!cell) return '';
-  const { content, cache } = cell;
-  if (content.kind === 'python' && source) return '=PY()';
-  if (content.kind === 'formula' && source) return presentFormula(content.source, ',', separator);
-  const value = cache && !source ? cache : content;
-  switch (value.kind) {
-    case 'blank': return '';
-    case 'formula': return presentFormula(value.source, ',', separator);
-    case 'python': return '=PY()';
-    case 'boolean': return value.value ? 'TRUE' : 'FALSE';
-    default: return String(value.value);
+  return presentCell(cell, source, separator).text;
+}
+
+export function presentCell(cell: CellDocument | undefined, source: boolean, separator: ',' | ';'): FormattedCell {
+  if (cell?.content.kind === 'formula' && (source || !cell.cache)) {
+    return { text: presentFormula(cell.content.source, ',', separator) };
   }
+  if (cell?.content.kind === 'python' && (source || !cell.cache)) return { text: '=PY()' };
+  return formatCellValue(cell);
 }
 
 export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[]) {
