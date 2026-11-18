@@ -124,7 +124,7 @@ Canvas needs a synchronized accessible DOM grid, active-cell announcements, keyb
 
 S13 normalizes merged selections, editing and keyboard navigation to the anchor. Canvas panes project the full merge rectangle before clipping fills, text and diagonals to each pane. The accessible grid exposes the row and column span at the anchor. The same text renderer applies alignment, reading order, wrap, shrink, indent, and stacked or rotated text. Merge Across keeps one value per row. The merge command guards stored table extents and Python anchors. Spill ownership and spill admission are specified in S21.
 
-Ribbon groups use the desktop command order and local vector artwork from the desktop glyph classes. Browser flyouts use keyboard focus and viewport placement for the same commands. The font list uses the existing curated catalog and typed family entry. The web Lock Format Painter control provides a keyboard path to the desktop double-click behavior. Underline retains the web ribbon's additional underline variants, and View retains the existing synchronized Show Formulas checkbox.
+Ribbon groups use the desktop command order and local vector artwork from the desktop glyph classes. Browser flyouts use keyboard focus and viewport placement for the same commands. Flyouts use their natural height up to the viewport limit. Dialogs stay modal while their title bars let the user move them within the viewport. The font list uses the existing curated catalog and typed family entry. The web Lock Format Painter control provides a keyboard path to the desktop double-click behavior. Underline retains the web ribbon's additional underline variants, and View retains the existing synchronized Show Formulas checkbox.
 
 ## 9. GitHub and offline operation
 
