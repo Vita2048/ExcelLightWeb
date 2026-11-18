@@ -1,4 +1,5 @@
 import type { AxisDimension, Coordinate } from '../core/workbook';
+import { columnLetters } from '../core/formula-references';
 
 export const gridMetrics = Object.freeze({ row: 26, column: 96, rowHeader: 44, columnHeader: 26 });
 export interface Track {
@@ -84,11 +85,7 @@ export class GridAxis {
 }
 
 export function columnName(column: number): string {
-  let label = '';
-  for (let remaining = column; remaining > 0; remaining = Math.floor((remaining - 1) / 26)) {
-    label = String.fromCharCode(65 + (remaining - 1) % 26) + label;
-  }
-  return label;
+  return columnLetters(column);
 }
 
 export function address(point: Coordinate): string {

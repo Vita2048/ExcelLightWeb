@@ -31,6 +31,14 @@ Run `npm run test:worksheet` to build and serve the fixed two-sheet worksheet fi
 
 The production suite injects the pinned axe-core development dependency to check the worksheet and ribbon. Manual screen-reader verification is scheduled in S25.
 
+## Editing and clipboard checks
+
+`npx vitest run tests/integration/editing-commands.test.ts` covers source-derived typed entry, TSV limits, copy and cut identity, reference rewrites, merges, shared borders, Fill results and AutoSum. `npm run test:e2e` also exercises the production editor in all three engines, including clipboard event payloads, denied API fallback and stale reads. A Chromium-specific case uses the browser clipboard and CDP composition commands. The cross-engine composition guard cases dispatch DOM events.
+
+## Structural edit checks
+
+`npx vitest run tests/integration/structure-commands.test.ts` covers the four desktop lane-shift scenarios and checks calculated results, stable identities, axis metadata, overflow and undo. The production Playwright suite exercises clicked-sheet context commands, cell-shift dialogs and direct header sizing and visibility.
+
 ## Browser Python feasibility
 
 Run the S02 probe with Node, Python 3, curl and the Playwright browsers listed above. Set the process variable `PYTHON` if your Python executable uses another name.

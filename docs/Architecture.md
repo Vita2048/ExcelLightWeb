@@ -64,6 +64,10 @@ Use explicit error values: circular dependencies #REF! with detail, malformed so
 
 Native and Python Automatic/Manual settings remain independent. A mixed generation shares one dependency graph and native context, replans after spill topology changes, executes Python sequentially, and commits atomically. Debounce 75 ms isolated edits / 220 ms compound or queued edits. Selection, source drafts, Undo/Redo and Restart never execute scripts. TODAY uses an injected clock and refreshes once per generation.
 
+S06 provides bounded calculation of arithmetic, cell references, and the five AutoSum functions so that Fill, AutoSum, and Paste Values can use calculated results. It publishes derived caches through the session without adding history. The formula syntax and reference transforms are reusable in S07. S08–S09 expand evaluation and move scheduling to the native calculation worker.
+
+S07 applies sheet and axis changes as detached session proposals. Whole-axis edits move existing dimensions, merged ranges, filters and defined names with the cells. Lane shifts can split formula ranges into unions. A named extent that becomes disjoint retains its identity and is marked invalid. The reference service exposes sheet and axis transforms for use by future Python literal rewriting.
+
 ## 6. Python and charts
 
 Port `worker/excellite_worker.py` behavior, not its process/file plumbing. Each run has a fresh namespace; literal xl() inputs and headers are validated before user statements. Final expression wins over legacy result assignment. Normalize scalar/Series/DataFrame/2D-array/Figure output; preserve errors, stdout/stderr, last success, stale states and spill ownership. Reserved xl forms remain constrained as in the desktop documentation.
@@ -89,6 +93,12 @@ Pyodide executes user code and is **not a security sandbox**: workers may access
 Preserve existing command families, contextual Table Design, black title/tab/ribbon/formula areas, dark default sheet and panels, blue selection, 26 px rows and 96 px columns at 100%. Grid zoom 10–400% does not scale the ribbon. No Light or Follow System setting. Authored cell colors remain intact, including white fills. Forced-colors accessibility is allowed.
 
 S05 uses browser-native two-axis scrolling with a viewport-sized canvas. A shared track map drives rendering, pointer hit testing and keyboard reveal. The semantic grid exposes a bounded set of viewport rows and always mounts its active descendant, even when the user scrolls it out of view. Canvas and chrome use system palette colors in forced-colors mode. Selection, scroll and zoom are view state. Tab moves between cells and Escape then Tab leaves the grid.
+
+S07 uses browser header cursors, pointer capture and a resize guide. Releasing a drag commits one size change for the selected tracks. AutoFit measures displayed values with browser canvas font metrics at 100% zoom. Hidden tracks retain their authored size and are skipped during navigation.
+
+Place the dialog's primary action to the left of Cancel, in both visual and keyboard order. Cell editors scroll their text without visible scrollbar controls. Row and column sizing fields retain numeric validation with hidden spin buttons.
+
+In S06 both DOM editors share a cell draft. Selection, worksheet changes and ribbon commands flush a valid draft. A rejected or composing draft keeps its original target. Rich clipboard snapshots stay in page memory. Native clipboard events exchange TSV and a local token when the browser carries it. The ribbon can use the local snapshot or open a paste text dialog if clipboard reads are denied. A cut only removes source cells when its matching rich paste commits. Detached clipboard reads must still match the captured workbook revision and worksheet selection.
 
 Canvas needs a synchronized accessible DOM grid, active-cell announcements, keyboard navigation, editable overlay/IME, focus restoration and dialog focus traps. Test cross-sheet range picking, multi-area selection, context actions and browser-reserved shortcut conflicts. Desktop Chrome/Edge are primary; Firefox/WebKit must support File API fallback and core workflows. Mobile is a usable narrow layout, not a new touch-first parity requirement.
 

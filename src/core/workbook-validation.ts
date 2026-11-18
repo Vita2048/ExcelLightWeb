@@ -22,7 +22,7 @@ function validText(value: string, limit: number = limits.textLength): boolean {
   return typeof value === 'string' && value.length <= limit && !value.includes('\0');
 }
 
-function ordinalNameKey(value: string): string {
+export function ordinalNameKey(value: string): string {
   let key = '';
   for (const char of value) {
     const upper = char.toUpperCase();

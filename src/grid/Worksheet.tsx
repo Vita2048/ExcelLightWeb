@@ -1,8 +1,10 @@
 import {
   useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
-  type KeyboardEvent, type PointerEvent, type Ref,
+  type ClipboardEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref,
 } from 'react';
 import { findCell, worksheetViewport, type Coordinate, type SheetDocument } from '../core/workbook';
+import type { Axis } from '../core/axis-edit';
+import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
 import { address, clamp, GridAxis, gridMetrics } from './grid-geometry';
 import {
@@ -14,13 +16,21 @@ export interface WorksheetHandle {
   focus(): void;
   goTo(point: Coordinate): boolean;
   zoomToSelection(): number;
+  moveAfterEdit(point: Coordinate, key: AfterEditKey, reverse: boolean): void;
 }
 
 interface WorksheetProps {
   readonly sheet: SheetDocument;
   readonly selection: GridSelection;
-  readonly onSelection: (selection: GridSelection) => void;
+  readonly onSelection: (selection: GridSelection) => boolean;
   readonly onAdjacentSheet: (direction: number) => void;
+  readonly onEdit: (replacement?: string) => void;
+  readonly onShortcut: (event: KeyboardEvent<HTMLDivElement>) => boolean;
+  readonly onClipboard: (event: ClipboardEvent<HTMLDivElement>, kind: 'copy' | 'cut' | 'paste') => void;
+  readonly editor?: { readonly at: Coordinate; readonly input: ReactNode } | undefined;
+  readonly onHeaderResize: (axis: Axis, index: number) => ((size: number) => void) | undefined;
+  readonly onHeaderFit: (axis: Axis, index: number) => void;
+  readonly onStructureMenu: (x: number, y: number, axis?: Axis, index?: number, point?: Coordinate) => void;
   readonly zoom: number;
   readonly headings: boolean;
   readonly gridlines: boolean;
@@ -42,6 +52,8 @@ export function Worksheet(props: WorksheetProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<Drag | null>(null);
+  const resize = useRef<{ id: number; axis: Axis; origin: number; size: number; apply: (size: number) => void } | null>(null);
+  const [guide, setGuide] = useState<{ axis: Axis; offset: number }>();
   const exitOnTab = useRef(false);
   const fitStart = useRef<Coordinate | null>(null);
   const frame = useRef(0);
@@ -82,10 +94,14 @@ export function Worksheet(props: WorksheetProps) {
     focus,
     goTo(point) {
       if (!rows.track(point.row) || !columns.track(point.column)) return false;
-      onSelection(singleSelection(point));
+      if (!onSelection(singleSelection(point))) return false;
       reveal(point);
       focus();
       return true;
+    },
+    moveAfterEdit(point, key, reverse) {
+      const next = navigate(sheet, rows, columns, point, key, false, reverse, 1) ?? point;
+      if (onSelection(singleSelection(next))) reveal(next);
     },
     zoomToSelection() {
       const minRow = Math.min(...areas.map(area => area.top));
@@ -126,6 +142,9 @@ export function Worksheet(props: WorksheetProps) {
     } else reveal(selection.anchor);
   }, [rows, columns, headings]); // Remap the active coordinate when the worksheet geometry changes.
 
+  const editAt = props.editor?.at;
+  useLayoutEffect(() => { if (editAt) reveal(editAt); }, [editAt]);
+
   useLayoutEffect(() => {
     drawWorksheet(canvas.current!, {
       sheet, view, rows: rowTracks, columns: columnTracks, selection, areas, scale, headings, gridlines,
@@ -154,6 +173,17 @@ export function Worksheet(props: WorksheetProps) {
     return row !== undefined && column !== undefined ? { row, column } : undefined;
   }
 
+  function headerAt(x: number, y: number, edge: boolean) {
+    const node = scroll.current!;
+    if (x < 0 || y < 0 || x >= node.clientWidth || y >= node.clientHeight) return;
+    const axis: Axis | undefined = x < left && y >= top ? 'row' : y < top && x >= left ? 'column' : undefined;
+    if (!axis) return;
+    const coord = axis === 'row' ? y - top + node.scrollTop : x - left + node.scrollLeft;
+    const tracks = axis === 'row' ? rows : columns;
+    const track = tracks.at(edge ? Math.max(0, coord - 4) : coord);
+    if (track && (!edge || Math.abs(track.start + track.size - coord) <= 4)) return { axis, track };
+  }
+
   function moveDrag() {
     const active = drag.current;
     if (!active) return;
@@ -180,14 +210,24 @@ export function Worksheet(props: WorksheetProps) {
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
     if (x >= node.clientWidth || y >= node.clientHeight) return;
+    const header = headerAt(x, y, true);
+    if (header && event.pointerType !== 'touch') {
+      const apply = props.onHeaderResize(header.axis, header.track.index);
+      if (!apply) return;
+      const origin = header.axis === 'row' ? event.clientY : event.clientX;
+      resize.current = { id: event.pointerId, axis: header.axis, origin, size: header.track.size / scale, apply };
+      event.preventDefault();
+      node.setPointerCapture(event.pointerId);
+      return;
+    }
     const kind: AreaKind = y < top ? x < left ? 'sheet' : 'columns' : x < left ? 'rows' : 'cells';
     const point = pointAt(x, y, kind);
     if (!point) return;
-    focus();
     const additive = event.ctrlKey || event.metaKey;
     const hitSelected = additive && areas.some(area => includes(area, point));
     const next = select(selection, point, kind, event.shiftKey, additive);
-    onSelection(next);
+    if (!onSelection(next)) return;
+    focus();
     if (event.pointerType === 'touch' || kind === 'sheet' || hitSelected) return;
     event.preventDefault();
     node.setPointerCapture(event.pointerId);
@@ -195,6 +235,18 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
+    const node = event.currentTarget;
+    const bounds = node.getBoundingClientRect();
+    const header = headerAt(event.clientX - bounds.left, event.clientY - bounds.top, true);
+    const axis = resize.current?.axis ?? header?.axis;
+    const heading = header ?? headerAt(event.clientX - bounds.left, event.clientY - bounds.top, false);
+    node.style.cursor = axis === 'row' ? 'row-resize' : axis === 'column' ? 'col-resize' :
+      heading?.axis === 'row' ? 'e-resize' : heading?.axis === 'column' ? 's-resize' : '';
+    if (resize.current?.id === event.pointerId) {
+      const offset = axis === 'row' ? event.clientY - bounds.top : event.clientX - bounds.left;
+      setGuide({ axis: axis!, offset });
+      return;
+    }
     const active = drag.current;
     if (!active || active.id !== event.pointerId) return;
     active.x = event.clientX;
@@ -204,12 +256,23 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
+    const sizing = resize.current;
+    if (sizing?.id === event.pointerId) {
+      resize.current = null;
+      setGuide(undefined);
+      const end = sizing.axis === 'row' ? event.clientY : event.clientX;
+      if (event.type === 'pointerup' && Math.abs(end - sizing.origin) >= 2) {
+        sizing.apply(clamp(Math.round(sizing.size + (end - sizing.origin) / scale), 4, 4096));
+      }
+      return;
+    }
     if (drag.current?.id !== event.pointerId) return;
     drag.current = null;
     cancelAnimationFrame(frame.current);
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (props.onShortcut(event)) return;
     if (event.nativeEvent.isComposing || event.altKey) return;
     const control = event.ctrlKey || event.metaKey;
     const { key, shiftKey } = event;
@@ -230,15 +293,13 @@ export function Worksheet(props: WorksheetProps) {
       const point = key.toLowerCase() === 'a' ? {
         row: rows.tracks[0]?.index ?? anchor.row, column: columns.tracks[0]?.index ?? anchor.column,
       } : anchor;
-      onSelection(select(selection, point, kind));
-      if (point !== anchor) reveal(point);
+      if (onSelection(select(selection, point, kind)) && point !== anchor) reveal(point);
       return;
     }
     if (key === 'Escape') {
       event.preventDefault();
       exitOnTab.current = true;
-      onSelection(singleSelection(anchor));
-      reveal(anchor);
+      if (onSelection(singleSelection(anchor))) reveal(anchor);
       return;
     }
     if (control && key === 'Enter') return;
@@ -247,8 +308,7 @@ export function Worksheet(props: WorksheetProps) {
       Math.max(1, rowTracks.length - 1));
     if (!point) return;
     event.preventDefault();
-    onSelection(select(selection, point, extend ? selection.kind : 'cells', extend));
-    reveal(point);
+    if (onSelection(select(selection, point, extend ? selection.kind : 'cells', extend))) reveal(point);
   }
 
   // Keep the active descendant mounted even when native scrolling moves it outside the viewport.
@@ -257,14 +317,45 @@ export function Worksheet(props: WorksheetProps) {
   if (!activeColumns.includes(selection.anchor.column)) {
     projected.set(selection.anchor.row, [...activeColumns, selection.anchor.column].sort((a, b) => a - b));
   }
+  const editRow = editAt && rows.track(editAt.row);
+  const editColumn = editAt && columns.track(editAt.column);
+  const bodyWidth = Math.max(0, view.width - left);
+  const bodyHeight = Math.max(0, view.height - top);
+  const editorWidth = Math.min(bodyWidth, Math.max(80, editColumn?.size ?? 0));
+  const editorHeight = Math.min(bodyHeight, Math.max(24, editRow?.size ?? 0));
+  const editorLeft = (editColumn?.start ?? 0) - view.x;
+  const editorTop = (editRow?.start ?? 0) - view.y;
 
   return (
     <div className="worksheet">
       <div ref={scroll} className="worksheet-scroll" role="grid" aria-label={sheet.name}
         aria-rowcount={worksheetViewport.rows} aria-colcount={worksheetViewport.columns}
-        aria-readonly="true" aria-multiselectable="true" aria-activedescendant={cellId(selection.anchor)} tabIndex={0}
+        aria-multiselectable="true" aria-activedescendant={cellId(selection.anchor)} tabIndex={0}
         aria-describedby={id + '-help'} onBlur={() => { exitOnTab.current = false; }}
         onScroll={measure} onKeyDown={keyDown} onPointerDown={pointerDown} onPointerMove={pointerMove}
+        onCopy={event => props.onClipboard(event, 'copy')} onCut={event => props.onClipboard(event, 'cut')}
+        onPaste={event => props.onClipboard(event, 'paste')}
+        onContextMenu={event => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+          const header = headerAt(x, y, false);
+          const point = !header && x >= left && y >= top && pointAt(x, y, 'cells');
+          if (!header && !point) return;
+          event.preventDefault();
+          if (point && !areas.some(area => includes(area, point)) && !onSelection(singleSelection(point))) return;
+          props.onStructureMenu(event.clientX, event.clientY, header?.axis, header?.track.index, point || undefined);
+        }}
+        onDoubleClick={event => {
+          const node = event.currentTarget;
+          const bounds = node.getBoundingClientRect();
+          const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
+          const header = headerAt(x, y, true);
+          if (header) {
+            props.onHeaderFit(header.axis, header.track.index);
+            return;
+          }
+          if (x >= left && y >= top && x < node.clientWidth && y < node.clientHeight && pointAt(x, y, 'cells')) props.onEdit();
+        }}
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
         <div aria-hidden="true" className="worksheet-spacer" style={{ width: left + columns.total, height: top + rows.total }} />
         <div className="worksheet-projection">
@@ -282,9 +373,20 @@ export function Worksheet(props: WorksheetProps) {
         </div>
       </div>
       <p className="worksheet-projection" id={id + '-help'}>
-        Use arrow keys or Tab to move between cells. Press Escape then Tab to leave the worksheet.
+        Use arrow keys or Tab to move between cells. Press F2 to edit. Press Escape then Tab to leave the worksheet.
       </p>
       <canvas ref={canvas} aria-hidden="true" className="worksheet-canvas" style={{ width: view.width, height: view.height }} />
+      {guide && <div aria-hidden="true" className={'dimension-guide ' + guide.axis}
+        style={guide.axis === 'row' ? { top: guide.offset } : { left: guide.offset }} />}
+      {editRow && editColumn && <div className="inline-editor-layer" style={{
+        left, top, width: bodyWidth, height: bodyHeight,
+      }}>
+        <div className="inline-cell-editor" style={{
+          left: editorLeft < bodyWidth ? Math.min(editorLeft, bodyWidth - editorWidth) : editorLeft,
+          top: editorTop < bodyHeight ? Math.min(editorTop, bodyHeight - editorHeight) : editorTop,
+          width: editorWidth, height: editorHeight, fontSize: Math.max(10, 14 * scale),
+        }}>{props.editor?.input}</div>
+      </div>}
     </div>
   );
 }

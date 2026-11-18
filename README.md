@@ -1,6 +1,6 @@
 # ExcelLight Web
 
-Browser-only port of `C:\Temp\ExcelLight` with a dark UI and GitHub Pages hosting. The current build opens a blank workbook with a virtual worksheet, cell selection, a read-only formula bar, and view controls. Cell editing, file handling, and in-workbook Python execution are scheduled for later sprints.
+Browser-only port of `C:\Temp\ExcelLight` with a dark UI and GitHub Pages hosting. The current build opens a blank workbook with a virtual worksheet, inline and formula-bar editing, clipboard commands, Fill, Clear, and AutoSum. It also supports sheet management, cell shifts, and row and column sizing. File handling and in-workbook Python execution are scheduled for later sprints.
 
 ## Start here
 
@@ -31,4 +31,4 @@ npm run test:worksheet
 
 > For the next approved sprint, read AGENTS.md, the architecture, parity, development and deployment docs, and the latest handover. Implement the approved sprint, run its acceptance checks, update the parity matrix, and write its handover.
 
-The latest handover covers the dark shell and virtual worksheet. [S05 handover](docs/handovers/S05.md)
+The latest handover covers worksheet structure and dimensions. [S07 handover](docs/handovers/S07.md)

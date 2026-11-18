@@ -1,4 +1,6 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import type { EditAction } from '../editing/useWorksheetEditing';
+import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 
 const families = ['File', 'Home', 'Insert', 'Formulas', 'Data', 'View'] as const;
 type Family = typeof families[number];
@@ -14,17 +16,45 @@ interface RibbonProps {
   readonly view: SheetView;
   readonly onView: (patch: Partial<SheetView>) => void;
   readonly onZoomToSelection: () => void;
+  readonly onEdit: (action: EditAction) => void;
+  readonly onStructure: (action: StructureAction) => void;
 }
 
-const unavailable: Record<Exclude<Family, 'View'>, string> = {
+const unavailable: Record<'File' | 'Insert' | 'Data', string> = {
   File: 'File commands are unavailable.',
-  Home: 'Cell editing is unavailable.',
   Insert: 'Insert commands are unavailable.',
-  Formulas: 'Formula commands are unavailable.',
   Data: 'Data commands are unavailable.',
 };
 
-export function Ribbon({ view, onView, onZoomToSelection }: RibbonProps) {
+function EditMenu({ label, choices, onEdit }: {
+  label: string;
+  choices: readonly (readonly [string, EditAction])[];
+  onEdit: (action: EditAction) => void;
+}) {
+  return <label className="edit-menu">
+    <span className="worksheet-projection">{label}</span>
+    <select value="" onChange={event => {
+      const item = choices[Number(event.currentTarget.value)];
+      if (item) onEdit(item[1]);
+    }}>
+      <option value="" disabled>{label}</option>
+      {choices.map(([name], index) => <option key={name} value={index}>{name}</option>)}
+    </select>
+  </label>;
+}
+
+function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
+  return <>
+    <button type="button" onClick={() => onEdit({ kind: 'autosum', aggregate: 'SUM' })}>AutoSum</button>
+    <EditMenu label="AutoSum options" onEdit={onEdit} choices={[
+      ['Sum', { kind: 'autosum', aggregate: 'SUM' }], ['Average', { kind: 'autosum', aggregate: 'AVERAGE' }],
+      ['Count Numbers', { kind: 'autosum', aggregate: 'COUNT' }], ['Max', { kind: 'autosum', aggregate: 'MAX' }],
+      ['Min', { kind: 'autosum', aggregate: 'MIN' }],
+    ]} />
+  </>;
+}
+
+export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure }: RibbonProps) {
   const [active, setActive] = useState<Family>('Home');
   const id = useId();
   const tabs = useRef(new Map<Family, HTMLButtonElement>());
@@ -55,7 +85,7 @@ export function Ribbon({ view, onView, onZoomToSelection }: RibbonProps) {
       </div>
       {families.map(name => (
         <div key={name} className="ribbon-panel" role="tabpanel" hidden={active !== name}
-          tabIndex={name === 'View' ? undefined : 0} id={id + '-panel-' + name} aria-labelledby={id + '-tab-' + name}>
+          tabIndex={name in unavailable ? 0 : undefined} id={id + '-panel-' + name} aria-labelledby={id + '-tab-' + name}>
           {name === 'View' ? <>
             <fieldset>
               <legend>Show</legend>
@@ -71,7 +101,33 @@ export function Ribbon({ view, onView, onZoomToSelection }: RibbonProps) {
               <button type="button" onClick={() => onView({ zoom: 100 })}>100%</button>
               <button type="button" onClick={onZoomToSelection}>Zoom to Selection</button>
             </fieldset>
-          </> : <p>{unavailable[name]}</p>}
+          </> : name === 'Home' ? <>
+            <fieldset>
+              <legend>Clipboard</legend>
+              <button type="button" onClick={() => onEdit({ kind: 'paste', mode: 'all' })}>Paste</button>
+              <EditMenu label="Paste options" onEdit={onEdit} choices={[
+                ['Paste Values', { kind: 'paste', mode: 'values' }],
+                ['Paste Formulas', { kind: 'paste', mode: 'formulas' }],
+              ]} />
+              <button type="button" onClick={() => onEdit({ kind: 'cut' })}>Cut</button>
+              <button type="button" onClick={() => onEdit({ kind: 'copy' })}>Copy</button>
+            </fieldset>
+            <StructureRibbon onAction={onStructure} />
+            <fieldset>
+              <legend>Editing</legend>
+              <AutoSum onEdit={onEdit} />
+              <EditMenu label="Fill" onEdit={onEdit} choices={[
+                ['Down', { kind: 'fill', direction: 'down' }], ['Right', { kind: 'fill', direction: 'right' }],
+                ['Up', { kind: 'fill', direction: 'up' }], ['Left', { kind: 'fill', direction: 'left' }],
+              ]} />
+              <EditMenu label="Clear" onEdit={onEdit} choices={[
+                ['Clear All', { kind: 'clear', mode: 'all' }], ['Clear Formats', { kind: 'clear', mode: 'formats' }],
+                ['Clear Contents', { kind: 'clear', mode: 'contents' }],
+              ]} />
+            </fieldset>
+          </> : name === 'Formulas' ? <fieldset>
+            <legend>Function Library</legend><AutoSum onEdit={onEdit} />
+          </fieldset> : <p>{unavailable[name]}</p>}
         </div>
       ))}
     </div>

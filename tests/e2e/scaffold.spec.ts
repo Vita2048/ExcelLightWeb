@@ -14,7 +14,7 @@ for (const path of ['/', '/ExcelLightWeb/']) {
       await expect(page.locator(selector)).toHaveCSS('background-color', 'rgb(0, 0, 0)');
     }
     await expect(page.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('textbox', { name: 'Formula bar' })).toHaveAttribute('readonly', '');
+    await expect(page.getByRole('textbox', { name: 'Formula bar' })).toBeEditable();
     await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
     expect(errors).toEqual([]);
   });

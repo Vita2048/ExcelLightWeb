@@ -4,7 +4,7 @@ import {
 } from '../core/workbook-delta';
 import {
   cellKey, DocumentError, documentLimits, findReferencedCell, ownDto, type CellContent, type CellReference,
-  type CellStyle, type DocumentId, type IdFactory, type WorkbookDocument,
+  type CellExtent, type CellStyle, type DocumentId, type IdFactory, type WorkbookDocument, type WorkbookName,
 } from '../core/workbook';
 import {
   requireDocument, validateCellValue, validateId, validateTarget, validateWorkbook,
@@ -22,11 +22,14 @@ export interface CellEdit {
   readonly preserveStyle?: boolean;
   readonly cellId?: DocumentId;
   readonly requiresExternalCalculation?: boolean;
+  readonly resetCache?: boolean;
 }
 export interface SetCellsCommand {
   readonly kind: 'set-cells';
   readonly edits: readonly CellEdit[];
   readonly label?: string;
+  readonly names?: readonly WorkbookName[];
+  readonly merges?: readonly { readonly sheetId: DocumentId; readonly ranges: readonly CellExtent[] }[];
 }
 export interface StructureCommand {
   readonly kind: 'structure';
@@ -153,6 +156,14 @@ export class WorkbookSession {
         break;
       case 'set-cells':
         candidate = this.#editCells(command.edits);
+        if (command.names || command.merges) {
+          const merges = new Map(command.merges?.map(item => [item.sheetId, item.ranges]));
+          requireDocument(merges.size === (command.merges?.length ?? 0) &&
+            [...merges.keys()].every(id => candidate.sheets.some(sheet => sheet.id === id)), 'Invalid merge update sheets.');
+          candidate = ownDto({ ...candidate, names: command.names ?? candidate.names,
+            sheets: candidate.sheets.map(sheet => merges.has(sheet.id) ? { ...sheet, merges: merges.get(sheet.id)! } : sheet),
+          });
+        }
         break;
       default:
         throw new DocumentError('Unsupported workbook command.');
@@ -294,7 +305,7 @@ export class WorkbookSession {
       const sameContent = equalDto(content, prior?.content);
       const external = edit.requiresExternalCalculation || sameContent && prior?.requiresExternalCalculation;
       requireDocument(!external || content.kind === 'formula', 'External calculation requires a formula.');
-      const cache = sameContent || content.kind === 'formula' ? prior?.cache : undefined;
+      const cache = !edit.resetCache && (sameContent || content.kind === 'formula') ? prior?.cache : undefined;
       if (content.kind === 'blank' && style === undefined) {
         if (prior) changes.push({ target });
         continue;
