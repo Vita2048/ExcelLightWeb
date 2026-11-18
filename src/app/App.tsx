@@ -1,15 +1,17 @@
-import { useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent } from 'react';
-import { entryText, type EditRange } from '../application/editing-commands';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import type { EditRange } from '../application/editing-commands';
 import { changeDimensions, changeSheet, editAxis } from '../application/structure-commands';
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
 import { WorkbookSession, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
+import { NativeScheduler, type CalculationStatus } from '../calculation/native-scheduler';
 import { findCell, newWorkbook, worksheetViewport, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
 import { requireDocument } from '../core/workbook-validation';
 import { Ribbon, type SheetView } from '../features/shell/Ribbon';
 import { CellEditor, type CellEditorProps } from '../features/editing/CellEditor';
 import { PasteTextDialog } from '../features/editing/PasteTextDialog';
-import { useWorksheetEditing, type EditAction, type EditSurface } from '../features/editing/useWorksheetEditing';
+import { localeArgumentSeparator } from '../features/formulas/formula-presentation';
+import { useWorksheetEditing, type AfterEditKey, type EditAction, type EditSurface } from '../features/editing/useWorksheetEditing';
 import { Worksheet, type WorksheetHandle } from '../grid/Worksheet';
 import { StructureDialog, StructureMenu, type DialogAction, type StructureAction, type StructureInput } from '../features/structure/StructureControls';
 import { fitDimensions } from '../grid/autofit';
@@ -19,7 +21,7 @@ import {
 } from '../grid/grid-selection';
 
 const defaultSelection = singleSelection();
-const defaultView: SheetView = { zoom: 100, headings: true, gridlines: true, formulaBar: true };
+const defaultView: SheetView = { zoom: 100, headings: true, gridlines: true, formulaBar: true, showFormulas: false };
 const statisticsFormat = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 10, useGrouping: false });
 const makeId = () => crypto.randomUUID();
 interface StructureTarget {
@@ -85,6 +87,19 @@ function ShellIcon({ icon }: { icon: Icon }) {
 export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument }) {
   const [session] = useState(() => new WorkbookSession(initialWorkbook ?? newWorkbook(makeId), { makeId }));
   const [snapshot, setSnapshot] = useState(() => session.capture());
+  const [calculation, setCalculation] = useState<CalculationStatus>(() => ({ mode: 'automatic', pending: false, stale: new Set() }));
+  const scheduler = useRef<NativeScheduler>(null);
+  const [locale] = useState(() => navigator.language);
+  const separator = useMemo(() => localeArgumentSeparator(locale), [locale]);
+  useEffect(() => {
+    const native = new NativeScheduler(session, (snapshot, status) => {
+      setSnapshot(snapshot);
+      setCalculation(status);
+    }, locale);
+    scheduler.current = native;
+    if (session.active.sheets.some(sheet => sheet.cells.some(cell => cell.content.kind === 'formula'))) native.changed(false);
+    return () => { native.dispose(); scheduler.current = null; };
+  }, [session, locale]);
   const sheets = snapshot.document.sheets;
   const [activeSheetId, setActiveSheetId] = useState(() => sheets[0]!.id);
   const [selections, setSelections] = useState<ReadonlyMap<DocumentId, GridSelection>>(() => new Map());
@@ -107,7 +122,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
   const focusGrid = () => worksheet.current?.focus();
-  const editing = useWorksheetEditing(session, setSnapshot, focusGrid, surface => {
+  const editing = useWorksheetEditing(session, compound => scheduler.current?.changed(compound), separator, focusGrid, surface => {
     root.current?.querySelector<HTMLTextAreaElement>('[data-cell-editor="' + surface + '"]')?.focus({ preventScroll: true });
   });
 
@@ -118,7 +133,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return true;
   }
 
+  function editorSelection() {
+    const input = document.activeElement;
+    if (input instanceof HTMLTextAreaElement && input.dataset.cellEditor && root.current?.contains(input)) {
+      return { start: input.selectionStart, end: input.selectionEnd };
+    }
+  }
+
+  function keepEditorOnSheetClick(event: MouseEvent<HTMLButtonElement>) {
+    const caret = editorSelection();
+    if (event.button === 0 && caret && editing.pickSlot(caret)) event.preventDefault();
+  }
+
   function chooseSheet(nextSheetId: DocumentId) {
+    const caret = editorSelection();
+    if (caret && editing.pickSlot(caret)) {
+      if (nextSheetId !== sheet.id) {
+        editing.showCrossSheetDraft(caret);
+        setActiveSheetId(nextSheetId);
+      }
+      return;
+    }
     if (!editing.commit()) return;
     if (nextSheetId === sheet.id) {
       worksheet.current?.focus();
@@ -127,6 +162,19 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     editing.selectionChanged();
     requestedFocus.current = true;
     setActiveSheetId(nextSheetId);
+  }
+
+  function finishEditor(target: typeof activeTarget, key?: AfterEditKey, reverse?: boolean) {
+    function finish() {
+      if (key) worksheet.current?.moveAfterEdit(target, key, !!reverse);
+      else worksheet.current?.goTo(target);
+      focusGrid();
+    }
+    if (target.sheetId === sheet.id) finish();
+    else {
+      setActiveSheetId(target.sheetId);
+      requestAnimationFrame(finish);
+    }
   }
 
   function chooseAdjacent(direction: number) {
@@ -158,12 +206,17 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (session.revision !== revision) {
       editing.selectionChanged();
       editing.clearCut();
-      editing.recalculate();
+      scheduler.current?.changed(true);
     }
     if (active && active !== sheet.id) {
       requestedFocus.current = true;
       setActiveSheetId(active);
     } else requestAnimationFrame(focusGrid);
+  }
+
+  function currentAuthoredBasis(basis: WorkbookSnapshot) {
+    requireDocument(session.isCurrentAuthored(basis), 'The workbook changed. Open the command again.');
+    return session.capture();
   }
 
   function targetHeader(axis: Axis, index: number): StructureTarget {
@@ -185,7 +238,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return [...indexes];
   }
 
-  function performStructure(action: StructureAction, target: StructureTarget, basis: WorkbookSnapshot, input?: StructureInput) {
+  function performStructure(action: StructureAction, target: StructureTarget, captured: WorkbookSnapshot, input?: StructureInput) {
+    const basis = currentAuthoredBasis(captured);
     if (action.endsWith('-sheet')) {
       const change = action === 'insert-sheet' ? { kind: 'add', after: false } as const :
         action === 'delete-sheet' ? { kind: 'delete' } as const :
@@ -214,7 +268,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       for (let index = Math.min(...indexes) - 1; hidden.has(index); index--) indexes.push(index);
       for (let index = Math.max(...indexes) + 1; hidden.has(index); index++) indexes.push(index);
     }
-    const patches = action.startsWith('fit-') ? fitDimensions(source, axis, indexes) : indexes.map(index => ({
+    const patches = action.startsWith('fit-') ? fitDimensions(source, axis, indexes, view.showFormulas, separator) : indexes.map(index => ({
       index, ...(action.startsWith('size-') ? { size: input!.size } : { hidden: action.startsWith('hide-') }),
     }));
     applyStructure(basis, changeDimensions(basis, target.id, axis, patches));
@@ -241,8 +295,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     setRename(undefined);
     if (value === undefined) { requestAnimationFrame(focusGrid); return; }
     try {
-      const next = changeSheet(rename.basis, rename.id, { kind: 'rename', name: value }, makeId);
-      applyStructure(rename.basis, next.command, next.active);
+      const basis = currentAuthoredBasis(rename.basis);
+      const next = changeSheet(basis, rename.id, { kind: 'rename', name: value }, makeId);
+      applyStructure(basis, next.command, next.active);
     } catch (error) { editing.reject(error); requestAnimationFrame(focusGrid); }
   }
 
@@ -311,29 +366,38 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function editorProps(surface: EditSurface): CellEditorProps {
-    const cell = findCell(sheet, editing.draft?.target ?? selection.anchor);
+    const cell = editing.draft ? editing.draft.original : findCell(sheet, selection.anchor);
     return {
       surface,
       active: editing.draft?.surface === surface,
-      value: editing.draft?.text ?? entryText(cell),
+      value: editing.draft?.text ?? editing.editorText(cell),
       label: surface === 'inline' ? 'Edit ' + address(editing.draft!.target) : 'Formula bar',
       onStart: () => editing.begin(activeTarget, surface),
       onChange: editing.update,
       onCommit: (key, reverse) => {
         const target = editing.draft?.target ?? activeTarget;
-        if (!editing.commit()) return;
-        if (key) worksheet.current?.moveAfterEdit(target, key, !!reverse);
-        focusGrid();
+        if (editing.commit()) finishEditor(target, key, reverse);
       },
-      onBlur: () => { editing.commit(); },
-      onCancel: editing.cancel,
+      onBlur: () => editing.blur(surface),
+      onCancel: () => {
+        const target = editing.draft?.target ?? activeTarget;
+        editing.cancel();
+        if (target.sheetId !== sheet.id) finishEditor(target);
+      },
       onComposition: editing.compose,
       isComposing: editing.composing,
       direct: surface === 'inline' && !!editing.draft?.direct,
+      functionDraft: editing.draft?.surface === surface && editing.draft.functionDraft,
+      ...(editing.draft?.surface === surface && editing.draft.selectText && { selectText: editing.draft.selectText }),
+      separator,
       textFormat: cell?.style?.numberFormat === '@',
       onKeepCaret: editing.keepCaret,
     };
   }
+
+  const calculationMessage = calculation.error ??
+    (calculation.pending ? calculation.pending === 'observe' ? 'Checking calculation status…' : 'Calculating…' :
+      calculation.stale.size ? 'Calculation needed' : '');
 
   return (
     <div className="app-shell" ref={root}>
@@ -350,7 +414,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         <span className="product-title">ExcelLight Web</span>
       </header>
 
-      <Ribbon view={view} onView={onView} onEdit={run} onStructure={openStructure} onZoomToSelection={() => {
+      <Ribbon view={view} onView={onView} onEdit={run} onStructure={openStructure}
+        calculationMode={calculation.mode} onCalculationMode={mode => {
+          if (editing.commit()) scheduler.current?.setMode(mode);
+        }} onCalculate={scope => {
+          if (editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
+        }} onInsertFunction={name => {
+          if (editing.commit()) editing.begin(activeTarget, view.formulaBar ? 'formula' : 'inline', '=' + name + '()', true);
+        }} onZoomToSelection={() => {
         if (!editing.commit()) return;
         const zoom = worksheet.current?.zoomToSelection();
         if (zoom !== undefined) onView({ zoom });
@@ -358,7 +429,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }} />
 
       <main className="workbook" aria-label="Workbook">
-        {view.formulaBar && <div className="formula-bar">
+        {(view.formulaBar || editing.draft?.surface === 'formula') && <div className="formula-bar">
           <NameBox selection={selection} goTo={goTo} cancel={() => worksheet.current?.focus()} />
           <span className="formula-symbol" aria-hidden="true">ƒx</span>
           <CellEditor {...editorProps('formula')} />
@@ -370,26 +441,35 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             requestedFocus.current = false;
           }
         }} sheet={sheet} selection={selection} onSelection={setSelection} onAdjacentSheet={chooseAdjacent}
+          referenceArea={editing.draft?.pick?.sheetId === sheet.id ? editing.draft.pick.area : undefined}
+          onReferencePick={() => {
+            const caret = editorSelection();
+            return caret && editing.beginReferencePick(caret, sheet);
+          }}
           onEdit={beginInline} onShortcut={shortcut} onClipboard={clipboardEvent}
           onStructureMenu={openGridMenu}
           onHeaderFit={(axis, index) => openStructure(`fit-${axis}`, targetHeader(axis, index))}
           onHeaderResize={(axis, index) => {
             if (!editing.commit()) return;
-            const basis = session.capture();
+            const captured = session.capture();
             const indexes = indexesFor(targetHeader(axis, index), axis);
             return size => {
-              try { applyStructure(basis, changeDimensions(basis, sheet.id, axis, indexes.map(index => ({ index, size })))); }
+              try {
+                const basis = currentAuthoredBasis(captured);
+                applyStructure(basis, changeDimensions(basis, sheet.id, axis, indexes.map(index => ({ index, size }))));
+              }
               catch (error) { editing.reject(error); }
             };
           }}
           editor={editing.draft?.surface === 'inline' ? { at: editing.draft.target, input: <CellEditor {...editorProps('inline')} /> } : undefined}
-          zoom={view.zoom} headings={view.headings} gridlines={view.gridlines} />
+          zoom={view.zoom} headings={view.headings} gridlines={view.gridlines} showFormulas={view.showFormulas}
+          staleCells={calculation.stale} separator={separator} />
         <nav className="sheet-strip" aria-label="Worksheets">
           <div className="sheet-navigation">
             <button type="button" className="icon-button" aria-label="Previous sheet" disabled={sheetIndex === 0}
-              onClick={() => chooseAdjacent(-1)}><ShellIcon icon="previous" /></button>
+              onMouseDown={keepEditorOnSheetClick} onClick={() => chooseAdjacent(-1)}><ShellIcon icon="previous" /></button>
             <button type="button" className="icon-button" aria-label="Next sheet" disabled={sheetIndex === sheets.length - 1}
-              onClick={() => chooseAdjacent(1)}><ShellIcon icon="next" /></button>
+              onMouseDown={keepEditorOnSheetClick} onClick={() => chooseAdjacent(1)}><ShellIcon icon="next" /></button>
           </div>
           <div className="sheet-tabs">
             {sheets.map(item => rename?.id === item.id
@@ -403,7 +483,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
                   }
                 }} />
               : <button type="button" key={item.id} aria-current={item.id === sheet.id ? 'true' : undefined}
-                onClick={() => chooseSheet(item.id)} onDoubleClick={() => openStructure('rename-sheet', { id: item.id, ranges: [] })}
+                onMouseDown={keepEditorOnSheetClick} onClick={() => chooseSheet(item.id)}
+                onDoubleClick={() => openStructure('rename-sheet', { id: item.id, ranges: [] })}
                 onContextMenu={event => {
                   event.preventDefault();
                   if (editing.commit()) setMenu({ x: event.clientX, y: event.clientY, target: { id: item.id, ranges: [] },
@@ -430,8 +511,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       </main>
 
       <footer className="status-bar" aria-label="Worksheet status">
-        <span className={editing.status ? 'edit-status' : 'ready'} role="status">{editing.status || 'Ready'}</span>
-        {!editing.status && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
+        <span className={editing.status || calculationMessage ? 'edit-status' : 'ready'} role="status">
+          {[editing.status, calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
+        </span>
+        {!editing.status && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
         <output className="selection-stats" aria-label="Selection statistics" aria-live="off">
           <span>Sum: {statisticsFormat.format(stats.sum)}</span>
           <span>Average: {stats.average === undefined ? '—' : statisticsFormat.format(stats.average)}</span>

@@ -148,6 +148,7 @@ test('invalid draft blocks selection and commands, and a valid blur commits to t
   const grid = await go(page, 'B2');
   const formula = page.getByRole('textbox', { name: 'Formula bar' });
   await formula.fill('=');
+  await formula.press('Home');
   const { x, y } = (await grid.boundingBox())!;
   await page.mouse.click(x + 50, y + 38);
   await expect(formula).toBeFocused();

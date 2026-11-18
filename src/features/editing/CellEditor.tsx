@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
+import type { TextSelection } from '../formulas/reference-pick';
 import { formulaHint } from './formula-hints';
 import type { AfterEditKey, EditSurface } from './useWorksheetEditing';
 
@@ -16,6 +17,9 @@ export interface CellEditorProps {
   readonly onComposition: (active: boolean) => void;
   readonly isComposing: () => boolean;
   readonly direct: boolean;
+  readonly functionDraft?: boolean;
+  readonly selectText?: TextSelection;
+  readonly separator: ',' | ';';
   readonly textFormat: boolean;
   readonly onKeepCaret: () => void;
 }
@@ -25,15 +29,24 @@ export function CellEditor(props: CellEditorProps) {
   const tip = useRef<HTMLDivElement>(null);
   const tipId = useId();
   const [caret, setCaret] = useState<number | null>(null);
-  const hint = props.active && caret !== null && !props.textFormat ? formulaHint(props.value, caret) : undefined;
+  const hint = props.active && caret !== null && !props.textFormat ? formulaHint(props.value, caret, props.separator) : undefined;
 
   useLayoutEffect(() => {
-    if (props.surface !== 'inline') return;
+    if (props.surface !== 'inline' && !props.functionDraft) return;
     const input = node.current!;
     input.focus({ preventScroll: true });
-    input.setSelectionRange(input.value.length, input.value.length);
+    const position = input.value.length - (props.functionDraft ? 1 : 0);
+    input.setSelectionRange(position, position);
     setCaret(input.selectionStart);
-  }, [props.surface]);
+  }, [props.surface, props.functionDraft]);
+
+  useLayoutEffect(() => {
+    if (!props.selectText) return;
+    const input = node.current!;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(props.selectText.start, props.selectText.end);
+    setCaret(props.selectText.start);
+  }, [props.selectText]);
 
   useLayoutEffect(() => {
     if (!hint) return;
@@ -112,10 +125,10 @@ export function CellEditor(props: CellEditorProps) {
       <div ref={tip} id={tipId} role="tooltip" className="formula-hint">
         {hint.name}(
         {hint.parameters.map((parameter, index) => <span key={parameter}>
-          {index > 0 && ', '}
+          {index > 0 && props.separator + ' '}
           {index === hint.active ? <strong>{parameter}</strong> : parameter}
         </span>)}
-        {hint.variadic && ', …'})
+        {hint.variadic && props.separator + ' …'})
       </div>,
       document.body,
     )}

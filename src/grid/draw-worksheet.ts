@@ -19,6 +19,10 @@ interface GridFrame {
   readonly scale: number;
   readonly headings: boolean;
   readonly gridlines: boolean;
+  readonly showFormulas: boolean;
+  readonly staleCells: ReadonlySet<string>;
+  readonly separator: ',' | ';';
+  readonly referenceArea?: Area | undefined;
 }
 
 export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void {
@@ -73,9 +77,9 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
         context.fillStyle = tint;
         context.fillRect(cellX, cellY, column.size, row.size);
       }
-      const label = cellDisplay(cell);
-      if (!label || !cell) continue;
-      const value = cell.cache ?? cell.content;
+      if (!cell) continue;
+      const label = cellDisplay(cell, frame.showFormulas, frame.separator);
+      const value = frame.showFormulas ? cell.content : cell.cache ?? cell.content;
       context.save();
       context.beginPath();
       context.rect(cellX, cellY, column.size, row.size);
@@ -86,6 +90,15 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
         cell.style?.textRgb ? '#' + cell.style.textRgb : cell.style?.fillRgb === 'FFFFFF' ? '#1b1b1b' : textColor;
       context.fillText(label, context.textAlign === 'right' ? cellX + column.size - 5 * scale : cellX + 5 * scale,
         cellY + row.size / 2);
+      if (frame.staleCells.has(cell.id)) {
+        context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');
+        context.lineWidth = 1;
+        context.setLineDash([3, 2]);
+        context.beginPath();
+        context.moveTo(cellX + 2, cellY + row.size - 3);
+        context.lineTo(cellX + column.size - 2, cellY + row.size - 3);
+        context.stroke();
+      }
       context.restore();
     }
   }
@@ -95,14 +108,13 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     for (const row of rows) context.fillRect(left, line(y(row) + row.size), width - left, 1 / ratio);
     for (const column of columns) context.fillRect(line(x(column) + column.size), top, 1 / ratio, height - top);
   }
-  context.strokeStyle = accent;
-  for (const area of areas) {
+  const outline = (area: Area) => {
     const firstRow = rows.find(row => row.index >= area.top);
     const lastRow = lastTrack(rows, area.bottom);
     const firstColumn = columns.find(column => column.index >= area.left);
     const lastColumn = lastTrack(columns, area.right);
     if (!(firstRow && lastRow && firstColumn && lastColumn) ||
-        firstRow.index > lastRow.index || firstColumn.index > lastColumn.index) continue;
+        firstRow.index > lastRow.index || firstColumn.index > lastColumn.index) return;
     const leftEdge = x(firstColumn), rightEdge = x(lastColumn) + lastColumn.size;
     const topEdge = y(firstRow), bottomEdge = y(lastRow) + lastRow.size;
     context.lineWidth = 1 / ratio;
@@ -112,12 +124,19 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     if (firstColumn.index === area.left) { context.moveTo(leftEdge, topEdge); context.lineTo(leftEdge, bottomEdge); }
     if (lastColumn.index === area.right) { context.moveTo(rightEdge, topEdge); context.lineTo(rightEdge, bottomEdge); }
     context.stroke();
-  }
+  };
+  context.strokeStyle = accent;
+  for (const area of areas) outline(area);
   const activeRow = rows.find(row => row.index === selection.anchor.row);
   const activeColumn = columns.find(column => column.index === selection.anchor.column);
   if (activeRow && activeColumn) {
     context.lineWidth = 2;
     context.strokeRect(x(activeColumn) + 1, y(activeRow) + 1, Math.max(0, activeColumn.size - 2), Math.max(0, activeRow.size - 2));
+  }
+  if (frame.referenceArea) {
+    context.strokeStyle = forced ? 'CanvasText' : token('--formula-reference');
+    context.setLineDash([4 * scale, 2 * scale]);
+    outline(frame.referenceArea);
   }
   context.restore();
 

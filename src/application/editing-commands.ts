@@ -13,7 +13,7 @@ export type Aggregate = 'SUM' | 'AVERAGE' | 'COUNT' | 'MAX' | 'MIN';
 export interface EditRange extends CellExtent { readonly sheetId: string }
 export interface ClipboardBlock {
   readonly sessionId: string;
-  readonly revision: number;
+  readonly authoredRevision: number;
   readonly range: EditRange;
   readonly cells: readonly (CellDocument | null)[];
   readonly merges: readonly CellExtent[];
@@ -68,7 +68,7 @@ function checkedSheet(basis: WorkbookSnapshot, range: EditRange): SheetDocument 
 function point(sheetId: string, row: number, column: number): CellReference { return { sheetId, row, column }; }
 function command(label: string, edits: readonly CellEdit[]): SetCellsCommand { return { kind: 'set-cells', edits, label }; }
 
-function expandMerges(range: EditRange, sheet: SheetDocument): EditRange {
+export function expandMerges(range: EditRange, sheet: SheetDocument): EditRange {
   let expanded = box(range);
   for (;;) {
     const previous = expanded;
@@ -94,7 +94,7 @@ export function captureClipboard(basis: WorkbookSnapshot, selection: EditRange, 
       cells.push(cell ?? null);
     }
   }
-  return ownDto({ sessionId: basis.sessionId, revision: basis.revision, range, cells, cut,
+  return ownDto({ sessionId: basis.sessionId, authoredRevision: basis.authoredRevision, range, cells, cut,
     merges: sheet.merges.filter(merge => intersection(box(merge), box(range))) });
 }
 
@@ -207,7 +207,7 @@ function transferredCell(original: CellDocument | null, target: CellReference, m
 
 export function pasteBlock(basis: WorkbookSnapshot, target: EditRange, block: ClipboardBlock, mode: PasteMode): SetCellsCommand {
   requireDocument(basis.sessionId === block.sessionId, 'The internal clipboard belongs to another workbook session.');
-  requireDocument(!block.cut || mode === 'all' && block.revision === basis.revision,
+  requireDocument(!block.cut || mode === 'all' && block.authoredRevision === basis.authoredRevision,
     'Cut source changed or paste mode is not All. Cut the selection again.');
   const { sheet, range, scalarInMerge } = destination(basis, target, block.range.rows, block.range.columns);
   const sourceSheet = checkedSheet(basis, block.range);

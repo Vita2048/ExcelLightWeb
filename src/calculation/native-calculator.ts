@@ -1,6 +1,6 @@
 import type { CacheUpdate } from '../application/workbook-protocol';
 import { parseFormula, referenceBox, UnsupportedFormulaReference, type FormulaExpression, type FormulaReference } from '../core/formula-references';
-import { cellKey, documentLimits, findCell, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
+import { cellKey, documentLimits, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
 import { ordinalNameKey } from '../core/workbook-validation';
 import { todaySerial } from './formula-dates';
 import { evaluateFunction, sumIfRange, supportedFunctions } from './formula-functions';
@@ -8,11 +8,14 @@ import { compare, error, finite, formulaNodes, isArray, isError, isRange, matche
   type FormulaArray, type FormulaError, type FormulaValue, type Range, type Scalar } from './formula-values';
 
 interface FormulaNode {
-  readonly cell: CellDocument;
+  readonly id: string;
   readonly target: CellReference;
   readonly expression?: FormulaExpression;
+  readonly ranges: readonly Range[];
   readonly inputs: FormulaNode[];
+  readonly dependents: FormulaNode[];
   readonly containsSubtotal: boolean;
+  readonly volatile: boolean;
   readonly diagnostic?: 'malformed' | 'unsupported';
 }
 export interface NativeCalculation {
@@ -34,7 +37,7 @@ function baseValue(cell: CellDocument | undefined): Scalar {
   return cell.content.value;
 }
 
-function* cellsIn<T extends { row: number; column: number }>(cells: readonly T[], range: Range): Iterable<T> {
+export function* cellsIn<T extends { row: number; column: number }>(cells: readonly T[], range: Range): IterableIterator<T> {
   let low = 0, high = cells.length;
   while (low < high) {
     const mid = (low + high) >>> 1;
@@ -99,13 +102,13 @@ function evaluationOrder(nodes: Iterable<FormulaNode>) {
   return { order, cycles };
 }
 
-function filterVisibility(sheet: SheetDocument, display: (cell: CellDocument | undefined) => string) {
+function filterVisibility(sheet: SheetDocument, display: (row: number, column: number) => string) {
   const filter = sheet.filter;
   const hidden = new Set<number>();
   if (!filter?.criteria.length) return hidden;
   const rules = filter.criteria.map(criterion => ({ column: criterion.column, allowed: new Set(criterion.allowed) }));
   for (let row = filter.row + 1; row < filter.row + filter.rows; row++) {
-    if (rules.some(rule => !rule.allowed.has(display(findCell(sheet, { row, column: rule.column }))))) hidden.add(row);
+    if (rules.some(rule => !rule.allowed.has(display(row, rule.column)))) hidden.add(row);
   }
   return hidden;
 }
@@ -123,44 +126,38 @@ export interface CalculationOptions {
   readonly filterText?: (cell: CellDocument | undefined) => string;
 }
 
-export function calculateNative(document: WorkbookDocument, options: CalculationOptions = {}): NativeCalculation {
-  const today = todaySerial(options.clock?.() ?? new Date());
-  const numberFormat = new Intl.NumberFormat(options.locale);
-  const locale = numberFormat.resolvedOptions().locale;
-  const parts = numberFormat.formatToParts(12345.6);
-  const decimal = parts.find(part => part.type === 'decimal')?.value;
-  const group = parts.find(part => part.type === 'group')?.value;
-  const number = (value: Scalar) => numberValue(value, decimal, group);
-  const text = (value: Exclude<Scalar, FormulaError>) => textValue(value, decimal);
+export function prepareNativeGraph(document: WorkbookDocument) {
   const sheets = new Map(document.sheets.map(sheet => [ordinalNameKey(sheet.name), sheet]));
-  const sorted = new Map(document.sheets.map(sheet => [sheet, [...sheet.cells].sort((a, b) => cellKey(a) - cellKey(b))]));
-  const formulas = new Map(document.sheets.map(sheet => [sheet, sorted.get(sheet)!.filter(cell => cell.content.kind === 'formula')]));
-  const nodes = new Map<CellDocument, FormulaNode>();
-  const resolvedInputs = new Map<CellDocument, readonly Range[]>();
+  const formulas = new Map(document.sheets.map(sheet => [sheet.id, sheet.cells.filter(cell => cell.content.kind === 'formula')
+    .sort((a, b) => cellKey(a) - cellKey(b))]));
+  const nodes = new Map<string, FormulaNode>();
   const resolvedReferences = new Map<FormulaReference, Range>();
   function resolve(sheet: SheetDocument, ref: FormulaReference): Range | undefined {
     const target = ref.sheet === undefined ? sheet : sheets.get(ordinalNameKey(ref.sheet));
     const bounds = referenceBox(ref);
     if (!target || bounds.bottom > documentLimits.rows || bounds.right > documentLimits.columns) return;
-    return { sheet: target, ...bounds };
+    return { sheetId: target.id, ...bounds };
   }
-  for (const [sheet, cells] of formulas) for (const cell of cells) {
+  for (const sheet of document.sheets) for (const cell of formulas.get(sheet.id)!) {
     if (cell.content.kind !== 'formula') continue;
     const target = address(sheet, cell);
+    const base = { id: cell.id, target, inputs: [], dependents: [] };
     let parsed: ReturnType<typeof parseFormula>;
     try { parsed = parseFormula(cell.content.source); }
     catch (exception) {
-      nodes.set(cell, { cell, target, inputs: [], containsSubtotal: false,
+      nodes.set(cell.id, { ...base, ranges: [], containsSubtotal: false, volatile: false,
         diagnostic: cell.requiresExternalCalculation || exception instanceof UnsupportedFormulaReference ? 'unsupported' : 'malformed' });
       continue;
     }
     let containsSubtotal = false;
+    let volatile = false;
     let unsupported = !!cell.requiresExternalCalculation;
     for (const node of formulaNodes(parsed.expression)) {
       if (node.kind === 'name') unsupported = true;
       if (node.kind === 'call') {
         if (!supportedFunctions.has(node.name)) unsupported = true;
         if (node.name === 'SUBTOTAL') containsSubtotal = true;
+        if (node.name === 'TODAY') volatile = true;
       }
     }
     const ranges = parsed.references.flatMap(ref => {
@@ -185,35 +182,69 @@ export function calculateNative(document: WorkbookDocument, options: Calculation
         if (expanded) ranges.push(expanded);
       }
     }
-    resolvedInputs.set(cell, ranges);
-    nodes.set(cell, { cell, target, expression: parsed.expression, containsSubtotal, inputs: [],
+    nodes.set(cell.id, { ...base, expression: parsed.expression, ranges, containsSubtotal, volatile,
       ...(unsupported && { diagnostic: 'unsupported' as const }) });
   }
   const dependencies = new Map<string, readonly CellReference[]>();
-  for (const [cell, node] of nodes) {
+  for (const [id, node] of nodes) {
     const inputs = new Set<FormulaNode>();
-    for (const range of resolvedInputs.get(cell) ?? []) {
-      for (const other of cellsIn(formulas.get(range.sheet)!, range)) inputs.add(nodes.get(other)!);
+    for (const range of node.ranges) {
+      for (const other of cellsIn(formulas.get(range.sheetId)!, range)) inputs.add(nodes.get(other.id)!);
     }
     const list = [...inputs];
     node.inputs.push(...list);
-    dependencies.set(cell.id, list.map(input => input.target));
+    for (const input of list) input.dependents.push(node);
+    dependencies.set(id, list.map(input => input.target));
   }
-  const { order, cycles } = evaluationOrder(nodes.values());
+  return { nodes, resolvedReferences, dependencies, ...evaluationOrder(nodes.values()) };
+}
+
+export function indexNativeInputs(document: WorkbookDocument) {
+  return new Map(document.sheets.map(sheet => [sheet.id, {
+    sheet, cells: new Map(sheet.cells.map(cell => [cellKey(cell), cell])),
+  }]));
+}
+
+export function calculateNative(document: WorkbookDocument, options: CalculationOptions = {}): NativeCalculation {
+  return evaluateNative(indexNativeInputs(document), prepareNativeGraph(document), undefined, options);
+}
+
+export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, graph: ReturnType<typeof prepareNativeGraph>,
+  selected: ReadonlySet<FormulaNode> | undefined, options: CalculationOptions): NativeCalculation {
+  const today = todaySerial(options.clock?.() ?? new Date());
+  const numberFormat = new Intl.NumberFormat(options.locale);
+  const locale = numberFormat.resolvedOptions().locale;
+  const parts = numberFormat.formatToParts(12345.6);
+  const decimal = parts.find(part => part.type === 'decimal')?.value;
+  const group = parts.find(part => part.type === 'group')?.value;
+  const number = (value: Scalar) => numberValue(value, decimal, group);
+  const text = (value: Exclude<Scalar, FormulaError>) => textValue(value, decimal);
+  const { nodes, resolvedReferences, order, cycles, dependencies } = graph;
+  const sorted = new Map<string, CellDocument[]>();
   const evaluated = new Map<CellDocument, Scalar>();
   const diagnostics = new Map<string, string>();
   const filtered = new Map<SheetDocument, ReadonlySet<number>>();
   const manual = new Map<SheetDocument, ReadonlySet<number>>();
 
   function computedValue(cell: CellDocument | undefined): Scalar {
-    return cell?.content.kind === 'formula' ? evaluated.get(cell) ?? null : baseValue(cell);
+    if (cell?.requiresExternalCalculation) return error('#NAME?');
+    return (cell && evaluated.get(cell)) ?? baseValue(cell);
   }
   function read(range: Range, row: number, column: number): Scalar {
-    return computedValue(findCell(range.sheet, { row, column }));
+    return computedValue(inputs.get(range.sheetId)!.cells.get(cellKey({ row, column })));
+  }
+
+  function rangeCells(range: Range) {
+    let cells = sorted.get(range.sheetId);
+    if (!cells) {
+      cells = [...inputs.get(range.sheetId)!.cells.values()].sort((a, b) => cellKey(a) - cellKey(b));
+      sorted.set(range.sheetId, cells);
+    }
+    return cellsIn(cells, range);
   }
 
   function* entries(range: Range) {
-    for (const cell of cellsIn(sorted.get(range.sheet)!, range)) {
+    for (const cell of rangeCells(range)) {
       yield { row: cell.row, column: cell.column, value: computedValue(cell) };
     }
   }
@@ -230,23 +261,26 @@ export function calculateNative(document: WorkbookDocument, options: Calculation
   function* values(range: Range, subtotal?: { skipHidden: boolean }): Iterable<Scalar> {
     let excluded: ReadonlySet<number> | undefined, hidden: ReadonlySet<number> | undefined;
     if (subtotal) {
-      const sheet = range.sheet;
-      if (!filtered.has(sheet)) filtered.set(sheet, filterVisibility(sheet, options.filterText ?? defaultFilterText));
+      const { sheet, cells } = inputs.get(range.sheetId)!;
+      if (!filtered.has(sheet)) filtered.set(sheet, filterVisibility(sheet, (row, column) =>
+        (options.filterText ?? defaultFilterText)(cells.get(cellKey({ row, column })))));
       excluded = filtered.get(sheet);
       if (subtotal.skipHidden) {
         if (!manual.has(sheet)) manual.set(sheet, new Set(sheet.rows.filter(row => row.hidden).map(row => row.index)));
         hidden = manual.get(sheet);
       }
     }
-    for (const cell of cellsIn(sorted.get(range.sheet)!, range)) {
-      if (subtotal && (excluded?.has(cell.row) || hidden?.has(cell.row) || nodes.get(cell)?.containsSubtotal)) continue;
+    for (const cell of rangeCells(range)) {
+      if (subtotal && (excluded?.has(cell.row) || hidden?.has(cell.row) || nodes.get(cell.id)?.containsSubtotal)) continue;
       yield computedValue(cell);
     }
   }
 
   const updates: CacheUpdate[] = [];
   for (const node of order) {
-    const { cell, expression, diagnostic } = node;
+    if (selected && !selected.has(node)) continue;
+    const { target, expression, diagnostic } = node;
+    const cell = inputs.get(target.sheetId)!.cells.get(cellKey(target))!;
     let value: Scalar;
     if (diagnostic === 'unsupported') {
       diagnostics.set(cell.id, 'Unsupported function or reference');

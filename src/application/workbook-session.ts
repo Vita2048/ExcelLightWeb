@@ -117,6 +117,10 @@ export class WorkbookSession {
     return matchesBasis(basis, this.#active);
   }
 
+  isCurrentAuthored(basis: WorkbookSnapshot): boolean {
+    return basis.sessionId === this.sessionId && basis.authoredRevision === this.#active.authoredRevision;
+  }
+
   adopt(document: WorkbookDocument, saved = true): void {
     const owned = ownDto(document);
     validateWorkbook(owned);
@@ -202,8 +206,9 @@ export class WorkbookSession {
   beginNativeCalculation(runtimeFingerprint: string): NativeCalculationRequest {
     requireDocument(typeof runtimeFingerprint === 'string' && runtimeFingerprint.length > 0 &&
       runtimeFingerprint.length <= 128, 'Invalid calculation runtime fingerprint.');
+    const { authoredRevision: _authoredRevision, ...basis } = this.#active;
     const request = ownDto<NativeCalculationRequest>({
-      ...this.#active, kind: 'calculate-native', protocolVersion: workbookProtocolVersion,
+      ...basis, kind: 'calculate-native', protocolVersion: workbookProtocolVersion,
       requestId: String(++this.#requestSerial), runtimeFingerprint,
     });
     this.#nativeRequest = request;
@@ -237,7 +242,7 @@ export class WorkbookSession {
       changes.push({ target, after: cache === undefined ? rest : { ...rest, cache } });
     }
     const candidate = applyCellChanges(this.active, changes);
-    if (candidate !== this.active) this.#advance(candidate, this.sourceFingerprint, this.isDirty);
+    if (candidate !== this.active) this.#advance(candidate, this.sourceFingerprint, this.isDirty, false);
     this.#nativeRequest = undefined;
     return true;
   }
@@ -246,7 +251,7 @@ export class WorkbookSession {
     const sessionId = this.#makeId();
     validateId(sessionId);
     requireDocument(sessionId !== this.#active?.sessionId, 'A new workbook session needs a fresh identity.');
-    return ownDto({ document, sessionId, revision, generation, sourceFingerprint: `${sessionId}:${revision}` });
+    return ownDto({ document, sessionId, revision, generation, authoredRevision: revision, sourceFingerprint: `${sessionId}:${revision}` });
   }
 
   #nextIdentity(document: WorkbookDocument): string {
@@ -259,10 +264,11 @@ export class WorkbookSession {
       !sameAuthoredWorkbook(document, this.#saved.document);
   }
 
-  #advance(document: WorkbookDocument, sourceFingerprint: string, dirty: boolean): void {
+  #advance(document: WorkbookDocument, sourceFingerprint: string, dirty: boolean, authored = true): void {
     this.#active = ownDto({
       document, sessionId: this.sessionId, revision: this.revision + 1,
       generation: this.#active.generation + 1, sourceFingerprint,
+      authoredRevision: authored ? this.revision + 1 : this.#active.authoredRevision,
     });
     this.#dirty = dirty;
     this.#nativeRequest = undefined;

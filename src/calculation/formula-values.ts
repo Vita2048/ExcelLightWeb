@@ -1,10 +1,10 @@
 import type { FormulaExpression } from '../core/formula-references';
-import { documentLimits, type CellCache, type SheetDocument } from '../core/workbook';
+import { documentLimits, type CellCache } from '../core/workbook';
 
 export type FormulaError = Extract<CellCache, { kind: 'error' }>;
 export type Scalar = number | string | boolean | null | FormulaError;
 export interface Range {
-  readonly sheet: SheetDocument;
+  readonly sheetId: string;
   readonly top: number;
   readonly left: number;
   readonly bottom: number;

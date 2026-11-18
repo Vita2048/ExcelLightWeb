@@ -8,6 +8,8 @@ The app uses relative asset URLs (`base: './'`), so both `https://OWNER.github.i
 
 Workers use `new Worker(new URL(..., import.meta.url), { type: 'module' })`; runtime assets resolve against the configured build base; service worker registration uses the app base and scope. Never hardcode `/assets`, `/runtime` or a localhost API. No SharedArrayBuffer or custom COOP/COEP headers are required by this design. Stop uses worker termination.
 
+The S09 production browser suite loads the native calculation worker from the built assets at the repository subpath. Vite packages it with the worksheet. Native calculation needs no separate runtime asset staging.
+
 ## First publication (user-managed Git)
 
 1. Create a GitHub repository with a main branch and add this directory's contents, including package-lock.json, docs and .github workflows. Do not add node_modules, dist, private workbooks or generated runtime downloads. This task has not created a repository, committed or pushed anything.

@@ -11,6 +11,7 @@ export interface SnapshotBasis {
 }
 
 export interface WorkbookSnapshot extends SnapshotBasis {
+  readonly authoredRevision: number;
   readonly document: WorkbookDocument;
 }
 
@@ -34,4 +35,16 @@ export interface CacheUpdate {
 export interface NativeCalculationReply extends WorkerBasis {
   readonly kind: 'native-calculated';
   readonly updates: readonly CacheUpdate[];
+}
+
+export type NativeCalculationScope = 'automatic' | 'observe' | 'workbook' | { readonly sheetId: string };
+
+export interface NativeWorkerRequest extends NativeCalculationRequest {
+  readonly scope: NativeCalculationScope;
+  readonly acceptedRequestId?: string;
+  readonly locale: string;
+}
+
+export interface NativeWorkerReply extends NativeCalculationReply {
+  readonly staleCellIds: readonly string[];
 }

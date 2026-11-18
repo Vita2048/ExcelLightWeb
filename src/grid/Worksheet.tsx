@@ -10,8 +10,8 @@ import selectColumnCursor from './cursors/select-column.svg';
 import selectRowCursor from './cursors/select-row.svg';
 import { address, clamp, GridAxis, gridMetrics } from './grid-geometry';
 import {
-  cellDisplay, includes, navigate, select, selectionAreas, singleSelection,
-  type AreaKind, type GridSelection,
+  cellDisplay, includes, navigate, primaryArea, select, selectionAreas, singleSelection,
+  type Area, type AreaKind, type GridSelection,
 } from './grid-selection';
 
 export interface WorksheetHandle {
@@ -25,6 +25,8 @@ interface WorksheetProps {
   readonly sheet: SheetDocument;
   readonly selection: GridSelection;
   readonly onSelection: (selection: GridSelection) => boolean;
+  readonly onReferencePick: () => ReferenceDrag | undefined;
+  readonly referenceArea?: Area | undefined;
   readonly onAdjacentSheet: (direction: number) => void;
   readonly onEdit: (replacement?: string) => void;
   readonly onShortcut: (event: KeyboardEvent<HTMLDivElement>) => boolean;
@@ -36,6 +38,9 @@ interface WorksheetProps {
   readonly zoom: number;
   readonly headings: boolean;
   readonly gridlines: boolean;
+  readonly showFormulas: boolean;
+  readonly staleCells: ReadonlySet<string>;
+  readonly separator: ',' | ';';
   readonly ref: Ref<WorksheetHandle>;
 }
 
@@ -45,12 +50,18 @@ interface Drag {
   selection: GridSelection;
   x: number;
   y: number;
+  readonly reference?: ReferenceDrag;
+}
+
+interface ReferenceDrag {
+  readonly update: (area: Area) => void;
+  readonly cancel: () => void;
 }
 
 const initialViewport: GridViewport = { x: 0, y: 0, width: 0, height: 0 };
 
 export function Worksheet(props: WorksheetProps) {
-  const { sheet, selection, onSelection, onAdjacentSheet, zoom, headings, gridlines } = props;
+  const { sheet, selection, onSelection, onAdjacentSheet, zoom, headings, gridlines, showFormulas, staleCells, separator } = props;
   const scroll = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -150,8 +161,10 @@ export function Worksheet(props: WorksheetProps) {
   useLayoutEffect(() => {
     drawWorksheet(canvas.current!, {
       sheet, view, rows: rowTracks, columns: columnTracks, selection, areas, scale, headings, gridlines,
+      showFormulas, staleCells, separator, referenceArea: props.referenceArea,
     });
-  }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, palette]);
+  }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells,
+    separator, props.referenceArea, palette]);
 
   function alignTo(point: Coordinate) {
     const node = scroll.current!;
@@ -200,7 +213,8 @@ export function Worksheet(props: WorksheetProps) {
     const point = pointAt(x, y, active.kind, true);
     if (point && (point.row !== active.selection.end.row || point.column !== active.selection.end.column)) {
       active.selection = select(active.selection, point, active.kind, true);
-      onSelection(active.selection);
+      if (active.reference) active.reference.update(primaryArea(active.selection));
+      else onSelection(active.selection);
     }
     if ((xOverflow !== 0 || yOverflow !== 0) && drag.current) frame.current = requestAnimationFrame(moveDrag);
   }
@@ -225,6 +239,15 @@ export function Worksheet(props: WorksheetProps) {
     const kind: AreaKind = y < top ? x < left ? 'sheet' : 'columns' : x < left ? 'rows' : 'cells';
     const point = pointAt(x, y, kind);
     if (!point) return;
+    const reference = kind === 'cells' && event.pointerType !== 'touch' ? props.onReferencePick() : undefined;
+    if (reference) {
+      const selection = singleSelection(point);
+      event.preventDefault();
+      node.setPointerCapture(event.pointerId);
+      drag.current = { id: event.pointerId, kind, selection, x: event.clientX, y: event.clientY, reference };
+      reference.update(primaryArea(selection));
+      return;
+    }
     const additive = event.ctrlKey || event.metaKey;
     const hitSelected = additive && areas.some(area => includes(area, point));
     const next = select(selection, point, kind, event.shiftKey, additive);
@@ -269,7 +292,16 @@ export function Worksheet(props: WorksheetProps) {
       }
       return;
     }
-    if (drag.current?.id !== event.pointerId) return;
+    const active = drag.current;
+    if (active?.id !== event.pointerId) return;
+    if (active.reference) {
+      if (event.type === 'pointerup') {
+        active.x = event.clientX;
+        active.y = event.clientY;
+        cancelAnimationFrame(frame.current);
+        moveDrag();
+      } else active.reference.cancel();
+    }
     drag.current = null;
     cancelAnimationFrame(frame.current);
   }
@@ -358,7 +390,8 @@ export function Worksheet(props: WorksheetProps) {
             props.onHeaderFit(header.axis, header.track.index);
             return;
           }
-          if (x >= left && y >= top && x < node.clientWidth && y < node.clientHeight && pointAt(x, y, 'cells')) props.onEdit();
+          if (!props.referenceArea && x >= left && y >= top && x < node.clientWidth && y < node.clientHeight &&
+              pointAt(x, y, 'cells')) props.onEdit();
         }}
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
         <div aria-hidden="true" className="worksheet-spacer" style={{ width: left + columns.total, height: top + rows.total }} />
@@ -367,9 +400,11 @@ export function Worksheet(props: WorksheetProps) {
             <div key={row} role="row" aria-rowindex={row}>
               {indexes.map(column => {
                 const point = { row, column };
-                const value = cellDisplay(findCell(sheet, point));
+                const cell = findCell(sheet, point);
+                const value = cellDisplay(cell, showFormulas, separator);
                 return <div key={column} id={cellId(point)} role="gridcell" aria-colindex={column}
                   aria-selected={areas.some(area => includes(area, point))}
+                  aria-description={cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
                   aria-label={address(point) + (value ? ', ' + value : ', blank')} />;
               })}
             </div>

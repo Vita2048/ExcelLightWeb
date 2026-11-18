@@ -1,4 +1,6 @@
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
+import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 
@@ -9,6 +11,7 @@ export interface SheetView {
   readonly headings: boolean;
   readonly gridlines: boolean;
   readonly formulaBar: boolean;
+  readonly showFormulas: boolean;
   readonly zoom: number;
 }
 
@@ -18,6 +21,10 @@ interface RibbonProps {
   readonly onZoomToSelection: () => void;
   readonly onEdit: (action: EditAction) => void;
   readonly onStructure: (action: StructureAction) => void;
+  readonly calculationMode: CalculationMode;
+  readonly onCalculationMode: (mode: CalculationMode) => void;
+  readonly onCalculate: (scope: 'sheet' | 'workbook') => void;
+  readonly onInsertFunction: (name: NativeFunction) => void;
 }
 
 const unavailable: Record<'File' | 'Insert' | 'Data', string> = {
@@ -54,7 +61,8 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
   </>;
 }
 
-export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure }: RibbonProps) {
+export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure, calculationMode,
+  onCalculationMode, onCalculate, onInsertFunction }: RibbonProps) {
   const [active, setActive] = useState<Family>('Home');
   const id = useId();
   const tabs = useRef(new Map<Family, HTMLButtonElement>());
@@ -95,6 +103,8 @@ export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure }:
                 onChange={event => onView({ gridlines: event.currentTarget.checked })} /> Gridlines</label>
               <label><input type="checkbox" checked={view.headings}
                 onChange={event => onView({ headings: event.currentTarget.checked })} /> Headings</label>
+              <label><input type="checkbox" checked={view.showFormulas}
+                onChange={event => onView({ showFormulas: event.currentTarget.checked })} /> Show Formulas</label>
             </fieldset>
             <fieldset>
               <legend>Zoom</legend>
@@ -125,9 +135,34 @@ export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure }:
                 ['Clear Contents', { kind: 'clear', mode: 'contents' }],
               ]} />
             </fieldset>
-          </> : name === 'Formulas' ? <fieldset>
-            <legend>Function Library</legend><AutoSum onEdit={onEdit} />
-          </fieldset> : <p>{unavailable[name]}</p>}
+          </> : name === 'Formulas' ? <>
+            <fieldset>
+              <legend>Function Library</legend>
+              <select aria-label="Insert Function" value="" onChange={event => {
+                const selected = nativeFunctions.find(name => name === event.currentTarget.value);
+                if (selected) onInsertFunction(selected);
+              }}>
+                <option value="" disabled>Insert Function</option>
+                {nativeFunctions.map(name => <option key={name} value={name}>{name}(…)</option>)}
+              </select>
+              <AutoSum onEdit={onEdit} />
+            </fieldset>
+            <fieldset>
+              <legend>Formula Auditing</legend>
+              <button type="button" aria-pressed={view.showFormulas}
+                onClick={() => onView({ showFormulas: !view.showFormulas })}>Show Formulas</button>
+            </fieldset>
+            <fieldset>
+              <legend>Calculation</legend>
+              <select aria-label="Calculation Options" value={calculationMode}
+                onChange={event => onCalculationMode(event.currentTarget.value === 'manual' ? 'manual' : 'automatic')}>
+                <option value="automatic">Automatic</option>
+                <option value="manual">Manual</option>
+              </select>
+              <button type="button" onClick={() => onCalculate('workbook')}>Calculate Now</button>
+              <button type="button" onClick={() => onCalculate('sheet')}>Calculate Sheet</button>
+            </fieldset>
+          </> : <p>{unavailable[name]}</p>}
         </div>
       ))}
     </div>

@@ -30,6 +30,23 @@ const formula = (source: string) => ({ kind: 'formula', source }) as const;
 const blank = { kind: 'blank' } as const;
 const style = { bold: true, fillRgb: 'FFEE00' };
 
+it('keeps a pending cut valid through a cache-only commit and rejects it after an authored edit and undo', () => {
+  const { session, range, at, set, calculate, find } = workbook();
+  set({ target: at(1, 1), content: formula('=2+3') });
+  const basis = session.capture();
+  const cut = captureClipboard(basis, range(1, 1), true);
+  calculate();
+  expect(session.isCurrent(basis)).toBe(false);
+  expect(session.isCurrentAuthored(basis)).toBe(true);
+  expect(find(1, 1)?.cache).toEqual(number(5));
+  expect(() => pasteBlock(session.capture(), range(2, 1), cut, 'all')).not.toThrow();
+  set({ target: at(1, 2), content: number(7) });
+  expect(session.undo()).toBe(true);
+  expect(session.sourceFingerprint).toBe(basis.sourceFingerprint);
+  expect(session.isCurrentAuthored(basis)).toBe(false);
+  expect(() => pasteBlock(session.capture(), range(2, 1), cut, 'all')).toThrow(/Cut source changed/);
+});
+
 describe('S06 typed entry and TSV', () => {
   it('parses finite numbers, Booleans, raw formulas, text styles and deferred Python entries', () => {
     expect(parseEntry('')).toEqual(blank);

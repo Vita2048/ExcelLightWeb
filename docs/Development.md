@@ -23,7 +23,7 @@ The production browser suite verifies hosting paths, dark rendering, worksheet i
 
 `npm run typecheck` first compiles core and application with `tsconfig.model.json` using only the ECMAScript library. It then typechecks the entire project. Run the focused S04 suites with `npx vitest run tests/unit/workbook-model.test.ts tests/integration/workbook-session.test.ts`.
 
-The unit suite exercises the source limits and uses deterministic generated cell edits and reorders to verify forward and inverse deltas. The integration suite covers atomic edits, bounded history, asynchronous save completions and native cache reply guards. A Node worker thread returns a fixed test reply to exercise structured cloning and edit-before-reply ordering. S08 verifies calculation through the browser editor. S09 introduces production worker scheduling.
+The unit suite exercises the source limits and uses deterministic generated cell edits and reorders to verify forward and inverse deltas. The integration suite covers atomic edits, bounded history, asynchronous save completions and native cache reply guards. A Node worker thread returns a fixed test reply to exercise structured cloning and edit-before-reply ordering.
 
 ## Worksheet checks
 
@@ -53,6 +53,10 @@ npm run test:python-probe
 Preparation verifies the cached files against the runtime lock and downloads any missing or changed file. The test build serves these files and its module worker under the repository subpath. Playwright checks the package handshake and reports the time to initialize a fresh worker in its runtime attachment. Add `-- --project chromium` to focus on one browser. The default CI and Pages workflows use the production build. Python feasibility runs against the dedicated probe build in `test-results/python-probe-build/`.
 
 ## Formula and file feasibility
+
+Run `npx vitest run tests/unit/native-generation.test.ts tests/unit/formula-presentation.test.ts` for dirty-node pruning, scoped recalculation, volatile clock use, cycles and locale presentation. Run `npm run test:e2e -- tests/e2e/formulas.spec.ts` after building to exercise the production module worker, stale replies, Manual labels and formula commands in three engines. The 1,000-formula test holds delivery of actual worker replies so it can verify that worksheet input remains available and an older revision never publishes its cache batch. It attaches cold and warm worker turnaround samples for diagnosis. Those single-run samples are not a percentile benchmark.
+
+Run `npx vitest run tests/unit/reference-pick.test.ts` for operand and replacement detection. After building, run `npm run test:e2e -- tests/e2e/reference-pick.spec.ts` to verify mouse clicks, drag direction, reference replacement, sheet changes and commit or cancel at the original cell.
 
 Run the S08 differential suite with `npx vitest run tests/parity/native-formulas.test.ts`. Its synthetic workbook fixtures were evaluated using the desktop Release `NativeCalculator` under `cs-CZ`. The fixture manifest records the assembly hash and runtime. To verify the stored results with the same desktop binaries, run the following from the web repository with .NET 10. Pass `-p:DesktopBin=<absolute path>` for another Release binary directory.
 

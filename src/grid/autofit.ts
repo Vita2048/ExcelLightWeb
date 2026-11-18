@@ -3,7 +3,8 @@ import type { AxisDimension, SheetDocument } from '../core/workbook';
 import { gridMetrics, clamp } from './grid-geometry';
 import { cellDisplay } from './grid-selection';
 
-export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonly number[]): AxisDimension[] {
+export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonly number[], showFormulas = false,
+  separator: ',' | ';' = ','): AxisDimension[] {
   const context = document.createElement('canvas').getContext('2d')!;
   const font = getComputedStyle(document.documentElement).fontFamily;
   const sizes = new Map(indexes.map(index => [index, 0]));
@@ -13,7 +14,7 @@ export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonl
     const index = cell[axis];
     const previous = sizes.get(index);
     if (previous === undefined) continue;
-    const value = cellDisplay(cell);
+    const value = cellDisplay(cell, showFormulas, separator);
     if (!value) continue;
     const merge = sheet.merges.find(merge => merge.row === cell.row && merge.column === cell.column);
     if (axis === 'column' && merge && merge.columns > 1) continue;

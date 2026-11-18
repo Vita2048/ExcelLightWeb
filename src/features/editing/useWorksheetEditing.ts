@@ -1,13 +1,15 @@
 import { useRef, useState } from 'react';
-import { autoSum, captureClipboard, clear, clipboardText, entryText, fill, parseEntry, pasteBlock, pasteText,
+import { autoSum, captureClipboard, clear, clipboardText, entryText, expandMerges, fill, parseEntry, pasteBlock, pasteText,
   type Aggregate, type ClearMode, type ClipboardBlock, type EditRange, type FillDirection, type PasteMode,
 } from '../../application/editing-commands';
 import type { WorkbookSession } from '../../application/workbook-session';
 import type { WorkbookSnapshot } from '../../application/workbook-protocol';
-import { calculateNative } from '../../calculation/native-calculator';
 import { equalDto } from '../../core/workbook-delta';
-import { findReferencedCell, type CellDocument, type CellReference } from '../../core/workbook';
+import { documentLimits, findReferencedCell, type CellDocument, type CellReference, type SheetDocument } from '../../core/workbook';
+import { formulaAddress, quoteSheet, type ReferenceBox } from '../../core/formula-references';
 import { requireDocument } from '../../core/workbook-validation';
+import { presentFormula } from '../formulas/formula-presentation';
+import { referenceSlot, type TextSelection } from '../formulas/reference-pick';
 
 export type EditSurface = 'inline' | 'formula';
 export type AfterEditKey = 'Enter' | 'Tab' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
@@ -25,6 +27,9 @@ interface Draft {
   readonly original: CellDocument | undefined;
   readonly text: string;
   readonly direct: boolean;
+  readonly functionDraft: boolean;
+  readonly pick?: TextSelection & { readonly sheetId: string; readonly area: ReferenceBox };
+  readonly selectText?: TextSelection;
 }
 
 interface LocalClipboard {
@@ -41,7 +46,7 @@ interface ManualPaste {
 const clipboardType = 'application/x-excellight-cells';
 
 export function useWorksheetEditing(
-  session: WorkbookSession, publish: (snapshot: WorkbookSnapshot) => void, focusGrid: () => void,
+  session: WorkbookSession, changed: (compound: boolean) => void, separator: ',' | ';', focusGrid: () => void,
   focusEditor: (surface: EditSurface) => void,
 ) {
   const liveDraft = useRef<Draft | null>(null);
@@ -57,31 +62,72 @@ export function useWorksheetEditing(
     renderDraft(next);
   }
 
-  function begin(target: CellReference, surface: EditSurface, replacement?: string) {
+  function editorText(cell: CellDocument | undefined) {
+    const source = entryText(cell);
+    return cell?.content.kind === 'formula' ? presentFormula(source, ',', separator) : source;
+  }
+
+  function begin(target: CellReference, surface: EditSurface, replacement?: string, functionDraft = false) {
     const existing = liveDraft.current;
     if (existing) {
-      if (surface !== existing.surface) showDraft({ ...existing, surface });
+      if (surface !== existing.surface) {
+        const { selectText: _selection, ...rest } = existing;
+        showDraft({ ...rest, surface });
+      }
       return;
     }
     intent.current++;
     setStatus('');
     const original = findReferencedCell(session.active, target);
-    showDraft({ surface, sessionId: session.sessionId, target, original, text: replacement ?? entryText(original),
-      direct: surface === 'inline' && replacement !== undefined });
+    showDraft({ surface, sessionId: session.sessionId, target, original, text: replacement ?? editorText(original),
+      direct: surface === 'inline' && replacement !== undefined && !functionDraft, functionDraft });
   }
 
   function update(text: string) {
     const current = liveDraft.current;
-    if (current && current.text !== text) showDraft({ ...current, text });
+    if (current && current.text !== text) {
+      const { pick: _pick, selectText: _selection, ...rest } = current;
+      showDraft({ ...rest, text });
+    }
   }
 
-  function recalculate() {
-    const { updates } = calculateNative(session.active);
-    if (updates.length > 0) {
-      const { document: _document, kind: _kind, ...basis } = session.beginNativeCalculation('native-formulas-v1');
-      session.tryCommitNativeCalculation({ ...basis, kind: 'native-calculated', updates });
-    }
-    publish(session.capture());
+  function pickSlot(selection: TextSelection) {
+    const current = liveDraft.current;
+    if (!current || composing.current || current.original?.style?.numberFormat === '@') return;
+    const last = current.pick;
+    return referenceSlot(current.text, last && selection.start === last.end && selection.end === last.end ? last : selection);
+  }
+
+  function beginReferencePick(selection: TextSelection, sheet: SheetDocument) {
+    const slot = pickSlot(selection);
+    const original = liveDraft.current;
+    if (!slot || !original) return;
+    let latest = original;
+    return {
+      update(area: ReferenceBox) {
+        if (liveDraft.current !== latest) return;
+        const range = expandMerges({ sheetId: sheet.id, row: area.top, column: area.left,
+          rows: area.bottom - area.top + 1, columns: area.right - area.left + 1 }, sheet);
+        const bottom = range.row + range.rows - 1, right = range.column + range.columns - 1;
+        const first = formulaAddress(range);
+        const last = range.rows === 1 && range.columns === 1 ? '' : ':' + formulaAddress({ row: bottom, column: right });
+        const reference = (sheet.id === original.target.sheetId ? '' : quoteSheet(sheet.name)) + first + last;
+        const text = original.text.slice(0, slot.start) + reference + original.text.slice(slot.end);
+        if (text.length > documentLimits.formulaLength || latest.text === text && latest !== original) return;
+        const end = slot.start + reference.length;
+        latest = { ...original, text, pick: { start: slot.start, end, sheetId: sheet.id,
+          area: { top: range.row, left: range.column, bottom, right } }, selectText: { start: end, end } };
+        showDraft(latest);
+      },
+      cancel() {
+        if (liveDraft.current === latest) showDraft({ ...original, selectText: { ...selection } });
+      },
+    };
+  }
+
+  function showCrossSheetDraft(selection: TextSelection) {
+    const current = liveDraft.current;
+    if (current?.surface === 'inline') showDraft({ ...current, surface: 'formula', direct: false, selectText: selection });
   }
 
   function reject(error: unknown) {
@@ -93,16 +139,17 @@ export function useWorksheetEditing(
     if (!current) return true;
     if (composing.current) return false;
     try {
-      if (current.text !== entryText(current.original)) {
+      if (current.text !== editorText(current.original)) {
         const basis = session.capture();
         const actual = findReferencedCell(basis.document, current.target);
         requireDocument(current.sessionId === basis.sessionId && actual?.id === current.original?.id &&
           equalDto(actual?.content, current.original?.content) && equalDto(actual?.style, current.original?.style),
         'The cell changed while you were editing it.');
         const outcome = session.execute({ kind: 'set-cells', label: 'Edit cell', edits: [{
-          target: current.target, content: parseEntry(current.text, actual?.style), resetCache: true,
+          target: current.target, content: parseEntry(actual?.style?.numberFormat === '@' ? current.text :
+            presentFormula(current.text, separator, ','), actual?.style),
         }] });
-        if (outcome.changed) recalculate();
+        if (outcome.changed) changed(false);
       }
       showDraft(null);
       setStatus('');
@@ -124,7 +171,7 @@ export function useWorksheetEditing(
   function moveHistory(undo: boolean) {
     if (!commit()) return;
     intent.current++;
-    if (undo ? session.undo() : session.redo()) recalculate();
+    if (undo ? session.undo() : session.redo()) changed(true);
     setStatus('');
     focusGrid();
   }
@@ -138,7 +185,7 @@ export function useWorksheetEditing(
     const operation = rich ? pasteBlock(basis, range, rich.block, mode) : pasteText(basis, range, text ?? '', mode);
     const outcome = session.execute(operation);
     if (rich?.block.cut && localClipboard.current === rich) localClipboard.current = null;
-    if (outcome.changed) recalculate();
+    if (outcome.changed) changed(outcome.delta.kind !== 'cells' || outcome.delta.changes.length > 1);
   }
 
   function closeManualPaste() {
@@ -150,8 +197,8 @@ export function useWorksheetEditing(
   function submitManualPaste(text: string) {
     if (!manualPaste) return;
     try {
-      requireDocument(session.isCurrent(manualPaste.basis), 'The worksheet changed before the paste completed.');
-      paste(manualPaste.basis, manualPaste.range, manualPaste.mode, null, text);
+      requireDocument(session.isCurrentAuthored(manualPaste.basis), 'The worksheet changed before the paste completed.');
+      paste(session.capture(), manualPaste.range, manualPaste.mode, null, text);
       closeManualPaste();
     } catch (error) { reject(error); }
   }
@@ -205,24 +252,24 @@ export function useWorksheetEditing(
             text = await navigator.clipboard.readText();
           }
           catch { denied = true; }
-          if (serial !== intent.current || !session.isCurrent(basis)) return;
+          if (serial !== intent.current || !session.isCurrentAuthored(basis)) return;
           if (rich && (denied || text?.replaceAll('\r\n', '\n') === rich.text.replaceAll('\r\n', '\n'))) {
-            paste(basis, range, action.mode, rich);
+            paste(session.capture(), range, action.mode, rich);
           } else {
             if (denied || text === undefined) setManualPaste({ basis, range, mode: action.mode });
             else {
               requireDocument(text !== '', 'The system clipboard contains no worksheet text.');
-              paste(basis, range, action.mode, null, text);
+              paste(session.capture(), range, action.mode, null, text);
             }
           }
         }
       } else if (action.kind === 'clear') {
-        if (session.execute(clear(basis, ranges, action.mode)).changed) recalculate();
+        if (session.execute(clear(basis, ranges, action.mode)).changed) changed(true);
       } else if (action.kind === 'fill') {
-        if (session.execute(fill(basis, onlyRange(ranges), action.direction)).changed) recalculate();
+        if (session.execute(fill(basis, onlyRange(ranges), action.direction)).changed) changed(true);
       } else if (action.kind === 'autosum') {
         const result = autoSum(basis, onlyRange(ranges), action.aggregate);
-        if (session.execute(result.command).changed) recalculate();
+        if (session.execute(result.command).changed) changed(false);
         return result.target;
       }
     } catch (error) { reject(error); }
@@ -231,7 +278,9 @@ export function useWorksheetEditing(
 
   return {
     draft, status, begin, update, commit, cancel, moveHistory, run, manualPaste, closeManualPaste, submitManualPaste,
-    recalculate, reject, clearStatus: () => setStatus(''),
+    pickSlot, beginReferencePick, showCrossSheetDraft,
+    blur: (surface: EditSurface) => { if (liveDraft.current?.surface === surface) commit(); },
+    editorText, reject, clearStatus: () => setStatus(''),
     composing: () => composing.current,
     compose: (active: boolean) => { composing.current = active; },
     keepCaret: () => { if (liveDraft.current?.direct) showDraft({ ...liveDraft.current, direct: false }); },

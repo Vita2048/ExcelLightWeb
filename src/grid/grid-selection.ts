@@ -1,4 +1,5 @@
 import { cellKey, findCell, worksheetViewport as viewport, type CellDocument, type Coordinate, type SheetDocument } from '../core/workbook';
+import { presentFormula } from '../features/formulas/formula-presentation';
 import { address, type GridAxis } from './grid-geometry';
 
 export type AreaKind = 'cells' | 'rows' | 'columns' | 'sheet';
@@ -72,15 +73,15 @@ export function parseAddress(text: string): Coordinate | undefined {
   return row <= viewport.rows ? { row, column: match[1]!.toUpperCase().charCodeAt(0) - 64 } : undefined;
 }
 
-export function cellDisplay(cell: CellDocument | undefined, source = false): string {
+export function cellDisplay(cell: CellDocument | undefined, source = false, separator: ',' | ';' = ','): string {
   if (!cell) return '';
   const { content, cache } = cell;
   if (content.kind === 'python' && source) return '=PY()';
-  if (content.kind === 'formula' && source) return content.source;
+  if (content.kind === 'formula' && source) return presentFormula(content.source, ',', separator);
   const value = cache && !source ? cache : content;
   switch (value.kind) {
     case 'blank': return '';
-    case 'formula': return value.source;
+    case 'formula': return presentFormula(value.source, ',', separator);
     case 'python': return '=PY()';
     case 'boolean': return value.value ? 'TRUE' : 'FALSE';
     default: return String(value.value);
