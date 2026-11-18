@@ -23,7 +23,7 @@ The production browser suite verifies hosting paths, dark rendering, worksheet i
 
 `npm run typecheck` first compiles core and application with `tsconfig.model.json` using only the ECMAScript library. It then typechecks the entire project. Run the focused S04 suites with `npx vitest run tests/unit/workbook-model.test.ts tests/integration/workbook-session.test.ts`.
 
-The unit suite exercises the source limits and uses deterministic generated cell edits and reorders to verify forward and inverse deltas. The integration suite covers atomic edits, bounded history, asynchronous save completions and native cache reply guards. A Node worker thread returns a fixed test reply to exercise structured cloning and edit-before-reply ordering. Browser calculation integration starts in S09.
+The unit suite exercises the source limits and uses deterministic generated cell edits and reorders to verify forward and inverse deltas. The integration suite covers atomic edits, bounded history, asynchronous save completions and native cache reply guards. A Node worker thread returns a fixed test reply to exercise structured cloning and edit-before-reply ordering. S08 verifies calculation through the browser editor. S09 introduces production worker scheduling.
 
 ## Worksheet checks
 
@@ -35,9 +35,11 @@ The production suite injects the pinned axe-core development dependency to check
 
 `npx vitest run tests/integration/editing-commands.test.ts` covers source-derived typed entry, TSV limits, copy and cut identity, reference rewrites, merges, shared borders, Fill results and AutoSum. `npm run test:e2e` also exercises the production editor in all three engines, including clipboard event payloads, denied API fallback and stale reads. A Chromium-specific case uses the browser clipboard and CDP composition commands. The cross-engine composition guard cases dispatch DOM events.
 
+`npx vitest run tests/unit/formula-hints.test.ts` checks all supported signatures and scans incomplete drafts with quoted text, array constants and nested calls. The production browser suite verifies caret movement and tooltip dismissal in the formula bar and inline editor.
+
 ## Structural edit checks
 
-`npx vitest run tests/integration/structure-commands.test.ts` covers the four desktop lane-shift scenarios and checks calculated results, stable identities, axis metadata, overflow and undo. The production Playwright suite exercises clicked-sheet context commands, cell-shift dialogs and direct header sizing and visibility.
+`npx vitest run tests/integration/structure-commands.test.ts` covers the four desktop lane-shift scenarios and checks calculated results, stable identities, axis metadata, overflow and undo. The production Playwright suite exercises clicked-sheet context commands, cell-shift dialogs, header cursor zones and direct header sizing and visibility.
 
 ## Browser Python feasibility
 
@@ -51,6 +53,12 @@ npm run test:python-probe
 Preparation verifies the cached files against the runtime lock and downloads any missing or changed file. The test build serves these files and its module worker under the repository subpath. Playwright checks the package handshake and reports the time to initialize a fresh worker in its runtime attachment. Add `-- --project chromium` to focus on one browser. The default CI and Pages workflows use the production build. Python feasibility runs against the dedicated probe build in `test-results/python-probe-build/`.
 
 ## Formula and file feasibility
+
+Run the S08 differential suite with `npx vitest run tests/parity/native-formulas.test.ts`. Its synthetic workbook fixtures were evaluated using the desktop Release `NativeCalculator` under `cs-CZ`. The fixture manifest records the assembly hash and runtime. To verify the stored results with the same desktop binaries, run the following from the web repository with .NET 10. Pass `-p:DesktopBin=<absolute path>` for another Release binary directory.
+
+```powershell
+dotnet run --project tests/desktop-formulas/Oracle.csproj -- tests/fixtures/formulas/S08-desktop.json
+```
 
 `npm test` includes the S03 parity cases. `npm run test:adapter-probe` bundles the probes separately and tests the desktop fixtures in all three Playwright engines. For independent desktop verification, use .NET 10 and the existing Release desktop test binaries. Run the following from the web repository. Pass `-p:DesktopBin=<absolute path>` to the .NET project if the desktop build is in another location.
 

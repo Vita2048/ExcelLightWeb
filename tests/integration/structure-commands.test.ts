@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { changeDimensions, changeSheet, editAxis } from '../../src/application/structure-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
-import { editingPreview } from '../../src/calculation/editing-preview';
+import { calculateNative } from '../../src/calculation/native-calculator';
 import { shiftReferences } from '../../src/core/formula-references';
 import { emptySheet, findCell, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
 
@@ -25,7 +25,7 @@ function fixture() {
   };
   const session = new WorkbookSession(document, { makeId });
   const data = (row: number, column: number) => findCell(session.active.sheets.find(sheet => sheet.id === 'data')!, { row, column });
-  const totals = () => editingPreview(session.active).filter(update => update.target.sheetId === 'totals').map(update => update.cache?.value);
+  const totals = () => calculateNative(session.active).updates.filter(update => update.target.sheetId === 'totals').map(update => update.cache?.value);
   return { session, makeId, data, totals };
 }
 describe('structural workbook commands', () => {

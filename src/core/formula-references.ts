@@ -24,9 +24,12 @@ export interface ReferenceBox {
   readonly right: number;
 }
 
+type FormulaConstant = { kind: 'literal'; value: string | number | boolean } | { kind: 'error'; value: string };
+
 export type FormulaExpression =
-  | { kind: 'literal'; value: string | number | boolean }
-  | { kind: 'error'; value: string }
+  | FormulaConstant
+  | { kind: 'missing' }
+  | { kind: 'array'; rows: readonly (readonly FormulaConstant[])[] }
   | { kind: 'name'; name: string }
   | { kind: 'reference'; reference: FormulaReference }
   | { kind: 'union'; parts: readonly FormulaExpression[] }
@@ -40,9 +43,11 @@ const row = '\\$?[1-9][0-9]*';
 const col = '\\$?[A-Za-z]{1,3}';
 const range = `(?:${cell}(?:\\s*:\\s*${cell})?|${row}\\s*:\\s*${row}|${col}\\s*:\\s*${col})`;
 const references = new RegExp(`(?:(${sheet})!)?(${range})(?![\\p{L}\\p{N}_.\\$]|\\s*\\()`, 'uy');
-const other = /\s+|"(?:[^"]|"")*"|#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A)|(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[\p{L}_][\p{L}\p{N}_.]*(?:\[[^\[\]]+\])?|<=|>=|<>|[()+*/%^&=<>,-]/iuy;
+const unsupportedReference = new RegExp(`(?:\\[\\d+\\]${sheet}!?|(?:${sheet}:${sheet}|'[^']+:[^']+')!)`, 'uy');
+const other = /\s+|"(?:[^"]|"")*"|#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A)|(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[\p{L}_][\p{L}\p{N}_.]*(?:\[[^\[\]]+\])?|<=|>=|<>|[(){};+*/%^&=<>,-]/iuy;
 const precedence: Readonly<Record<string, number>> = { '=': 1, '<>': 1, '<': 1, '>': 1, '<=': 1, '>=': 1, '&': 2, '+': 3, '-': 3, '*': 4, '/': 4, '^': 5 };
 const malformed = () => new DocumentError('Clipboard operation cannot transform malformed or unsupported reference syntax.');
+export class UnsupportedFormulaReference extends DocumentError {}
 
 export function columnLetters(column: number): string {
   let label = '';
@@ -68,6 +73,10 @@ export function parseFormula(source: string): { expression: FormulaExpression; r
   const refs: FormulaReference[] = [];
   const tokens: { text: string; ref?: FormulaReference }[] = [];
   for (let start = 1; start < source.length;) {
+    unsupportedReference.lastIndex = start;
+    if (unsupportedReference.test(source)) {
+      throw new UnsupportedFormulaReference('External workbook and 3D references are unsupported.');
+    }
     references.lastIndex = start;
     const match = references.exec(source);
     if (match) {
@@ -97,10 +106,39 @@ export function parseFormula(source: string): { expression: FormulaExpression; r
     if (!token || expected !== undefined && token.text !== expected) throw malformed();
     return token;
   }
+  function constant(text: string): FormulaConstant | undefined {
+    if (text.startsWith('"')) return { kind: 'literal', value: text.slice(1, -1).replaceAll('""', '"') };
+    if (text.startsWith('#')) return { kind: 'error', value: text.toUpperCase() };
+    if (/^[0-9.]/u.test(text)) return { kind: 'literal', value: Number(text) };
+    if (/^(?:true|false)$/iu.test(text)) return { kind: 'literal', value: text.toUpperCase() === 'TRUE' };
+  }
+  function array(): FormulaExpression {
+    const rows: FormulaConstant[][] = [[]];
+    for (;;) {
+      const token = take();
+      if (token.ref) throw malformed();
+      let value: FormulaConstant | undefined;
+      if (token.text === '+' || token.text === '-') {
+        const next = take();
+        const numeric = next.ref ? undefined : constant(next.text);
+        if (numeric?.kind !== 'literal' || typeof numeric.value !== 'number') throw malformed();
+        value = { kind: 'literal', value: token.text === '-' ? -numeric.value : numeric.value };
+      } else value = constant(token.text);
+      if (!value) throw malformed();
+      rows.at(-1)!.push(value);
+      const delimiter = take().text;
+      if (delimiter === '}') break;
+      if (delimiter === ';') rows.push([]);
+      else if (delimiter !== ',') throw malformed();
+    }
+    if (rows.some(row => row.length !== rows[0]!.length)) throw malformed();
+    return { kind: 'array', rows };
+  }
   function primary(depth: number): FormulaExpression {
     if (depth > 64) throw malformed();
     const { text, ref } = take();
     if (ref) return { kind: 'reference', reference: ref };
+    if (text === '{') return array();
     if (text === '(') {
       const parts = [expression(1, depth + 1)];
       while (peek() === ',') { take(','); parts.push(expression(1, depth + 1)); }
@@ -108,17 +146,17 @@ export function parseFormula(source: string): { expression: FormulaExpression; r
       return parts.length === 1 ? parts[0]! : { kind: 'union', parts };
     }
     if (text === '+' || text === '-') return { kind: 'unary', operator: text, value: primary(depth + 1) };
-    if (text.startsWith('"')) return { kind: 'literal', value: text.slice(1, -1).replaceAll('""', '"') };
-    if (text.startsWith('#')) return { kind: 'error', value: text.toUpperCase() };
-    if (/^[0-9.]/u.test(text)) return { kind: 'literal', value: Number(text) };
-    if (/^(?:true|false)$/iu.test(text)) return { kind: 'literal', value: text.toUpperCase() === 'TRUE' };
+    const value = constant(text);
+    if (value) return value;
     if (!/^[\p{L}_]/u.test(text)) throw malformed();
     if (peek() !== '(') return { kind: 'name', name: text };
     take('(');
     const args: FormulaExpression[] = [];
     if (peek() !== ')') {
-      args.push(expression(1, depth + 1));
-      while (peek() === ',') { take(','); args.push(expression(1, depth + 1)); }
+      do {
+        if (args.length) take(',');
+        args.push(peek() === ',' || peek() === ')' ? { kind: 'missing' } : expression(1, depth + 1));
+      } while (peek() === ',');
     }
     take(')');
     return { kind: 'call', name: text.toUpperCase(), args };

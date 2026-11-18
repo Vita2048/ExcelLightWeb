@@ -3,6 +3,7 @@ dist/
 coverage/
 test-results/
 tests/desktop-interchange/obj/
+tests/desktop-formulas/obj/
 playwright-report/
 .env*
 !.env.example

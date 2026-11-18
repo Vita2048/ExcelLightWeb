@@ -3,7 +3,7 @@ import {
   autoSum, captureClipboard, clear, clipboardText, fill, parseEntry, pasteBlock, pasteText, type EditRange,
 } from '../../src/application/editing-commands';
 import { WorkbookSession, type CellEdit } from '../../src/application/workbook-session';
-import { editingPreview } from '../../src/calculation/editing-preview';
+import { calculateNative } from '../../src/calculation/native-calculator';
 import { copyReferences } from '../../src/core/formula-references';
 import { emptySheet, findReferencedCell, type WorkbookDocument } from '../../src/core/workbook';
 
@@ -20,7 +20,7 @@ function workbook(document?: WorkbookDocument) {
   const set = (...edits: CellEdit[]) => session.execute({ kind: 'set-cells', edits });
   function calculate() {
     const { document: _document, kind: _kind, ...basis } = session.beginNativeCalculation('test');
-    session.tryCommitNativeCalculation({ ...basis, kind: 'native-calculated', updates: editingPreview(session.active) });
+    session.tryCommitNativeCalculation({ ...basis, kind: 'native-calculated', updates: calculateNative(session.active).updates });
   }
   return { session, range, at, find, set, calculate };
 }

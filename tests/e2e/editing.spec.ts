@@ -88,6 +88,61 @@ test('direct entry, formula bar, F2 and Escape share a draft and restore grid fo
   await inline.press('Escape');
 });
 
+test('formula hints follow the active function and caret in both editors', async ({ page }) => {
+  await page.goto(path);
+  const grid = await go(page, 'A1');
+  const editor = page.getByRole('textbox', { name: 'Formula bar' });
+  const hint = page.getByRole('tooltip');
+  await editor.fill('=IF(ROUND(2.5,');
+  await expect(hint).toHaveText('ROUND(number, num_digits)');
+  await expect(hint.locator('strong')).toHaveText('num_digits');
+  await expect(editor).toHaveAccessibleDescription('ROUND(number, num_digits)');
+  await editor.press('Home');
+  await expect(hint).toHaveCount(0);
+  await editor.press('End');
+  await expect(hint).toBeVisible();
+  await page.keyboard.insertText('0),');
+  await expect(hint.locator('strong')).toHaveText('[value_if_true]');
+  await page.keyboard.insertText('"x,y","z")');
+  await expect(hint).toHaveCount(0);
+  await editor.press('Enter');
+  await expect(cell(page, 'A1', 'x,y')).toBeAttached();
+
+  await go(page, 'B1');
+  await grid.press('F2');
+  const inline = page.getByRole('textbox', { name: 'Edit B1' });
+  await inline.fill('=SUM({1,2},');
+  await expect(hint).toHaveText('SUM(number1, [number2], …)');
+  await expect(hint.locator('strong')).toHaveText('[number2]');
+  await inline.press('Escape');
+  await expect(hint).toHaveCount(0);
+  await expect(grid).toBeFocused();
+  await expect(cell(page, 'B1', 'blank')).toBeAttached();
+});
+
+test('native formulas recalculate dependencies and retain unsupported source in the worksheet', async ({ page }) => {
+  await page.goto(path);
+  const editor = page.getByRole('textbox', { name: 'Formula bar' });
+  async function enter(address: string, source: string, value: string) {
+    await go(page, address);
+    await editor.fill(source);
+    await editor.press('Enter');
+    await expect(cell(page, address, value)).toBeAttached();
+  }
+  await enter('A1', '1', '1');
+  await enter('A2', '=IF(A1=1,LEFT("hello",2),1/0)', 'he');
+  await enter('A3', '=IFERROR(A2,"caught")', 'he');
+  await enter('A1', '0', '0');
+  await expect(cell(page, 'A2', '#DIV/0!')).toBeAttached();
+  await expect(cell(page, 'A3', 'caught')).toBeAttached();
+  await enter('B1', '=DAY(DATE(1900,2,29))', '29');
+  await enter('B2', '=UNKNOWNFUNC(1)', '#NAME?');
+  await enter('B3', '=SUM({1,2}+1)', '5');
+  await enter('B4', '=SUBTOTAL(9,B1,B3)', '34');
+  await go(page, 'B2');
+  await expect(editor).toHaveValue('=UNKNOWNFUNC(1)');
+});
+
 test('invalid draft blocks selection and commands, and a valid blur commits to the original cell', async ({ page }) => {
   await page.goto(path);
   const grid = await go(page, 'B2');

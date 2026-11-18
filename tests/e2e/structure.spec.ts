@@ -83,6 +83,14 @@ test('headers resize selected columns together, fit content, and navigate over h
   await page.goto('/ExcelLightWeb/');
   const grid = page.getByRole('grid');
   const { x, y } = (await grid.boundingBox())!;
+  await page.mouse.move(x + 80, y + 10);
+  await expect(grid).toHaveCSS('cursor', /^url\(.+\) 8 14, default$/u);
+  await page.mouse.move(x + 20, y + 38);
+  await expect(grid).toHaveCSS('cursor', /^url\(.+\) 14 8, default$/u);
+  await page.mouse.move(x + 20, y + 51);
+  await expect(grid).toHaveCSS('cursor', 'row-resize');
+  await page.mouse.move(x + 80, y + 38);
+  await expect(grid).toHaveCSS('cursor', 'auto');
   await page.mouse.click(x + 80, y + 10);
   await page.keyboard.down('Shift');
   await page.mouse.click(x + 175, y + 10);

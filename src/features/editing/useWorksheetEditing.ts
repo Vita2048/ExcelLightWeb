@@ -4,7 +4,7 @@ import { autoSum, captureClipboard, clear, clipboardText, entryText, fill, parse
 } from '../../application/editing-commands';
 import type { WorkbookSession } from '../../application/workbook-session';
 import type { WorkbookSnapshot } from '../../application/workbook-protocol';
-import { editingPreview } from '../../calculation/editing-preview';
+import { calculateNative } from '../../calculation/native-calculator';
 import { equalDto } from '../../core/workbook-delta';
 import { findReferencedCell, type CellDocument, type CellReference } from '../../core/workbook';
 import { requireDocument } from '../../core/workbook-validation';
@@ -51,7 +51,6 @@ export function useWorksheetEditing(
   const localClipboard = useRef<LocalClipboard | null>(null);
   const [manualPaste, setManualPaste] = useState<ManualPaste | null>(null);
   const intent = useRef(0);
-  const previewIds = useRef<ReadonlySet<string>>(new Set());
 
   function showDraft(next: Draft | null) {
     liveDraft.current = next;
@@ -77,19 +76,11 @@ export function useWorksheetEditing(
   }
 
   function recalculate() {
-    const updates = [...editingPreview(session.active)];
-    const computed = new Set<string>();
-    for (const update of updates) computed.add(findReferencedCell(session.active, update.target)!.id);
-    for (const sheet of session.active.sheets) for (const cell of sheet.cells) {
-      if (cell.content.kind === 'formula' && cell.cache && previewIds.current.has(cell.id) && !computed.has(cell.id)) {
-        updates.push({ target: { sheetId: sheet.id, row: cell.row, column: cell.column } });
-      }
-    }
+    const { updates } = calculateNative(session.active);
     if (updates.length > 0) {
-      const { document: _document, kind: _kind, ...basis } = session.beginNativeCalculation('editing-preview-v1');
+      const { document: _document, kind: _kind, ...basis } = session.beginNativeCalculation('native-formulas-v1');
       session.tryCommitNativeCalculation({ ...basis, kind: 'native-calculated', updates });
     }
-    previewIds.current = computed;
     publish(session.capture());
   }
 

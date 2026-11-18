@@ -60,11 +60,13 @@ flowchart TD
 
 Implement the FormulaSubset allowlist recorded in Feature-Parity. English names/comma separators are canonical; locale presentation only changes actual argument separators. Parsed reference tokens, never search-and-replace strings, drive copy, cut/move, fill, structural edits and rename. Structural edits adjust absolute coordinates too; deleted targets become #REF!. Python xl literals need syntax-aware source spans.
 
-Use explicit error values: circular dependencies #REF! with detail, malformed source #VALUE!, unsupported functions #NAME?. IF/IFERROR are lazy; inactive branch references still contribute dependency edges. VLOOKUP is exact-only. SUBTOTAL handles filter visibility, manual visibility and nested subtotals. Match desktop coercion, rounding, date serial 60 and 1904 conversion through fixtures. Intl helps presentation but is not an Excel number-format engine; implement/test the documented formatting subset.
+Use explicit error values for circular dependencies (`#REF!`), malformed source (`#VALUE!`) and unsupported functions (`#NAME?`). IF and IFERROR evaluate their selected branch, while dependency analysis records references in every branch. VLOOKUP supports exact and sorted approximate matching as exercised by the desktop calculator. SUBTOTAL excludes filtered rows and nested subtotals, and codes 101–111 also exclude manually hidden rows. Its filter key defaults to General display text and accepts a formatter for the number-format work in S10 and the filter UI in S15.
+
+S08 uses the browser locale for numeric and date text coercion. Formula syntax and stored numeric values stay canonical. DATE and the date-part functions preserve serial 60. Inline array constants and array arithmetic can feed an aggregate or return a scalar cache. The XLSX adapter applies 1904 conversions at the file boundary.
 
 Native and Python Automatic/Manual settings remain independent. A mixed generation shares one dependency graph and native context, replans after spill topology changes, executes Python sequentially, and commits atomically. Debounce 75 ms isolated edits / 220 ms compound or queued edits. Selection, source drafts, Undo/Redo and Restart never execute scripts. TODAY uses an injected clock and refreshes once per generation.
 
-S06 provides bounded calculation of arithmetic, cell references, and the five AutoSum functions so that Fill, AutoSum, and Paste Values can use calculated results. It publishes derived caches through the session without adding history. The formula syntax and reference transforms are reusable in S07. S08–S09 expand evaluation and move scheduling to the native calculation worker.
+S08 replaces the S06 editing evaluator with the 31-function calculator. Worksheet edits compute a detached set of typed cache updates and apply it through the session without adding history. S09 moves production calculation to a worker and adds incremental scheduling, calculation modes and formula UI.
 
 S07 applies sheet and axis changes as detached session proposals. Whole-axis edits move existing dimensions, merged ranges, filters and defined names with the cells. Lane shifts can split formula ranges into unions. A named extent that becomes disjoint retains its identity and is marked invalid. The reference service exposes sheet and axis transforms for use by future Python literal rewriting.
 
@@ -94,7 +96,9 @@ Preserve existing command families, contextual Table Design, black title/tab/rib
 
 S05 uses browser-native two-axis scrolling with a viewport-sized canvas. A shared track map drives rendering, pointer hit testing and keyboard reveal. The semantic grid exposes a bounded set of viewport rows and always mounts its active descendant, even when the user scrolls it out of view. Canvas and chrome use system palette colors in forced-colors mode. Selection, scroll and zoom are view state. Tab moves between cells and Escape then Tab leaves the grid.
 
-S07 uses browser header cursors, pointer capture and a resize guide. Releasing a drag commits one size change for the selected tracks. AutoFit measures displayed values with browser canvas font metrics at 100% zoom. Hidden tracks retain their authored size and are skipped during navigation.
+Column and row header interiors use single arrows pointing into the worksheet. Header edges use browser resize cursors, pointer capture and a resize guide. Releasing a drag commits one size change for the selected tracks. AutoFit measures displayed values with browser canvas font metrics at 100% zoom. Hidden tracks retain their authored size and are skipped during navigation.
+
+The formula bar and inline editor show the supported function signature for the active caret position. The tooltip highlights the active argument in the current draft, using canonical formula separators.
 
 Place the dialog's primary action to the left of Cancel, in both visual and keyboard order. Cell editors scroll their text without visible scrollbar controls. Row and column sizing fields retain numeric validation with hidden spin buttons.
 

@@ -311,9 +311,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function editorProps(surface: EditSurface): CellEditorProps {
+    const cell = findCell(sheet, editing.draft?.target ?? selection.anchor);
     return {
       surface,
-      value: editing.draft?.text ?? entryText(findCell(sheet, selection.anchor)),
+      active: editing.draft?.surface === surface,
+      value: editing.draft?.text ?? entryText(cell),
       label: surface === 'inline' ? 'Edit ' + address(editing.draft!.target) : 'Formula bar',
       onStart: () => editing.begin(activeTarget, surface),
       onChange: editing.update,
@@ -328,6 +330,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       onComposition: editing.compose,
       isComposing: editing.composing,
       direct: surface === 'inline' && !!editing.draft?.direct,
+      textFormat: cell?.style?.numberFormat === '@',
       onKeepCaret: editing.keepCaret,
     };
   }

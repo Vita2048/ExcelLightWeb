@@ -6,6 +6,8 @@ import { findCell, worksheetViewport, type Coordinate, type SheetDocument } from
 import type { Axis } from '../core/axis-edit';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
+import selectColumnCursor from './cursors/select-column.svg';
+import selectRowCursor from './cursors/select-row.svg';
 import { address, clamp, GridAxis, gridMetrics } from './grid-geometry';
 import {
   cellDisplay, includes, navigate, select, selectionAreas, singleSelection,
@@ -241,7 +243,8 @@ export function Worksheet(props: WorksheetProps) {
     const axis = resize.current?.axis ?? header?.axis;
     const heading = header ?? headerAt(event.clientX - bounds.left, event.clientY - bounds.top, false);
     node.style.cursor = axis === 'row' ? 'row-resize' : axis === 'column' ? 'col-resize' :
-      heading?.axis === 'row' ? 'e-resize' : heading?.axis === 'column' ? 's-resize' : '';
+      heading?.axis === 'row' ? `url("${selectRowCursor}") 14 8, default` :
+      heading?.axis === 'column' ? `url("${selectColumnCursor}") 8 14, default` : '';
     if (resize.current?.id === event.pointerId) {
       const offset = axis === 'row' ? event.clientY - bounds.top : event.clientX - bounds.left;
       setGuide({ axis: axis!, offset });
@@ -333,6 +336,7 @@ export function Worksheet(props: WorksheetProps) {
         aria-multiselectable="true" aria-activedescendant={cellId(selection.anchor)} tabIndex={0}
         aria-describedby={id + '-help'} onBlur={() => { exitOnTab.current = false; }}
         onScroll={measure} onKeyDown={keyDown} onPointerDown={pointerDown} onPointerMove={pointerMove}
+        onPointerLeave={event => { if (!resize.current) event.currentTarget.style.cursor = ''; }}
         onCopy={event => props.onClipboard(event, 'copy')} onCut={event => props.onClipboard(event, 'cut')}
         onPaste={event => props.onClipboard(event, 'paste')}
         onContextMenu={event => {
