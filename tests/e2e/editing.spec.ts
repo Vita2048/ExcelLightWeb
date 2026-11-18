@@ -230,7 +230,8 @@ test('ribbon Fill and AutoSum use calculated values and undo each compound edit 
   const grid = await go(page, 'B1');
   await grid.press('Shift+ArrowDown');
   await grid.press('Shift+ArrowDown');
-  await page.getByRole('combobox', { name: 'Fill', exact: true }).selectOption({ label: 'Down' });
+  await page.getByRole('button', { name: 'Fill', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Down', exact: true }).click();
   await expect(grid).toBeFocused();
   await expect(cell(page, 'B3', '20')).toBeAttached();
   await page.getByRole('button', { name: 'AutoSum', exact: true }).click();
@@ -252,7 +253,8 @@ test('denied clipboard permission supports manual paste modes and in-page rich c
   });
   await page.goto(path);
   await go(page, 'A1');
-  await page.getByRole('combobox', { name: 'Paste options' }).selectOption({ label: 'Paste Values' });
+  await page.getByRole('button', { name: 'Paste options' }).click();
+  await page.getByRole('menuitem', { name: 'Paste Values' }).click();
   const dialog = page.getByRole('dialog', { name: 'Paste Values' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button')).toHaveText(['Paste', 'Cancel']);

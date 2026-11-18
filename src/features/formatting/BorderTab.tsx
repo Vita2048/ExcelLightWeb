@@ -25,21 +25,21 @@ function BorderIcon({ active }: { active: readonly DraftEdge[] }) {
   </svg>;
 }
 
-export function BorderSample({ pen }: { pen: CellBorder | null }) {
+export function BorderSample({ pen, width = 66 }: { pen: CellBorder | null; width?: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useLayoutEffect(() => {
     const context = ref.current!.getContext('2d')!;
     const media = matchMedia('(forced-colors: active)');
     function paint() {
-      context.clearRect(0, 0, 66, 14);
-      if (pen) drawBorder(context, pen, 1, 7.5, 65, 7.5, 1,
+      context.clearRect(0, 0, width, 14);
+      if (pen) drawBorder(context, pen, 1, 7.5, width - 1, 7.5, 1,
         media.matches ? 'CanvasText' : getComputedStyle(ref.current!).color, media.matches);
     }
     paint();
     media.addEventListener('change', paint);
     return () => media.removeEventListener('change', paint);
-  }, [pen]);
-  return <canvas ref={ref} width={66} height={14} aria-hidden="true" />;
+  }, [pen, width]);
+  return <canvas ref={ref} width={width} height={14} aria-hidden="true" />;
 }
 
 export function BorderTab({ initial, draft, onChange }: {

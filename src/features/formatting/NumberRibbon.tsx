@@ -2,35 +2,32 @@ import type { CellDocument } from '../../core/workbook';
 import { formatCellValue } from '../../core/formats/cell-format';
 import { commaStyle, currencyChoices, currencies, currencyFormat, formatName, presets } from '../../core/formats/number-catalog';
 import type { NumberFormatChange } from '../../application/number-format-command';
+import { RibbonFlyout, RibbonGlyph } from '../shell/RibbonFlyout';
 
 export function NumberRibbon({ cell, onFormat, onDialog }: {
   cell: CellDocument | undefined;
   onFormat: (change: NumberFormatChange) => void;
   onDialog: () => void;
 }) {
-  return <fieldset className="number-ribbon">
-    <legend>Number</legend>
-    <select aria-label="Number Format" value="" onChange={event => {
-      const code = event.currentTarget.value;
-      if (code === 'more') onDialog();
-      else onFormat({ code });
-    }}>
-      <option value="" disabled>{formatName(cell?.style?.numberFormat)}</option>
-      {Object.entries(presets).map(([label, code]) => {
-        const sample = formatCellValue(cell, code).text;
-        return <option key={code} value={code}>{label}{sample && label !== 'General' && '  ·  ' + sample}</option>;
-      })}
-      <option value="more">More Number Formats…</option>
-    </select>
-    <select aria-label="Currency" value="" onChange={event =>
-      onFormat({ code: currencyFormat(event.currentTarget.value as keyof typeof currencyChoices) })}>
-      <option value="" disabled>Currency</option>
-      {currencies.map(currency => <option key={currency} value={currency}>{currencyChoices[currency]}</option>)}
-    </select>
-    <button type="button" title="Percentage" aria-label="Percentage" onClick={() => onFormat({ code: presets.Percentage })}>%</button>
-    <button type="button" title="Comma Style" aria-label="Comma Style" onClick={() => onFormat({ code: commaStyle })}>,</button>
-    <button type="button" title="Increase Decimal" aria-label="Increase Decimal" onClick={() => onFormat({ decimals: 1 })}>.0→.00</button>
-    <button type="button" title="Decrease Decimal" aria-label="Decrease Decimal" onClick={() => onFormat({ decimals: -1 })}>.00→.0</button>
-    <button type="button" title="Format Cells" aria-label="Format Cells" onClick={onDialog}>↘</button>
+  const tools = [['Percentage', { code: presets.Percentage }], ['Comma Style', { code: commaStyle }],
+    ['Increase Decimal', { decimals: 1 }], ['Decrease Decimal', { decimals: -1 }]] as const;
+  return <fieldset className="number-ribbon"><legend>Number</legend>
+    <div className="ribbon-stack number-ribbon-stack">
+      <RibbonFlyout label="Number Format" caption={formatName(cell?.style?.numberFormat)} items={[
+        ...Object.entries(presets).map(([label, code]) => ({ label, icon: label,
+          detail: label === 'General' ? 'No specific format' : formatCellValue(cell, code).text,
+          select: () => onFormat({ code }) })),
+        { label: 'More Number Formats…', select: onDialog },
+      ]} />
+      <div className="ribbon-split">
+        <RibbonFlyout label="Currency" caption="" icon="Currency" items={currencies.map(currency => ({
+          label: currencyChoices[currency], icon: 'Currency', select: () => onFormat({ code: currencyFormat(currency) }),
+        }))} />
+        {tools.map(([label, change]) => <button type="button" key={label} title={label} aria-label={label} onClick={() => onFormat(change)}>
+          <RibbonGlyph name={label} />
+        </button>)}
+      </div>
+    </div>
+    <button type="button" className="ribbon-launcher" title="Format Cells" aria-label="Format Cells" onClick={onDialog}><RibbonGlyph name="launcher" size={12} /></button>
   </fieldset>;
 }

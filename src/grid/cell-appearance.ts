@@ -31,6 +31,147 @@ export function drawCellText(context: CanvasRenderingContext2D, text: string, st
   if (double) context.fillRect(start, underline - 2 * thickness, width, thickness);
 }
 
+interface TextBox { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
+
+export function drawAlignedText(ctx: CanvasRenderingContext2D, text: string, style: CellStyle | undefined,
+  fallback: string, scale: number, box: TextBox, valueKind: string) {
+  if (!text) return;
+  const align = style?.alignment ?? (valueKind === 'number' || style?.readingOrder === 'rtl' ? 'right' :
+    valueKind === 'boolean' || valueKind === 'error' ? 'center' : 'left');
+  const vertical = style?.verticalAlignment ?? 'bottom';
+  const normal = cellFont(style, fallback, scale);
+  const padding = 3 * scale;
+  const indent = (style?.indent ?? 0) * normal.size * 1.5;
+  const left = box.x + padding + (style?.alignment === 'left' || align === 'distributed' ? indent : 0);
+  const right = box.x + box.width - padding - (style?.alignment === 'right' || align === 'distributed' ? indent : 0);
+  const top = box.y + padding;
+  const bottom = box.y + box.height - padding;
+  const width = right - left, height = bottom - top;
+  if (width <= 0 || height <= 0) return;
+  const stacked = style?.textRotation === 255;
+  const angle = stacked ? 0 : -(style?.textRotation ?? 0) * Math.PI / 180;
+  const wrap = !stacked && !angle && (style?.wrap || align === 'justify' || align === 'distributed' ||
+    vertical === 'justify' || vertical === 'distributed');
+  const horizontal = align === 'right' ? 'right' :
+    ['center', 'centerContinuous', 'distributed'].includes(align) ? 'center' : 'left';
+  ctx.direction = style?.readingOrder === 'rtl' ? 'rtl' : style?.readingOrder === 'ltr' ? 'ltr' :
+    /^\s*[\u0590-\u08ff]/u.test(text) ? 'rtl' : 'ltr';
+  ctx.font = normal.css;
+  ctx.textBaseline = 'middle';
+  const measure = (value: string) => ctx.measureText(value).width;
+  const lines = stacked ? Array.from(text.replace(/\r\n?/gu, '\n'), glyph => glyph === '\n' ? '' : glyph) :
+    text.split(/\r\n|\r|\n/u).flatMap(line => wrap ? wrapText(line, width, measure) : [line]);
+  let fontScale = scale;
+  const baseHeight = normal.size * 1.18;
+  const textWidth = lines.reduce((maximum, line) => Math.max(maximum, measure(line)), 0);
+  const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
+  const projectedWidth = textWidth * cos + baseHeight * lines.length * sin;
+  if (!stacked && !wrap && style?.shrinkToFit && align !== 'fill' && projectedWidth > width) fontScale *= width / projectedWidth;
+  const shrink = fontScale / scale;
+  const lineHeight = baseHeight * shrink;
+  const textHeight = lineHeight * lines.length;
+  const verticalOrigin = (size: number) => {
+    const extra = Math.max(0, height - size);
+    return top + (vertical === 'top' || vertical === 'justify' ? 0 :
+      vertical === 'center' || vertical === 'distributed' ? extra / 2 : extra);
+  };
+  const x = horizontal === 'right' ? right : horizontal === 'center' ? left + width / 2 : left;
+  if (stacked) {
+    // Number formats can add invisible padding. Align the painted glyphs, including decimal separators.
+    let first = -1, last = -1;
+    let inkTop = Infinity, inkBottom = -Infinity;
+    for (const [index, glyph] of lines.entries()) {
+      const { actualBoundingBoxAscent: ascent, actualBoundingBoxDescent: descent } = ctx.measureText(glyph);
+      if (ascent + descent <= 0) continue;
+      if (first < 0) first = index;
+      last = index;
+      const baseline = index * lineHeight + normal.shift;
+      inkTop = Math.min(inkTop, baseline - ascent);
+      inkBottom = Math.max(inkBottom, baseline + descent);
+    }
+    if (first < 0) return;
+    const inkHeight = inkBottom - inkTop;
+    const slots = last - first + 1;
+    const extra = Math.max(0, height - inkHeight);
+    const gap = vertical === 'distributed' ? extra / slots :
+      vertical === 'justify' && slots > 1 ? extra / (slots - 1) : 0;
+    const inkStart = vertical === 'distributed' ? top + gap / 2 :
+      vertical === 'top' ? top : vertical === 'center' ? top + (height - inkHeight) / 2 :
+        vertical === 'justify' ? top : bottom - inkHeight;
+    for (let index = first; index <= last; index++) {
+      const baseline = inkStart - inkTop + index * lineHeight + (index - first) * gap;
+      drawCellText(ctx, lines[index]!, style, fallback, fontScale, x, baseline, horizontal, bottom);
+    }
+    return;
+  }
+  if (angle) {
+    const rotatedWidth = projectedWidth * shrink;
+    const rotatedHeight = textWidth * shrink * sin + textHeight * cos;
+    const centerX = horizontal === 'right' ? x - rotatedWidth / 2 : horizontal === 'left' ? x + rotatedWidth / 2 : x;
+    const words = lines[0]!.trim().split(/\s+/u);
+    const spread = Math.abs(style?.textRotation ?? 0) === 90 && vertical === 'distributed' && lines.length === 1 &&
+      words.length > 1 && words.reduce((sum, word) => sum + measure(word) * shrink, 0) <= height;
+    ctx.translate(centerX, spread ? top + height / 2 : verticalOrigin(rotatedHeight) + rotatedHeight / 2);
+    ctx.rotate(angle);
+    if (spread && drawSpaced(lines[0]!, height, -height / 2, 0, false)) return;
+    lines.forEach((line, index) => drawCellText(ctx, line, style, fallback, fontScale,
+      0, lineHeight * (index + .5) - textHeight / 2, 'center', textHeight / 2 + lineHeight));
+    return;
+  }
+  const extra = Math.max(0, height - textHeight);
+  const gap = vertical === 'distributed' ? extra / lines.length :
+    vertical === 'justify' && lines.length > 1 ? extra / (lines.length - 1) : 0;
+  const start = vertical === 'distributed' ? top + gap / 2 : verticalOrigin(textHeight);
+  lines.forEach((line, index) => {
+    const baseline = start + (lineHeight + gap) * index + lineHeight / 2;
+    if (align === 'fill' && line) {
+      const count = Math.max(1, Math.min(Math.floor(width / (measure(line) || 1)), Math.floor(32768 / line.length)));
+      drawCellText(ctx, line.repeat(count), style, fallback, scale, left, baseline, 'left', bottom);
+      return;
+    }
+    if ((align === 'distributed' || align === 'justify' && (style?.justifyLastLine || index < lines.length - 1)) &&
+        drawSpaced(line, width, left, baseline, align === 'distributed')) return;
+    drawCellText(ctx, line, style, fallback, fontScale, x, baseline, horizontal, bottom);
+  });
+
+  function drawSpaced(line: string, area: number, start: number, baseline: number, distribute: boolean) {
+    const words = line.trim().split(/\s+/u);
+    const parts = words.length === 1 && distribute ? Array.from(line.trim()) : words;
+    if (parts.length < 2) return false;
+    ctx.font = cellFont(style, fallback, fontScale).css;
+    const rtl = ctx.direction === 'rtl';
+    if (rtl) parts.reverse();
+    const widths = parts.map(measure);
+    const spare = area - widths.reduce((sum, value) => sum + value, 0);
+    if (spare < 0) return false;
+    const space = spare / (parts.length - (distribute ? 0 : 1));
+    let offset = start + (distribute ? space / 2 : 0);
+    parts.forEach((part, index) => {
+      drawCellText(ctx, part, style, fallback, fontScale, offset, baseline, 'left', baseline + lineHeight);
+      offset += widths[index]! + space;
+    });
+    return true;
+  }
+}
+
+function wrapText(text: string, width: number, measure: (line: string) => number): string[] {
+  const lines: string[] = [];
+  let line = '';
+  for (const word of text.split(/(\s+)/u)) {
+    if (measure(line + word) <= width) { line += word; continue; }
+    if (line.trimEnd()) lines.push(line.trimEnd());
+    line = '';
+    if (word.trim() === '') continue;
+    if (measure(word) <= width) { line = word; continue; }
+    for (const glyph of word) {
+      if (line && measure(line + glyph) > width) { lines.push(line); line = ''; }
+      line += glyph;
+    }
+  }
+  lines.push(line.trimEnd());
+  return lines;
+}
+
 function patternInk(pattern: string, x: number, y: number): boolean {
   const width = pattern.startsWith('dark') ? 2 : 1;
   const vertical = x % 4 < width;

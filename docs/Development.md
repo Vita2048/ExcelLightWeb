@@ -76,6 +76,12 @@ Run `npx vitest run tests/integration/border-commands.test.ts tests/unit/border-
 
 Run the desktop source assertions against the local Release assemblies with `dotnet run --project tests/desktop-borders/Oracle.csproj`. Pass `-p:DesktopSource=<absolute path>` and, when needed, `-p:DesktopBin=<absolute path>` for another desktop checkout.
 
+## Alignment, merges and ribbon checks
+
+`npm run check` includes [alignment and merge transactions](../tests/integration/alignment-commands.test.ts). `npm run test:e2e -- tests/e2e/alignment.spec.ts` covers merge discard confirmation, the combined Format Cells draft, merged keyboard navigation and canvas clipping at zoom, menu artwork and keyboard operation, and the Insert and Delete radio dialogs. The full production suite exercises the updated styling and controls for Clipboard, Font, Borders, Number, Cells, Editing, Formulas and View. The scaffold tests request the favicon from both deployment paths.
+
+`dotnet run --project tests/desktop-alignment/Oracle.csproj` executes the desktop alignment and merge assertions against the existing Release assemblies. Pass `-p:DesktopSource=<absolute path>` and, when needed, `-p:DesktopBin=<absolute path>` for another checkout.
+
 ## Browser Python feasibility
 
 Run the S02 probe with Node, Python 3, curl and the Playwright browsers listed above. Set the process variable `PYTHON` if your Python executable uses another name.

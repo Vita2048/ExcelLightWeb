@@ -7,6 +7,10 @@ for (const path of ['/', '/ExcelLightWeb/']) {
     page.on('response', response => { if (response.status() >= 400) errors.push(response.url()); });
     await page.emulateMedia({ colorScheme: 'light' });
     await page.goto(path);
+    const favicon = await page.locator('link[rel="icon"]').getAttribute('href');
+    const icon = await page.request.get(new URL(favicon!, page.url()).href);
+    expect(icon.ok()).toBe(true);
+    expect((await icon.body()).subarray(0, 4)).toEqual(Buffer.from([0, 0, 1, 0]));
     await expect(page.getByRole('grid', { name: 'Sheet1' })).toHaveAttribute('aria-rowcount', '1000');
     await expect(page.getByRole('grid')).toHaveAttribute('aria-colcount', '26');
     await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');

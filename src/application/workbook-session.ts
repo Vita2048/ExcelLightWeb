@@ -35,6 +35,7 @@ export interface StructureCommand {
   readonly kind: 'structure';
   readonly document: WorkbookDocument;
   readonly label: string;
+  readonly edits?: readonly CellEdit[];
 }
 export type WorkbookCommand = SetCellsCommand | StructureCommand;
 export interface CommandOutcome {
@@ -157,6 +158,7 @@ export class WorkbookSession {
       case 'structure':
         candidate = ownDto(command.document);
         requireDocument(candidate?.id === this.active.id, 'Structure cannot replace workbook identity.');
+        if (command.edits) candidate = this.#editCells(command.edits, candidate);
         break;
       case 'set-cells':
         candidate = this.#editCells(command.edits);
@@ -295,9 +297,9 @@ export class WorkbookSession {
     return key;
   }
 
-  #editCells(edits: readonly CellEdit[]): WorkbookDocument {
+  #editCells(edits: readonly CellEdit[], document = this.active): WorkbookDocument {
     requireDocument(Array.isArray(edits), 'Missing cell edits.');
-    const sheetIds = new Set(this.active.sheets.map(sheet => sheet.id));
+    const sheetIds = new Set(document.sheets.map(sheet => sheet.id));
     const seen = new Set<string>();
     const changes: CellChange[] = [];
     for (const edit of edits) {
@@ -306,7 +308,7 @@ export class WorkbookSession {
       seen.add(this.#validateTarget(target, sheetIds, seen));
       validateCellValue(content);
       if (edit.cellId !== undefined) validateId(edit.cellId);
-      const prior = findReferencedCell(this.active, target);
+      const prior = findReferencedCell(document, target);
       const style = edit.preserveStyle === false ? edit.style : prior?.style;
       const sameContent = equalDto(content, prior?.content);
       const external = edit.requiresExternalCalculation || sameContent && prior?.requiresExternalCalculation;
@@ -323,6 +325,6 @@ export class WorkbookSession {
       };
       if (!equalDto(prior, after)) changes.push({ target, after });
     }
-    return applyCellChanges(this.active, changes);
+    return applyCellChanges(document, changes);
   }
 }

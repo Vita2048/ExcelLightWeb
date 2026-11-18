@@ -78,7 +78,7 @@ test('draws and erases on a frozen cell at zoom after scrolling both axes', asyn
   const open = () => page.getByRole('button', { name: 'Borders menu' }).click();
   await open();
   await commands.getByRole('button', { name: 'Border Line Color' }).click();
-  await page.getByRole('dialog', { name: 'Border Line Color' }).getByRole('button', { name: 'Color #FF0000', exact: true }).click();
+  await page.getByRole('group', { name: 'Border Line Color' }).getByRole('button', { name: 'Color #FF0000', exact: true }).click();
   await open();
   await commands.getByText('Line Style', { exact: true }).click();
   await commands.getByRole('button', { name: 'Thick', exact: true }).click();
@@ -92,4 +92,17 @@ test('draws and erases on a frozen cell at zoom after scrolling both axes', asyn
   await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 255, 255, 255]]);
   await grid.press('Control+z');
   await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 0, 0, 255]]);
+});
+
+test('projects one merged fill through the four frozen panes and hides the internal gridlines', async ({ page }) => {
+  await page.goto(path + '?frozen&merged');
+  const grid = page.getByRole('grid', { name: 'Inputs' });
+  const anchor = page.getByRole('gridcell', { name: 'A1, Anchor', exact: true });
+  await expect(anchor).toHaveAttribute('aria-rowspan', '2');
+  await expect(anchor).toHaveAttribute('aria-colspan', '2');
+  await grid.evaluate(node => node.scrollTo({ left: 12, top: 7 }));
+  await expect.poll(() => grid.evaluate(node => [node.scrollLeft, node.scrollTop])).toEqual([12, 7]);
+  const ink = [21, 96, 130, 255];
+  await expect.poll(() => pixels(page, [[120, 35], [160, 35], [120, 60], [160, 60], [139, 36], [120, 51], [260, 60]]))
+    .toEqual([ink, ink, ink, ink, ink, ink, [32, 32, 32, 255]]);
 });

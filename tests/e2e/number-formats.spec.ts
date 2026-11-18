@@ -106,7 +106,8 @@ test('supports Czech and US dates, the fictitious leap day, elapsed time and can
   await expect(cell(page, 'B1', '61.25')).toBeAttached();
 
   await go(page, 'B1');
-  await page.getByRole('combobox', { name: 'Number Format', exact: true }).selectOption('more');
+  await page.getByRole('button', { name: 'Number Format', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'More Number Formats…' }).click();
   await dialog.getByLabel('Category').selectOption('Time');
   await dialog.getByLabel('Date/time type').selectOption('5');
   await expect(dialog.getByLabel('Number format sample')).toHaveText('1470:00:00');
@@ -147,7 +148,8 @@ test.describe('Czech browser locale', () => {
     await expect(dialog.getByLabel('Number format sample')).toHaveText('-1\u00a0234,125');
     await dialog.getByRole('button', { name: 'OK' }).click();
     await expect(cell(page, 'A2', '-1\u00a0234,125')).toBeAttached();
-    await page.getByRole('combobox', { name: 'Currency', exact: true }).selectOption('GBP');
+    await page.getByRole('button', { name: 'Currency', exact: true }).click();
+    await page.getByRole('menuitem', { name: /English \(United Kingdom\)/ }).click();
     await expect(cell(page, 'A2', '-£1,234.12')).toBeAttached();
 
     await enter(page, 'A3', '2.5');

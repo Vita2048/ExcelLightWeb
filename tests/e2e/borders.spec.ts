@@ -20,12 +20,14 @@ async function pixel(page: Page, x: number, y: number) {
 async function thickRed(page: Page) {
   let commands = await menu(page);
   await commands.getByRole('button', { name: 'Border Line Color' }).click();
+  const colors = page.getByRole('group', { name: 'Border Line Color' });
+  await colors.getByRole('button', { name: 'More Colors…' }).click();
   const picker = page.getByRole('dialog', { name: 'Border Line Color' });
   await picker.getByRole('textbox', { name: 'Custom color hex' }).fill('#FF0000');
   await picker.getByRole('button', { name: 'Apply custom color' }).click();
   commands = await menu(page);
   await commands.getByRole('button', { name: 'Border Line Color' }).click();
-  await picker.getByRole('group', { name: 'Recent colors' }).getByRole('button', { name: 'Color #FF0000', exact: true }).click();
+  await colors.getByRole('group', { name: 'Recent colors' }).getByRole('button', { name: 'Color #FF0000', exact: true }).click();
   commands = await menu(page);
   await commands.getByText('Line Style', { exact: true }).click();
   await commands.getByRole('button', { name: 'Thick', exact: true }).click();

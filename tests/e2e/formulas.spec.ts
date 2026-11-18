@@ -30,10 +30,11 @@ test('Manual preserves caches and exposes stale cells, Calculate Sheet and Now h
   await enter(page, 'B1', '=20+1');
   await expect(cell(page, 'B1', '21')).toBeAttached();
   await page.getByRole('tab', { name: 'Formulas' }).click();
-  const mode = page.getByRole('combobox', { name: 'Calculation Options' });
-  await expect(mode).toHaveValue('automatic');
-  await mode.selectOption('manual');
-  await expect(mode).toHaveValue('manual');
+  const mode = page.getByRole('button', { name: 'Calculation Options' });
+  const choice = (name: string) => page.getByRole('menuitemcheckbox', { name, exact: true });
+  await mode.click();
+  await expect(choice('Automatic')).toBeChecked();
+  await choice('Manual').click();
   await page.getByRole('button', { name: 'Sheet1', exact: true }).click();
   await enter(page, 'A1', '10');
   await expect(cell(page, 'B1', '5')).toHaveAccessibleDescription('Calculation needed');
@@ -46,17 +47,21 @@ test('Manual preserves caches and exposes stale cells, Calculate Sheet and Now h
   await expect(cell(page, 'B1', '21')).toHaveAccessibleDescription('');
   await page.getByRole('button', { name: 'Calculate Now' }).click();
   await expect(cell(page, 'A1', '18')).toHaveAccessibleDescription('');
-  await expect(mode).toHaveValue('manual');
+  await mode.click();
+  await expect(choice('Manual')).toBeChecked();
+  await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Sheet1', exact: true }).click();
   await enter(page, 'A1', '11');
   await expect(cell(page, 'B1', '13')).toHaveAccessibleDescription('Calculation needed');
   await enter(page, 'B1', '=A1+4');
   await expect(cell(page, 'B1', '13')).toHaveAccessibleDescription('Calculation needed');
-  await mode.selectOption('automatic');
+  await mode.click();
+  await choice('Automatic').click();
   await expect(cell(page, 'B1', '15')).toHaveAccessibleDescription('');
   await page.getByRole('tab', { name: 'View' }).click();
   await page.getByRole('tab', { name: 'Formulas' }).click();
-  await expect(mode).toHaveValue('automatic');
+  await mode.click();
+  await expect(choice('Automatic')).toBeChecked();
 });
 
 test.describe('localized formula commands', () => {
@@ -66,9 +71,10 @@ test.describe('localized formula commands', () => {
     await page.goto(path);
     await go(page, 'A1');
     await page.getByRole('tab', { name: 'Formulas' }).click();
-    const picker = page.getByRole('combobox', { name: 'Insert Function' });
-    await expect(picker.locator('option:not(:disabled)')).toHaveCount(31);
-    await picker.selectOption('IF');
+    const picker = page.getByRole('button', { name: 'Insert Function' });
+    await picker.click();
+    await expect(page.getByRole('menu', { name: 'Insert Function' }).getByRole('menuitem')).toHaveCount(31);
+    await page.getByRole('menuitem', { name: 'IF(…)', exact: true }).click();
     const editor = page.getByRole('textbox', { name: 'Formula bar' });
     const hint = page.getByRole('tooltip');
     await expect(editor).toBeFocused();
@@ -96,7 +102,8 @@ test.describe('localized formula commands', () => {
     await page.getByRole('tab', { name: 'Formulas' }).click();
     await expect(audit).toHaveAttribute('aria-pressed', 'false');
     await goInlineTarget(page, 'A1');
-    await picker.selectOption('SUM');
+    await picker.click();
+    await page.getByRole('menuitem', { name: 'SUM(…)', exact: true }).click();
     const inline = page.getByRole('textbox', { name: 'Edit A1' });
     await expect(inline).toBeFocused();
     await expect(inline).toHaveValue('=SUM()');

@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import type { Axis } from '../../core/axis-edit';
 import type { SheetDocument } from '../../core/workbook';
+import { RibbonFlyout, type RibbonItem } from '../shell/RibbonFlyout';
+import { DialogTitleBar } from '../dialogs/DialogTitleBar';
 import { DialogActions } from '../dialogs/DialogActions';
 
 export type StructureAction = 'insert-cells' | 'delete-cells' | 'insert-row' | 'insert-column' |
@@ -19,17 +21,19 @@ export const structureLabels: Record<StructureAction, string> = {
 };
 
 export function StructureRibbon({ onAction }: { onAction: (action: StructureAction) => void }) {
-  const groups: readonly [string, StructureAction[]][] = [
-    ['Insert', ['insert-cells', 'insert-row', 'insert-column', 'insert-sheet']],
-    ['Delete', ['delete-cells', 'delete-row', 'delete-column', 'delete-sheet']],
-    ['Format', ['size-row', 'fit-row', 'size-column', 'fit-column', 'hide-row', 'hide-column',
-      'show-row', 'show-column', 'rename-sheet', 'place-sheet', 'format-cells']],
-  ];
-  return <fieldset><legend>Cells</legend>{groups.map(([label, actions]) =>
-    <select key={label} aria-label={label} value="" onChange={event => onAction(event.target.value as StructureAction)}>
-      <option value="" disabled>{label}</option>
-      {actions.map(action => <option key={action} value={action}>{structureLabels[action]}</option>)}
-    </select>)}</fieldset>;
+  function entry(action: StructureAction, group?: string): RibbonItem {
+    const label = structureLabels[action];
+    return { label, icon: label.replace('…', '...'), ...(group && { group }), select: () => onAction(action) };
+  }
+  return <fieldset className="cells-ribbon"><legend>Cells</legend>
+    <RibbonFlyout label="Insert" icon="Insert" large items={(['insert-cells', 'insert-row', 'insert-column', 'insert-sheet'] as const).map(action => entry(action))} />
+    <RibbonFlyout label="Delete" icon="Delete" large items={(['delete-cells', 'delete-row', 'delete-column', 'delete-sheet'] as const).map(action => entry(action))} />
+    <RibbonFlyout label="Format" icon="Format" large items={[
+      ...(['size-row', 'fit-row', 'size-column', 'fit-column'] as const).map(action => entry(action, 'Cell Size')),
+      { label: 'Hide & Unhide', group: 'Visibility', children: (['hide-row', 'hide-column', 'show-row', 'show-column'] as const).map(action => entry(action)) },
+      entry('rename-sheet', 'Organize Sheets'), entry('place-sheet', 'Organize Sheets'), entry('format-cells'),
+    ]} />
+  </fieldset>;
 }
 
 export type DialogAction = 'insert-cells' | 'delete-cells' | 'delete-sheet' | 'place-sheet' | 'size-row' | 'size-column';
@@ -48,10 +52,12 @@ export function StructureDialog({ action, target, sheets, initialSize, onSubmit,
   const place = action === 'place-sheet';
   const size = action === 'size-row' || action === 'size-column';
   const deleting = action === 'delete-cells';
+  const title = shift ? deleting ? 'Delete' : 'Insert' : structureLabels[action].replace('…', '');
 
   useLayoutEffect(() => {
     const dialog = ref.current!;
     if (!dialog.open) dialog.showModal();
+    if (action === 'insert-cells' || action === 'delete-cells') dialog.querySelector<HTMLInputElement>('[name="shift"]')?.focus();
     if (action === 'delete-sheet') dialog.querySelector<HTMLButtonElement>('.dialog-actions button[type="button"]')?.focus();
   }, [action]);
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -63,15 +69,17 @@ export function StructureDialog({ action, target, sheets, initialSize, onSubmit,
       before: String(data.get('before') ?? ''), copy: data.has('copy'), size: Number(data.get('size')),
     }) ?? '');
   }
-  return <dialog ref={ref} className="paste-dialog structure-dialog" aria-label={structureLabels[action]}
+  return <dialog ref={ref} className={'paste-dialog structure-dialog' + (shift ? ' shift-dialog' : '')} aria-label={title}
     onCancel={event => { event.preventDefault(); onCancel(); }}>
     <form onSubmit={submit}>
-      <h2>{structureLabels[action].replace('…', '')}</h2>
-      {shift && <label>Cell movement<select name="shift" autoFocus>
-        <option value="lane-column">Shift cells {deleting ? 'left' : 'right'}</option>
-        <option value="lane-row">Shift cells {deleting ? 'up' : 'down'}</option>
-        <option value="entire-row">Entire row</option><option value="entire-column">Entire column</option>
-      </select></label>}
+      {shift ? <DialogTitleBar><h2>{title}</h2>
+        <button type="button" className="format-dialog-close" aria-label={'Close ' + title} onClick={onCancel}>×</button>
+      </DialogTitleBar> : <DialogTitleBar spaced><h2>{title}</h2></DialogTitleBar>}
+      {shift && <fieldset className="shift-options" aria-label="Cell movement">
+        {[['lane-column', 'Shift cells ' + (deleting ? 'left' : 'right')], ['lane-row', 'Shift cells ' + (deleting ? 'up' : 'down')],
+          ['entire-row', 'Entire row'], ['entire-column', 'Entire column']].map(([value, label], index) =>
+          <label key={value}><input type="radio" name="shift" value={value} defaultChecked={index === 0} />{label}</label>)}
+      </fieldset>}
       {place && <>
         <label>Before worksheet<select name="before" defaultValue={target.id} autoFocus>
           {sheets.map(sheet => <option key={sheet.id} value={sheet.id}>{sheet.name}</option>)}

@@ -1,3 +1,5 @@
+import { expandMerges } from '../application/editing-commands';
+import { mergeAt } from '../application/border-commands';
 import { cellKey, findCell, worksheetViewport as viewport, type CellDocument, type Coordinate, type SheetDocument } from '../core/workbook';
 import { formatCellValue, type FormattedCell } from '../core/formats/cell-format';
 import { presentFormula } from '../features/formulas/formula-presentation';
@@ -15,13 +17,15 @@ export interface GridSelection {
   readonly end: Coordinate;
   readonly kind: AreaKind;
   readonly additional: readonly Area[];
+  readonly mergedArea?: Area | undefined;
 }
 
 export function singleSelection(point: Coordinate = { row: 1, column: 1 }): GridSelection {
   return { anchor: point, end: point, kind: 'cells', additional: [] };
 }
 
-export function primaryArea({ anchor, end, kind }: GridSelection): Area {
+export function primaryArea({ anchor, end, kind, mergedArea }: GridSelection): Area {
+  if (mergedArea) return mergedArea;
   const allRows = kind === 'columns' || kind === 'sheet';
   const allColumns = kind === 'rows' || kind === 'sheet';
   return {
@@ -43,7 +47,7 @@ export function selectionAreas(selection: GridSelection): readonly Area[] {
 export function select(
   current: GridSelection, point: Coordinate, kind: AreaKind, extend = false, add = false,
 ): GridSelection {
-  if (extend && current.kind === kind) return { ...current, end: point };
+  if (extend && current.kind === kind) return { ...current, end: point, mergedArea: undefined };
   if (!add || kind !== 'cells') return { ...singleSelection(point), kind };
   const prior = primaryArea(current);
   const index = current.additional.findIndex(area => includes(area, point));
@@ -58,6 +62,18 @@ export function select(
     };
   }
   return { ...singleSelection(point), additional: [...current.additional.slice(-62), prior] };
+}
+
+export function mergeSelection(sheet: SheetDocument, selection: GridSelection): GridSelection {
+  if (!sheet.merges.length || selection.kind !== 'cells') return selection;
+  function expand(area: Area): Area {
+    const range = expandMerges({ sheetId: sheet.id, row: area.top, column: area.left,
+      rows: area.bottom - area.top + 1, columns: area.right - area.left + 1 }, sheet);
+    return { top: range.row, left: range.column, bottom: range.row + range.rows - 1, right: range.column + range.columns - 1 };
+  }
+  const merged = mergeAt(sheet, selection.anchor.row, selection.anchor.column);
+  const anchor = merged ? { row: merged.row, column: merged.column } : selection.anchor;
+  return { ...selection, anchor, mergedArea: expand(primaryArea(selection)), additional: selection.additional.map(expand) };
 }
 
 export function selectionAddress(selection: GridSelection): string {
@@ -127,6 +143,9 @@ export function navigate(
   key: string, control: boolean, shift: boolean, pageRows: number,
 ): Coordinate | undefined {
   const { row, column } = point;
+  const merge = mergeAt(sheet, row, column);
+  const lastRow = merge ? merge.row + merge.rows - 1 : row;
+  const lastColumn = merge ? merge.column + merge.columns - 1 : column;
   switch (key) {
     case 'Home': return { row: control ? rows.tracks[0]?.index ?? row : row, column: columns.tracks[0]?.index ?? column };
     case 'End': {
@@ -143,9 +162,9 @@ export function navigate(
       };
     }
     case 'PageUp': return { row: rows.step(row, -pageRows), column };
-    case 'PageDown': return { row: rows.step(row, pageRows), column };
-    case 'Enter': return { row: rows.step(row, shift ? -1 : 1), column };
-    case 'Tab': return { row, column: columns.step(column, shift ? -1 : 1) };
+    case 'PageDown': return { row: rows.step(lastRow, pageRows), column };
+    case 'Enter': return { row: rows.step(shift ? merge?.row ?? row : lastRow, shift ? -1 : 1), column };
+    case 'Tab': return { row, column: columns.step(shift ? merge?.column ?? column : lastColumn, shift ? -1 : 1) };
     case 'ArrowLeft':
     case 'ArrowRight':
     case 'ArrowUp':
@@ -153,7 +172,8 @@ export function navigate(
       const vertical = key === 'ArrowUp' || key === 'ArrowDown';
       const direction = key === 'ArrowUp' || key === 'ArrowLeft' ? -1 : 1;
       const axis = vertical ? rows : columns;
-      const start = vertical ? row : column;
+      const start = vertical ? direction > 0 ? lastRow : merge?.row ?? row :
+        direction > 0 ? lastColumn : merge?.column ?? column;
       const occupies = (index: number) => {
         const cell = findCell(sheet, vertical ? { row: index, column } : { row, column: index });
         return cell !== undefined && cell.content.kind !== 'blank';

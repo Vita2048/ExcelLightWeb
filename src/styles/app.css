@@ -42,18 +42,18 @@ button:disabled { cursor: default; opacity: .5; }
   height: 77px; overflow-x: auto; scrollbar-width: thin;
 }
 .ribbon-panel p { color: var(--muted); font-size: 13px; margin: 0; }
-.ribbon-panel fieldset {
+.ribbon-panel > fieldset {
   flex: none; height: 55px; margin: 0; padding: 0 12px 5px;
   display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 4px;
 }
-.ribbon-panel legend { padding: 0 4px; color: var(--muted); font-size: 12px; }
-.ribbon-panel label { display: flex; align-items: center; gap: 4px; min-height: 28px; white-space: nowrap; }
-.ribbon-panel button, .ribbon-panel select {
+.ribbon-panel > fieldset > legend { padding: 0 4px; color: var(--muted); font-size: 12px; }
+.ribbon-panel .view-checks label { display: flex; align-items: center; gap: 4px; min-height: 28px; white-space: nowrap; }
+.ribbon-panel button:not(.ribbon-palette button, .border-menu button), .ribbon-panel select {
   background: var(--top-field); border: 1px solid var(--border); min-height: 29px;
   border-radius: 4px; padding-inline: 8px;
 }
-.ribbon-panel button:hover, .ribbon-panel select:hover { background: var(--raised); }
-.ribbon-panel button[aria-pressed='true'] { border-color: var(--accent); }
+.ribbon-panel button:not(.ribbon-palette button, .border-menu button):hover, .ribbon-panel select:hover { background: var(--raised); }
+.ribbon-panel button[aria-pressed='true']:not(.ribbon-palette button, .border-menu button) { border-color: var(--accent); }
 
 .workbook { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .formula-bar {
@@ -152,7 +152,7 @@ button:disabled { cursor: default; opacity: .5; }
 }
 
 .paste-dialog {
-  color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 8px;
+  position: fixed; color: var(--text); background: var(--panel); border: 1px solid var(--accent); border-radius: 8px;
   width: min(400px, calc(100vw - 24px)); padding: 16px;
 }
 .paste-dialog::backdrop { background: rgb(0 0 0 / 55%); }
@@ -200,12 +200,7 @@ button:disabled { cursor: default; opacity: .5; }
 .number-dialog .dialog-actions { margin-top: 14px; }
 .ribbon-panel .font-ribbon { height: 65px; display: grid; align-content: center; gap: 2px; padding-inline: 6px; }
 .font-ribbon-row { display: flex; gap: 3px; align-items: center; }
-.ribbon-panel .font-ribbon-row button, .ribbon-panel .font-ribbon-row select, .font-ribbon-row input {
-  min-height: 23px; height: 23px; padding-inline: 4px;
-}
-.font-ribbon-row input { width: 104px; background: var(--top-field); border: 1px solid var(--border); border-radius: 3px; }
-.font-ribbon-row input + input { width: 50px; }
-.font-ribbon-row select { width: 28px; }
+.font-ribbon-row input { background: var(--top-field); border-radius: 3px; padding-inline: 6px; }
 .appearance-tabs { display: flex; gap: 6px; margin-bottom: 12px; padding-bottom: 5px; border-bottom: 1px solid var(--border); }
 .appearance-tabs button[aria-selected='true'], .gradient-variants button[aria-pressed='true'] { border-color: var(--accent); }
 .appearance-fields { display: grid; align-content: start; gap: 12px; min-height: 330px; }
@@ -236,7 +231,11 @@ button:disabled { cursor: default; opacity: .5; }
   padding: 0; overflow: hidden;
 }
 .number-dialog > form { height: 100%; display: flex; flex-direction: column; }
-.format-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.format-dialog-heading {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  cursor: move; touch-action: none; user-select: none;
+}
+.dialog-title-spaced { margin-bottom: 12px; }
 .format-dialog-heading h2 { margin: 0; }
 .number-dialog .format-dialog-heading { padding: 12px 16px; }
 .paste-dialog .format-dialog-close { padding: 0; width: 30px; height: 30px; font-size: 19px; border-color: transparent; background: transparent; }
@@ -310,19 +309,11 @@ button:disabled { cursor: default; opacity: .5; }
 
 .border-ribbon button { min-width: 29px; }
 .border-menu {
-  position: fixed; inset: auto; margin: 0; width: min(270px, calc(100vw - 8px)); max-height: min(590px, 70vh);
+  position: fixed; inset: auto; margin: 0; width: min(270px, calc(100vw - 8px));
   overflow: auto; padding: 8px; border: 1px solid var(--border); border-radius: 6px;
   background: var(--panel); color: var(--text);
 }
-.border-menu-group { display: grid; gap: 3px; }
-.border-menu-group + .border-menu-group { border-top: 1px solid var(--border); margin-top: 5px; padding-top: 5px; }
-.border-menu button, .border-menu summary {
-  text-align: left; padding: 5px 8px; border: 1px solid transparent; color: inherit; background: transparent; cursor: pointer;
-}
-.border-menu button:hover, .border-menu summary:hover { background: var(--raised); }
-.border-styles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; margin-block: 5px 9px; }
-.border-menu .border-styles button { display: grid; gap: 1px; padding: 3px 5px; font-size: 12px; text-align: start; }
-.border-styles button[aria-pressed='true'] { border-color: var(--accent); }
+.border-style-menu button[aria-pressed='true'] { background: var(--raised); border-color: var(--accent); }
 .border-dialog-columns { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 14px; }
 .border-dialog-columns fieldset { min-width: 0; margin: 0; padding: 8px 9px 9px; border: 1px solid var(--border); }
 .border-tab p { margin: 14px 0 0; }
@@ -375,4 +366,145 @@ button:disabled { cursor: default; opacity: .5; }
 @media (forced-colors: active) {
   .paste-dialog .border-style-picker button[aria-pressed='true'],
   .paste-dialog .border-diagram button[aria-pressed='true'] { border-color: Highlight; }
+}
+
+/* Ribbon groups and dropdowns use the desktop's stacked commands and lower captions. */
+:root {
+  --ribbon-glyph-blue: #0078d4;
+  --ribbon-glyph-gold: #e6b842;
+  --ribbon-glyph-pink: #ed68b6;
+  --ribbon-glyph-red: #e66a6a;
+  --ribbon-glyph-paper: #f3f3f3;
+  --ribbon-glyph-outline: #505050;
+  --ribbon-glyph-white: #fff;
+}
+.ribbon-tabs { gap: 4px; padding-inline: 12px; }
+.ribbon-tabs button { min-height: 31px; }
+.ribbon-panel { height: 100px; gap: 0; padding: 0; align-items: stretch; }
+.ribbon-panel > fieldset {
+  position: relative; height: 97px; padding: 3px 12px 18px; gap: 8px;
+  border: 0; border-inline-end: 1px solid #444; border-radius: 0;
+}
+.ribbon-panel > fieldset > legend {
+  position: absolute; inset-inline: 0; bottom: 3px; text-align: center; pointer-events: none;
+  font-size: 11px; color: var(--muted);
+}
+.ribbon-panel button:not(.ribbon-palette button, .border-menu button) { background: transparent; border-color: transparent; min-height: 26px; padding-inline: 4px; white-space: nowrap; }
+.ribbon-panel button[aria-pressed='true']:not(.ribbon-palette button, .border-menu button) { background: var(--raised); border-color: var(--border); }
+.ribbon-glyph { flex: none; display: inline-block; vertical-align: middle; overflow: visible; }
+.ribbon-command { display: inline-flex; align-items: center; gap: 5px; justify-content: center; font-size: 12px; }
+.ribbon-panel .ribbon-large {
+  display: inline-flex; flex-direction: column; justify-content: center; align-items: center;
+  min-height: 72px; padding: 2px 6px; gap: 3px;
+}
+.ribbon-panel .ribbon-stack { display: grid; gap: 1px; align-items: center; justify-items: stretch; }
+.ribbon-panel .ribbon-stack > .ribbon-command:not(.ribbon-large) { justify-content: start; }
+.ribbon-panel .ribbon-stack > .ribbon-large + button { min-height: 14px; justify-content: center; }
+.clipboard-ribbon .ribbon-stack:first-of-type .ribbon-large { min-height: 51px; }
+.ribbon-split { display: inline-flex; align-items: center; gap: 1px; }
+.ribbon-split .ribbon-command:has(> .ribbon-chevron:only-child) { min-width: 15px; padding: 0 3px; }
+.ribbon-chevron, .ribbon-submenu-chevron {
+  display: inline-block; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1px 1px 0;
+  transform: translateY(-2px) rotate(45deg); flex: none;
+}
+.ribbon-submenu-chevron { margin-inline-start: auto; transform: rotate(-45deg); }
+.ribbon-panel .view-checks label { min-height: 18px; font-size: 12px; }
+.ribbon-panel .font-ribbon { height: 97px; padding: 3px 12px 18px; }
+.ribbon-panel .font-ribbon-row { gap: 2px; }
+.ribbon-panel .font-ribbon-row button:not(.ribbon-palette button, .border-menu button) { padding: 0 4px; }
+.ribbon-font-input { display: flex; width: 140px; border: 1px solid var(--border); border-radius: 4px; background: var(--top-field); }
+.ribbon-panel .ribbon-font-input input { border: 0; min-height: 26px; min-width: 0; width: 100%; }
+.ribbon-font-input:has(input[aria-label='Font size']) { width: 72px; }
+.ribbon-panel .ribbon-font-input button { min-height: 24px; }
+.ribbon-panel .number-ribbon-stack { min-width: 184px; }
+.ribbon-panel .number-ribbon-stack > .ribbon-command:not(.ribbon-large) { width: 100%; border: 1px solid var(--border); padding-inline: 7px; justify-content: space-between; }
+.ribbon-panel .ribbon-launcher { position: absolute; right: 6px; bottom: 1px; min-height: 16px; padding: 0 2px; }
+.ribbon-color-icon { display: grid; border-bottom: 3px solid; }
+.ribbon-panel .alignment-ribbon { display: grid; align-content: center; gap: 2px; }
+.alignment-ribbon-body { display: flex; gap: 10px; }
+.alignment-ribbon-row { display: flex; align-items: center; gap: 2px; }
+.alignment-ribbon-row > button { min-width: 30px; }
+.border-ribbon > button { min-width: 0; }
+.ribbon-flyout, .ribbon-palette, .border-menu {
+  box-sizing: border-box; color: var(--text); background: var(--panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px; box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+  position: fixed; inset: auto; margin: 0; max-width: calc(100vw - 8px); max-height: calc(100dvh - 8px);
+}
+.ribbon-flyout { z-index: 15; min-width: min(176px, calc(100vw - 8px)); overflow: auto; }
+.ribbon-flyout button, .border-menu button, .border-menu summary, .ribbon-palette-action {
+  width: 100%; min-height: 32px; text-align: start; padding: 4px 8px; display: flex; align-items: center; gap: 7px;
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+}
+.ribbon-flyout button:hover, .border-menu button:hover, .border-menu summary:hover, .ribbon-palette-action:hover { background: var(--raised); }
+.ribbon-flyout-glyph { display: grid; place-items: center; flex: 0 0 26px; height: 26px; border: 1px solid transparent; }
+.ribbon-flyout button[aria-checked='true'] .ribbon-flyout-glyph { background: var(--raised); border-color: var(--accent); }
+.ribbon-flyout .ribbon-flyout-sample { min-height: 52px; min-width: min(205px, 100%); }
+.ribbon-flyout-sample .ribbon-flyout-glyph { flex-basis: 36px; height: 36px; }
+.ribbon-flyout-sample .ribbon-flyout-label { font-weight: 600; }
+.ribbon-flyout-label small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; }
+.ribbon-flyout-divider { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; }
+.ribbon-flyout-heading { color: var(--muted); padding: 4px 8px; font-size: 12px; }
+.border-menu { padding: 5px; }
+.border-menu summary { list-style: none; cursor: pointer; }
+.border-menu summary::-webkit-details-marker { display: none; }
+.border-menu summary canvas { width: 22px; height: 13px; }
+
+.ribbon-palette { width: 282px; overflow: auto; padding: 8px 10px; }
+.ribbon-palette fieldset { border: 0; border-top: 1px solid var(--border); margin: 7px 0; min-width: 0; padding: 4px 0 0; }
+.ribbon-palette legend { font-size: 13px; font-weight: 600; padding: 0 3px; }
+.ribbon-palette .color-palette { column-gap: 4px; row-gap: 0; }
+.ribbon-palette .color-palette button { width: 100%; height: auto; aspect-ratio: 1; border-radius: 0; }
+.ribbon-theme-colors .color-palette button:nth-child(-n+10) { margin-bottom: 7px; }
+.ribbon-palette-action { border-color: transparent; }
+
+.shift-dialog, .merge-confirmation { width: min(320px, calc(100vw - 24px)); padding: 0; border: 1px solid var(--accent); border-radius: 9px; }
+.shift-dialog .format-dialog-heading, .merge-confirmation .format-dialog-heading { padding: 11px 16px 3px; }
+.shift-dialog .format-dialog-heading h2, .merge-confirmation .format-dialog-heading h2 { margin: 0; }
+.shift-dialog .shift-options { padding: 0 16px 6px; margin: 0; border: 0; }
+.shift-dialog .shift-options label { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+.shift-dialog .shift-options input {
+  appearance: none; width: 20px; height: 20px; margin: 0; border: 1px solid #929292; border-radius: 50%; background: transparent;
+}
+.shift-dialog .shift-options input:checked { border: 4px solid var(--accent); }
+.shift-dialog .shift-options input:focus-visible { outline-offset: 2px; }
+.shift-dialog .dialog-actions, .merge-confirmation .dialog-actions {
+  display: flex; justify-content: end; gap: 8px; margin: 0; padding: 11px 16px; background: var(--sheet);
+}
+.shift-dialog .dialog-actions button, .merge-confirmation .dialog-actions button { width: 88px; height: 32px; background: var(--raised); }
+.shift-dialog .dialog-actions button[type='submit'], .merge-confirmation .dialog-actions button[type='submit'] {
+  background: var(--accent); border-color: var(--accent); color: var(--top-bar);
+}
+.shift-dialog p, .merge-confirmation p { padding: 0 16px 10px; }
+.alignment-tab { display: grid; grid-template-columns: minmax(0, 1fr) 200px; gap: 8px 12px; }
+.alignment-tab fieldset { display: grid; align-content: start; min-width: 0; padding: 9px; margin: 0; border: 1px solid var(--border); }
+.alignment-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px; gap: 12px; margin-block-end: 7px; }
+.alignment-row input, .orientation-degrees input {
+  width: 100%; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+}
+.alignment-lower { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.alignment-tab .alignment-check { display: flex; align-items: center; min-height: 31px; gap: 7px; }
+.alignment-tab .alignment-check input { width: 18px; height: 18px; margin: 0; }
+.alignment-orientation { grid-area: 1 / 2 / 3 / 3; gap: 8px; }
+.orientation-controls { display: flex; gap: 8px; justify-content: center; align-items: stretch; }
+.orientation-controls button { width: 32px; padding-inline: 0; }
+.orientation-controls button[aria-pressed='true'] { border-color: var(--accent); background: var(--raised); }
+.orientation-dial { width: 132px; height: 180px; cursor: crosshair; touch-action: none; }
+.orientation-dial[data-disabled='true'] { opacity: .45; cursor: default; }
+.orientation-needle { stroke: #e84040; }
+.alignment-tab .orientation-degrees { display: flex; align-items: center; gap: 6px; }
+.orientation-degrees input { width: 100px; }
+@media (max-width: 530px) {
+  .alignment-tab { grid-template-columns: minmax(0, 1fr); }
+  .alignment-orientation { grid-area: auto; }
+}
+@media (forced-colors: active) {
+  :root { --ribbon-glyph-blue: currentColor; --ribbon-glyph-gold: currentColor; --ribbon-glyph-pink: currentColor;
+    --ribbon-glyph-red: currentColor; --ribbon-glyph-paper: Canvas; --ribbon-glyph-outline: currentColor; --ribbon-glyph-white: Canvas; }
+  .ribbon-panel > fieldset, .ribbon-flyout, .ribbon-palette, .shift-dialog .shift-options input { border-color: CanvasText; }
+  .shift-dialog .shift-options input:checked, .ribbon-flyout button[aria-checked='true'] .ribbon-flyout-glyph { border-color: Highlight; }
+  .ribbon-panel button[aria-pressed='true']:not(.ribbon-palette button, .border-menu button), .orientation-controls button[aria-pressed='true'] { border-color: Highlight; }
+  .orientation-needle { stroke: Highlight; }
+  .shift-dialog .dialog-actions button[type='submit'], .merge-confirmation .dialog-actions button[type='submit'] {
+    background: Highlight; color: HighlightText; border-color: Highlight;
+  }
 }

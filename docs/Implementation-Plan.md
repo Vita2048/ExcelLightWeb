@@ -54,7 +54,7 @@ Use one slice as one sprint. S01 freezes the observable baseline; S02/S03 retire
 1. All sprint acceptance cases implemented and backed by relevant tests; original source behavior and approved browser adaptations are traceable in Feature-Parity.
 2. Typecheck, unit/integration tests, production build and applicable browser/runtime/parity suites pass. Report exact commands and failing/skipped/unrun checks. No skipped test is evidence of parity.
 3. Invalid input and cancellation preserve the document; no stale async result mutates the wrong session. Authored state, history, save identity and consent remain correct.
-4. Dark-only UI, keyboard/focus behavior, local data constraint and repository-subpath hosting still hold.
+4. Dark-only UI, keyboard/focus behavior, local data constraint and repository-subpath hosting still hold. Review new ribbon commands, flyouts and icons against the desktop in their functional sprint. S25 reviews the complete ribbon across browsers.
 5. Update affected architecture/development/deployment/compatibility docs; record dependency choices and actual runtime versions. No introduced critical unresolved regression.
 6. Save a concise handover in docs/handovers/SNN.md, including next action and known risks. Mark the sprint complete only when its required evidence exists.
 

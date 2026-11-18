@@ -3,6 +3,7 @@ import {
   type ClipboardEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref,
 } from 'react';
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
+import { mergeAt } from '../application/border-commands';
 import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
 import { findCell, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument } from '../core/workbook';
 import type { Axis } from '../core/axis-edit';
@@ -14,7 +15,7 @@ import selectColumnCursor from './cursors/select-column.svg';
 import selectRowCursor from './cursors/select-row.svg';
 import { address, clamp, GridAxis, gridMetrics } from './grid-geometry';
 import {
-  cellDisplay, includes, navigate, primaryArea, select, selectionAreas, singleSelection,
+  cellDisplay, includes, mergeSelection, navigate, primaryArea, select, selectionAreas, singleSelection,
   type Area, type AreaKind, type GridSelection,
 } from './grid-selection';
 
@@ -184,7 +185,7 @@ export function Worksheet(props: WorksheetProps) {
 
   useLayoutEffect(() => {
     drawWorksheet(canvas.current!, {
-      sheet, view, rows: rowTracks, columns: columnTracks, selection, areas, scale, headings, gridlines,
+      sheet, view, rows: rowTracks, columns: columnTracks, rowAxis: rows, columnAxis: columns, selection, areas, scale, headings, gridlines,
       showFormulas, staleCells, separator, referenceArea: props.referenceArea,
       borderPreview: props.borderTool && borderPreview && ('area' in borderPreview ? {
         area: { top: borderPreview.area.row, left: borderPreview.area.column,
@@ -243,7 +244,7 @@ export function Worksheet(props: WorksheetProps) {
     const point = pointAt(x, y, active.kind, true);
     if (point && (point.row !== active.selection.end.row || point.column !== active.selection.end.column)) {
       active.selection = select(active.selection, point, active.kind, true);
-      if (active.reference) active.reference.update(primaryArea(active.selection));
+      if (active.reference) active.reference.update(primaryArea(mergeSelection(sheet, active.selection)));
       else onSelection(active.selection);
     }
     if ((xOverflow !== 0 || yOverflow !== 0) && drag.current) frame.current = requestAnimationFrame(moveDrag);
@@ -335,7 +336,7 @@ export function Worksheet(props: WorksheetProps) {
       event.preventDefault();
       node.setPointerCapture(event.pointerId);
       drag.current = { id: event.pointerId, kind, selection, x: event.clientX, y: event.clientY, reference };
-      reference.update(primaryArea(selection));
+      reference.update(primaryArea(mergeSelection(sheet, selection)));
       return;
     }
     const additive = event.ctrlKey || event.metaKey;
@@ -410,7 +411,7 @@ export function Worksheet(props: WorksheetProps) {
     } else active.reference?.cancel();
     drag.current = null;
     cancelAnimationFrame(frame.current);
-    if (active.paint && event.type === 'pointerup') props.onPaint(primaryArea(active.selection));
+    if (active.paint && event.type === 'pointerup') props.onPaint(primaryArea(mergeSelection(sheet, active.selection)));
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -455,16 +456,26 @@ export function Worksheet(props: WorksheetProps) {
 
   // Keep the active descendant mounted even when native scrolling moves it outside the viewport.
   const projected = new Map(rowTracks.slice(0, 64).map(row => [row.index, columnTracks.map(column => column.index)]));
-  const activeColumns = projected.get(selection.anchor.row) ?? [];
-  if (!activeColumns.includes(selection.anchor.column)) {
-    projected.set(selection.anchor.row, [...activeColumns, selection.anchor.column].sort((a, b) => a - b));
+  function mountCell(row: number, column: number) {
+    const indexes = projected.get(row) ?? [];
+    if (!indexes.includes(column)) projected.set(row, [...indexes, column].sort((a, b) => a - b));
   }
-  const editRow = editAt && rows.track(editAt.row);
-  const editColumn = editAt && columns.track(editAt.column);
+  for (const [row, indexes] of [...projected]) {
+    for (const column of indexes) {
+      const merge = mergeAt(sheet, row, column);
+      if (merge) mountCell(merge.row, merge.column);
+    }
+  }
+  mountCell(selection.anchor.row, selection.anchor.column);
+  const editMerge = editAt && mergeAt(sheet, editAt.row, editAt.column);
+  const editRow = editAt && (rows.track(editAt.row) ?? (editMerge && rows.tracks.find(track =>
+    track.index >= editAt.row && track.index < editAt.row + editMerge.rows)));
+  const editColumn = editAt && (columns.track(editAt.column) ?? (editMerge && columns.tracks.find(track =>
+    track.index >= editAt.column && track.index < editAt.column + editMerge.columns)));
   const bodyWidth = Math.max(0, view.width - left);
   const bodyHeight = Math.max(0, view.height - top);
-  const editorWidth = Math.min(bodyWidth, Math.max(80, editColumn?.size ?? 0));
-  const editorHeight = Math.min(bodyHeight, Math.max(24, editRow?.size ?? 0));
+  const editorWidth = Math.min(bodyWidth, Math.max(80, editMerge ? columns.span(editMerge.column, editMerge.column + editMerge.columns - 1) : editColumn?.size ?? 0));
+  const editorHeight = Math.min(bodyHeight, Math.max(24, editMerge ? rows.span(editMerge.row, editMerge.row + editMerge.rows - 1) : editRow?.size ?? 0));
   const editorLeft = editColumn ? columns.screen(editColumn, view.x) : 0;
   const editorTop = editRow ? rows.screen(editRow, view.y) : 0;
 
@@ -507,9 +518,11 @@ export function Worksheet(props: WorksheetProps) {
             <div key={row} role="row" aria-rowindex={row}>
               {indexes.map(column => {
                 const point = { row, column };
+                const merge = mergeAt(sheet, row, column);
+                if (merge && (merge.row !== row || merge.column !== column)) return null;
                 const cell = findCell(sheet, point);
                 const value = cellDisplay(cell, showFormulas, separator);
-                return <div key={column} id={cellId(point)} role="gridcell" aria-colindex={column}
+                return <div key={column} id={cellId(point)} role="gridcell" aria-colindex={column} aria-rowspan={merge?.rows} aria-colspan={merge?.columns}
                   aria-selected={areas.some(area => includes(area, point))}
                   aria-description={cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
                   aria-label={address(point) + (value ? ', ' + value : ', blank')} />;

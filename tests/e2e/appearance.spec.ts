@@ -95,6 +95,8 @@ test('commits font, number and pattern changes together and keeps nested color a
   const numberTab = dialog.getByRole('tab', { name: 'Number' });
   await numberTab.focus();
   await page.keyboard.press('ArrowRight');
+  await expect(dialog.getByRole('tab', { name: 'Alignment', selected: true })).toBeFocused();
+  await page.keyboard.press('ArrowRight');
   await expect(dialog.getByRole('tab', { name: 'Font', selected: true })).toBeFocused();
   await dialog.getByRole('listbox', { name: 'Font styles' }).selectOption('Bold Italic');
   await dialog.getByRole('combobox', { name: 'Underline' }).selectOption('Double Accounting');
@@ -179,7 +181,7 @@ test('paints the chosen gradient, cancels the Fill draft and replaces the effect
   await expect(grid).toBeFocused();
   await expect.poll(() => fillAt(page, 1, 1, 48)).toEqual(middle);
   await toolbar(page).getByRole('button', { name: 'Fill Color', exact: true }).click();
-  const fillColor = page.getByRole('dialog', { name: 'Fill Color', exact: true });
+  const fillColor = page.getByRole('group', { name: 'Fill Color', exact: true });
   await fillColor.getByRole('button', { name: 'Color #156082', exact: true }).click();
   await expect.poll(() => fillAt(page, 1, 1)).toEqual([21, 96, 130, 255]);
   await toolbar(page).getByRole('button', { name: 'Fill Color', exact: true }).click();
@@ -197,7 +199,8 @@ test('Format Painter tiles a locked source across sheets, applies once in single
   await enter(page, 'A1', '123');
   await go(page, 'A1');
   await toolbar(page).getByRole('button', { name: 'Apply last fill color' }).click();
-  await toolbar(page).getByRole('combobox', { name: 'Number Format', exact: true }).selectOption('0.00');
+  await toolbar(page).getByRole('button', { name: 'Number Format', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Number(?:$| )/ }).click();
   await grid.press('Shift+ArrowRight');
 
   const painter = toolbar(page).getByRole('button', { name: 'Format Painter', exact: true });
@@ -248,9 +251,11 @@ test('Format Cells tabs keep desktop order and edited panes on a narrow viewport
   const dialog = page.getByRole('dialog', { name: 'Format Cells' });
   const tabs = dialog.getByRole('tablist');
   await expect(tabs.getByRole('tab')).toHaveText(['Number', 'Alignment', 'Font', 'Border', 'Fill']);
-  await expect(tabs.getByRole('tab', { name: 'Alignment' })).toBeDisabled();
+  await expect(tabs.getByRole('tab', { name: 'Alignment' })).toBeEnabled();
   await expect(tabs.getByRole('tab', { name: 'Border' })).toBeEnabled();
   await tabs.getByRole('tab', { name: 'Number' }).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(tabs.getByRole('tab', { name: 'Alignment', selected: true })).toBeFocused();
   await page.keyboard.press('ArrowRight');
   await expect(tabs.getByRole('tab', { name: 'Font', selected: true })).toBeFocused();
   const font = dialog.getByRole('tabpanel', { name: 'Font' });

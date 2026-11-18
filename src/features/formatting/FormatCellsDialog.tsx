@@ -6,10 +6,13 @@ import { categories, currencies, currencyChoices, formatName, localeForCategory,
   presets, specialLocales, typeChoices, type CurrencyChoice, type NumberCategory } from '../../core/formats/number-catalog';
 import { documentLimits, type CellDocument } from '../../core/workbook';
 import { isFontFamily, normalFont, parseFontSize, updateAppearance, type AppearancePatch } from '../../core/formats/appearance';
+import { AlignmentTab, alignmentValue } from './AlignmentTab';
+import type { AlignmentPatch } from '../../application/alignment-commands';
 import { BorderTab } from './BorderTab';
 import type { BorderEditorState } from '../../application/border-commands';
 import type { BorderDraft } from '../../core/formats/borders';
 import { FillTab, FontTab } from './AppearanceTabs';
+import { DialogTitleBar } from '../dialogs/DialogTitleBar';
 import { DialogActions } from '../dialogs/DialogActions';
 
 const numericCategories: ReadonlySet<NumberCategory> = new Set(['Number', 'Currency', 'Accounting', 'Percentage', 'Scientific']);
@@ -18,26 +21,30 @@ const localeNames = new Intl.DisplayNames(['en'], { type: 'language' });
 const localeLabel = (tag: string) => localeNames.of(tag) ?? tag;
 
 const tabs = ['Number', 'Alignment', 'Font', 'Border', 'Fill'] as const;
-const availableTabs = ['Number', 'Font', 'Border', 'Fill'] as const;
+const availableTabs = tabs;
 export type FormatTab = typeof availableTabs[number];
 
 function available(item: typeof tabs[number]): item is FormatTab {
   return availableTabs.some(tab => tab === item);
 }
 
-export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderEditor, onSubmit, onCancel }: {
+export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderEditor, mergeEnabled, merged, onSubmit, onCancel }: {
   cell: CellDocument | undefined;
   locale: string;
   usedCodes: readonly string[];
   initialTab: FormatTab;
   borderEditor: BorderEditorState | undefined;
-  onSubmit: (patch: AppearancePatch, code: string | undefined, borders: BorderDraft) => string | undefined;
+  mergeEnabled: boolean;
+  merged: boolean | undefined;
+  onSubmit: (patch: AppearancePatch, code: string | undefined, borders: BorderDraft, alignment: AlignmentPatch, merge: boolean | undefined) => string | undefined;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const tabId = useId();
   const [tab, setTab] = useState(initialTab);
   const [borders, setBorders] = useState<BorderDraft>({});
+  const [alignment, setAlignment] = useState<AlignmentPatch>({});
+  const [merge, setMerge] = useState<boolean>();
   const enabledTabs: readonly FormatTab[] = borderEditor ? availableTabs : availableTabs.filter(item => item !== 'Border');
   const [patch, setPatch] = useState<AppearancePatch>({});
   const [family, setFamily] = useState(cell?.style?.fontFamily ?? 'Segoe UI');
@@ -102,11 +109,11 @@ export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderE
 
   return <dialog ref={ref} className="paste-dialog number-dialog" aria-labelledby={tabId + '-title'}
     onCancel={event => { if (event.target === event.currentTarget) { event.preventDefault(); onCancel(); } }}>
-    <form noValidate onSubmit={event => { event.preventDefault(); if (valid) setError(onSubmit(patch, touched ? code : undefined, borders) ?? ''); }}>
-      <div className="format-dialog-heading">
+    <form noValidate onSubmit={event => { event.preventDefault(); if (valid) setError(onSubmit(patch, touched ? code : undefined, borders, alignment, merge) ?? ''); }}>
+      <DialogTitleBar>
         <h2 id={tabId + '-title'}>Format Cells</h2>
         <button type="button" className="format-dialog-close" aria-label="Close Format Cells" onClick={onCancel}>×</button>
-      </div>
+      </DialogTitleBar>
       <div className="appearance-tabs" role="tablist" aria-label="Format Cells options">
         {tabs.map(item => available(item) && enabledTabs.includes(item) ? <button type="button" key={item} role="tab" id={tabId + '-' + item}
           aria-controls={tabId + '-panel-' + item} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1}
@@ -188,6 +195,10 @@ export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderE
               </select></label>
             </>}
           </div>
+        </div>
+        <div role="tabpanel" id={tabId + '-panel-Alignment'} aria-labelledby={tabId + '-Alignment'} hidden={tab !== 'Alignment'}>
+          <AlignmentTab style={alignmentValue(cell?.style, alignment)} mergeEnabled={mergeEnabled} merged={merge ?? merged}
+            onMerge={setMerge} onChange={change => setAlignment(current => ({ ...current, ...change }))} />
         </div>
         <div role="tabpanel" id={tabId + '-panel-Font'} aria-labelledby={tabId + '-Font'} hidden={tab !== 'Font'}>
           {tab === 'Font' && <FontTab style={appearance} family={family} size={size} setFamily={text => {

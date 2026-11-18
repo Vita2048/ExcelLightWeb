@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { EditRange } from '../application/editing-commands';
 import { applyNumberFormat, type NumberFormatChange } from '../application/number-format-command';
-import { applyBorderPreset, applyBorderStroke, inspectBorders } from '../application/border-commands';
+import { changeAlignment, mergeState, proposeMerge, type AlignmentAction, type AlignmentPatch, type MergeMode } from '../application/alignment-commands';
+import type { BorderDraft } from '../core/formats/borders';
+import { MergeConfirmation } from '../features/formatting/MergeConfirmation';
+import { applyBorderPreset, applyBorderStroke, inspectBorders, mergeAt } from '../application/border-commands';
 import { borderModes, borderPen, type BorderAction, type BorderMode, type BorderPreset, type BorderStyle } from '../core/formats/borders';
 import type { DrawGesture } from '../grid/border-geometry';
 import { FormatCellsDialog, type FormatTab } from '../features/formatting/FormatCellsDialog';
@@ -24,7 +27,7 @@ import { StructureDialog, StructureMenu, type DialogAction, type StructureAction
 import { fitDimensions } from '../grid/autofit';
 import { address, clamp, gridMetrics } from '../grid/grid-geometry';
 import {
-  includes, parseAddress, primaryArea, selectionAddress, selectionAreas, selectionStatistics, singleSelection, type Area, type GridSelection,
+  includes, mergeSelection, parseAddress, primaryArea, selectionAddress, selectionAreas, selectionStatistics, singleSelection, type Area, type GridSelection,
 } from '../grid/grid-selection';
 
 const defaultSelection = singleSelection();
@@ -115,6 +118,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const root = useRef<HTMLDivElement>(null);
   const requestedFocus = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; target: StructureTarget; actions: readonly StructureAction[] }>();
+  const [mergeConfirmation, setMergeConfirmation] = useState<{ confirm: () => void }>();
   const [formatDraft, setFormatDraft] = useState<{ basis: WorkbookSnapshot; ranges: readonly EditRange[]; cell: CellReference; tab: FormatTab }>();
   const [lineStyle, setLineStyle] = useState<BorderStyle>('thin');
   const [lineColor, setLineColor] = useState<string>();
@@ -136,8 +140,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const selection = useMemo(() => {
     const row = visibleIndex(selected.anchor.row, sheet.rows, worksheetViewport.rows);
     const column = visibleIndex(selected.anchor.column, sheet.columns, worksheetViewport.columns);
-    return row === selected.anchor.row && column === selected.anchor.column ? selected : singleSelection({ row, column });
-  }, [selected, sheet.rows, sheet.columns]);
+    return mergeSelection(sheet, row === selected.anchor.row && column === selected.anchor.column ? selected : singleSelection({ row, column }));
+  }, [selected, sheet]);
   const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
   const focusGrid = () => worksheet.current?.focus();
@@ -250,6 +254,45 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       editing.clearCut();
       scheduler.current?.changed(true);
     }
+  }
+
+  function requestMerge(captured: WorkbookSnapshot, range: EditRange, mode: MergeMode,
+    formatting?: { patch: AppearancePatch; code: string | undefined; borders: BorderDraft; alignment: AlignmentPatch }) {
+    const basis = currentAuthoredBasis(captured);
+    const proposal = proposeMerge(basis, range, mode, makeId);
+    function apply() {
+      const current = currentAuthoredBasis(captured);
+      const { command, range: expanded } = current === basis ? proposal : proposeMerge(current, range, mode, makeId);
+      if (formatting) {
+        const formatted = formatStyles({ ...current, document: command.document }, [expanded],
+          formatting.patch, formatting.code, formatting.borders, formatting.alignment);
+        applyStructure(current, { ...command, label: 'Format Cells', edits: formatted.edits });
+        setFormatDraft(undefined);
+      } else applyStructure(current, command);
+      setMergeConfirmation(undefined);
+      setSelections(values => new Map(values).set(range.sheetId, { ...singleSelection({ row: expanded.row, column: expanded.column }),
+        end: { row: expanded.row + expanded.rows - 1, column: expanded.column + expanded.columns - 1 } }));
+    }
+    if (proposal.discards) setMergeConfirmation({ confirm: apply });
+    else apply();
+  }
+
+  function runMerge(mode: MergeMode) {
+    if (!editing.commit()) return;
+    try {
+      const selected = ranges();
+      requireDocument(selected.length === 1, 'Select a single range before merging cells.');
+      requestMerge(session.capture(), selected[0]!, mode);
+    } catch (error) { editing.reject(error); }
+  }
+
+  function runAlignment(action: AlignmentAction) {
+    if (!editing.commit()) return;
+    try {
+      const basis = session.capture();
+      applyStyleCommand(changeAlignment(basis, ranges(), action, findReferencedCell(basis.document, activeTarget)?.style));
+      requestAnimationFrame(focusGrid);
+    } catch (error) { editing.reject(error); }
   }
 
   function runNumberFormat(change: NumberFormatChange) {
@@ -431,9 +474,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function openGridMenu(x: number, y: number, axis?: Axis, index?: number, point?: Coordinate) {
     if (!editing.commit()) return;
+    const cell = point && (mergeAt(sheet, point.row, point.column) ?? { ...point, rows: 1, columns: 1 });
     const target = axis && index !== undefined ? targetHeader(axis, index) : { id: sheet.id, ranges:
-      point && !selectionAreas(selection).some(area => includes(area, point))
-        ? [{ sheetId: sheet.id, ...point, rows: 1, columns: 1 }] : ranges() };
+      point && cell && !selectionAreas(selection).some(area => includes(area, point))
+        ? [{ sheetId: sheet.id, ...cell }] : ranges() };
     setMenu({ x, y, target, actions: axis ? [
       `insert-${axis}`, `delete-${axis}`, `size-${axis}`, `fit-${axis}`, `hide-${axis}`, `show-${axis}`,
     ] : ['insert-cells', 'delete-cells', 'format-cells'] });
@@ -540,7 +584,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   return (
     <div className="app-shell" ref={root} onKeyDownCapture={event => {
-      if (event.key === 'Escape' && (painter || borderTool) && !(event.target instanceof Element && event.target.closest('dialog, [popover]:popover-open'))) {
+      if (event.key === 'Escape' && (painter || borderTool) && !(event.target instanceof Element && event.target.closest('dialog, [popover]:popover-open, [role="menu"]'))) {
         event.preventDefault();
         event.stopPropagation();
         setBrush(undefined);
@@ -561,7 +605,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         <span className="product-title">ExcelLight Web</span>
       </header>
 
-      <Ribbon borders={{ action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode, onAction: runBorder,
+      <Ribbon onAlign={runAlignment} onMerge={runMerge} merged={!!mergeAt(sheet, selection.anchor.row, selection.anchor.column)} borders={{ action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode, onAction: runBorder,
         onStyle: style => { setLineStyle(style); runBorder(borderTool?.mode ?? 'draw'); },
         onColor: color => { setLineColor(color); runBorder(borderTool?.mode ?? 'draw'); },
         onDialog: () => openStructure('format-cells', undefined, 'Border') }} cell={findCell(sheet, selection.anchor)} onNumberFormat={runNumberFormat} onAppearance={runAppearance}
@@ -693,17 +737,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onClose={() => { setMenu(undefined); requestAnimationFrame(focusGrid); }} />}
       {formatDraft && <FormatCellsDialog cell={findReferencedCell(snapshot.document, formatDraft.cell)} locale={locale}
         usedCodes={usedNumberCodes} initialTab={formatDraft.tab} borderEditor={borderEditor}
+        mergeEnabled={formatDraft.ranges.length === 1} merged={formatDraft.ranges.length === 1 ?
+          mergeState(formatDraft.basis.document.sheets.find(item => item.id === formatDraft.cell.sheetId)!, formatDraft.ranges[0]!) : undefined}
         onCancel={() => { setFormatDraft(undefined); requestAnimationFrame(focusGrid); }}
-        onSubmit={(patch, code, borders) => {
+        onSubmit={(patch, code, borders, alignment, merge) => {
           try {
-            if (code !== undefined || Object.keys(patch).length || Object.keys(borders).length) {
+            if (merge !== undefined) {
+              requestMerge(formatDraft.basis, formatDraft.ranges[0]!, merge ? 'cells' : 'unmerge', { patch, code, borders, alignment });
+              return;
+            }
+            if (code !== undefined || Object.keys(patch).length || Object.keys(borders).length || Object.keys(alignment).length) {
               const basis = currentAuthoredBasis(formatDraft.basis);
-              applyStyleCommand(formatStyles(basis, formatDraft.ranges, patch, code, borders));
+              applyStyleCommand(formatStyles(basis, formatDraft.ranges, patch, code, borders, alignment));
             }
             setFormatDraft(undefined);
             requestAnimationFrame(focusGrid);
           } catch (error) { return error instanceof Error ? error.message : 'The number format could not be applied.'; }
         }} />}
+      {mergeConfirmation && <MergeConfirmation onConfirm={mergeConfirmation.confirm} onCancel={() => {
+        setMergeConfirmation(undefined);
+        if (!formatDraft) requestAnimationFrame(focusGrid);
+      }} />}
       {structure && <StructureDialog action={structure.action} sheets={structure.basis.document.sheets}
         target={structure.basis.document.sheets.find(item => item.id === structure.target.id)!}
         initialSize={(() => {

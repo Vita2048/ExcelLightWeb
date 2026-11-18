@@ -1,9 +1,9 @@
-import { findCell, type CellBorder, type SheetDocument } from '../core/workbook';
+import { findCell, type CellBorder, type CellDocument, type CellExtent, type SheetDocument } from '../core/workbook';
 import { mergeAt } from '../application/border-commands';
 import { cellBorders, type BorderSegment } from '../core/formats/borders';
 import { drawBorder } from './border-rendering';
-import { drawCellFill, drawCellText, usesLightPaper } from './cell-appearance';
-import { columnName, gridMetrics, type Track } from './grid-geometry';
+import { drawCellFill, drawAlignedText, usesLightPaper } from './cell-appearance';
+import { columnName, gridMetrics, type GridAxis, type Track } from './grid-geometry';
 import { presentCell, includes, type Area, type GridSelection } from './grid-selection';
 
 export interface GridViewport {
@@ -18,6 +18,8 @@ interface GridFrame {
   readonly view: GridViewport;
   readonly rows: readonly Track[];
   readonly columns: readonly Track[];
+  readonly rowAxis: GridAxis;
+  readonly columnAxis: GridAxis;
   readonly selection: GridSelection;
   readonly areas: readonly Area[];
   readonly scale: number;
@@ -85,85 +87,135 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     context.restore();
   }
 
+  function extentRect(merge: CellExtent, row: Track, column: Track) {
+    const firstRow = frame.rowAxis.track(merge.row) ?? frame.rowAxis.tracks.find(track => track.index >= merge.row)!;
+    const firstColumn = frame.columnAxis.track(merge.column) ?? frame.columnAxis.tracks.find(track => track.index >= merge.column)!;
+    return { x: x(column) + firstColumn.start - frame.columnAxis.track(column.index)!.start,
+      y: y(row) + firstRow.start - frame.rowAxis.track(row.index)!.start,
+      width: frame.columnAxis.span(merge.column, merge.column + merge.columns - 1),
+      height: frame.rowAxis.span(merge.row, merge.row + merge.rows - 1) };
+  }
+
   function drawPane(rows: readonly Track[], columns: readonly Track[]) {
     context.textBaseline = 'middle';
 
+    const drawn = new Set<CellExtent>();
+    const centered = new Set<CellDocument>();
+    const entries: { cell: CellDocument; x: number; y: number; width: number; height: number; selected: boolean; active: boolean }[] = [];
     for (const row of rows) {
       for (const column of columns) {
         const point = { row: row.index, column: column.index };
-        const cell = findCell(frame.sheet, point);
-        const selected = areas.some(area => includes(area, point));
-        const active = point.row === selection.anchor.row && point.column === selection.anchor.column;
-        const cellX = x(column);
-        const cellY = y(row);
-        if (!forced) drawCellFill(context, cell?.style, cellX, cellY, column.size, row.size, scale);
+        const merge = mergeAt(frame.sheet, point.row, point.column);
+        if (merge && drawn.has(merge)) continue;
+        if (merge) drawn.add(merge);
+        const target = merge ?? point;
+        const cell = findCell(frame.sheet, target);
+        const selected = areas.some(area => includes(area, target));
+        const active = target.row === selection.anchor.row && target.column === selection.anchor.column;
+        const rect = merge ? extentRect(merge, row, column) :
+          { x: x(column), y: y(row), width: column.size, height: row.size };
+        if (!forced) drawCellFill(context, cell?.style, rect.x, rect.y, rect.width, rect.height, scale);
         if (selected && !active) {
           context.fillStyle = tint;
-          context.fillRect(cellX, cellY, column.size, row.size);
+          context.fillRect(rect.x, rect.y, rect.width, rect.height);
         }
         if (!cell) continue;
-        const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator);
-        const value = frame.showFormulas ? cell.content : cell.cache ?? cell.content;
-        context.save();
-        context.beginPath();
-        context.rect(cellX, cellY, column.size, row.size);
-        context.clip();
-        const right = value.kind === 'number';
-        const authoredColor = color ?? cell.style?.textRgb;
-        context.fillStyle = forced ? selected && !active ? 'HighlightText' : textColor :
-          authoredColor ? '#' + authoredColor : usesLightPaper(cell.style) ? '#1b1b1b' : textColor;
-        drawCellText(context, label, cell.style, styles.fontFamily, scale,
-          right ? cellX + column.size - 5 * scale : cellX + 5 * scale, cellY + row.size / 2, right ? 'right' : 'left',
-          cellY + row.size - 2 * scale);
-        if (frame.staleCells.has(cell.id)) {
-          context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');
-          context.lineWidth = 1;
-          context.setLineDash([3, 2]);
-          context.beginPath();
-          context.moveTo(cellX + 2, cellY + row.size - 3);
-          context.lineTo(cellX + column.size - 2, cellY + row.size - 3);
-          context.stroke();
-        }
-        context.restore();
+        if (!merge && cell.style?.alignment === 'centerContinuous') {
+          const hasText = (item: CellDocument) => !!presentCell(item, frame.showFormulas, frame.separator).text;
+          const across = (index: number) => {
+            const candidate = findCell(frame.sheet, { row: row.index, column: index });
+            return candidate?.style?.alignment === 'centerContinuous' && !mergeAt(frame.sheet, row.index, index) ? candidate : undefined;
+          };
+          let anchor = cell;
+          if (!hasText(anchor)) {
+            for (let prior = column.index - 1; prior >= 1; prior--) {
+              const candidate = across(prior);
+              if (!candidate) break;
+              if (hasText(candidate)) { anchor = candidate; break; }
+            }
+          }
+          if (!hasText(anchor) || centered.has(anchor)) continue;
+          centered.add(anchor);
+          let end = anchor.column;
+          for (let next = end + 1; next <= frame.columnAxis.tracks.at(-1)!.index; next++) {
+            const candidate = across(next);
+            if (!candidate || hasText(candidate)) break;
+            end = next;
+          }
+          const bounds = extentRect({ row: row.index, column: anchor.column, rows: 1, columns: end - anchor.column + 1 }, row, column);
+          entries.push({ cell: anchor, ...bounds, selected, active });
+        } else entries.push({ cell, ...rect, selected, active });
       }
+    }
+    for (const { cell, x: cellX, y: cellY, width, height, selected, active } of entries) {
+      const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator);
+      const value = frame.showFormulas ? cell.content : cell.cache ?? cell.content;
+      clip(cellX, cellY, width, height);
+      const authoredColor = color ?? cell.style?.textRgb;
+      context.fillStyle = forced ? selected && !active ? 'HighlightText' : textColor :
+        authoredColor ? '#' + authoredColor : usesLightPaper(cell.style) ? '#1b1b1b' : textColor;
+      context.save();
+      drawAlignedText(context, label, cell.style, styles.fontFamily, scale,
+        { x: cellX, y: cellY, width, height }, value.kind);
+      context.restore();
+      if (frame.staleCells.has(cell.id)) {
+        context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');
+        context.lineWidth = 1;
+        context.setLineDash([3, 2]);
+        context.beginPath();
+        context.moveTo(cellX + 2, cellY + height - 3);
+        context.lineTo(cellX + width - 2, cellY + height - 3);
+        context.stroke();
+      }
+      context.restore();
     }
 
     if (frame.gridlines) {
       context.fillStyle = gridColor;
-      for (const row of rows) context.fillRect(left, line(y(row) + row.size), width - left, 1 / ratio);
-      for (const column of columns) context.fillRect(line(x(column) + column.size), top, 1 / ratio, height - top);
+      if (!frame.sheet.merges.length) {
+        for (const row of rows) context.fillRect(left, line(y(row) + row.size), width - left, 1 / ratio);
+        for (const column of columns) context.fillRect(line(x(column) + column.size), top, 1 / ratio, height - top);
+      } else {
+        for (const row of rows) for (const column of columns) {
+          const merge = mergeAt(frame.sheet, row.index, column.index);
+          const nextRow = frame.rowAxis.step(row.index, 1);
+          const nextColumn = frame.columnAxis.step(column.index, 1);
+          if (!merge || nextRow === row.index || nextRow >= merge.row + merge.rows) {
+            context.fillRect(x(column), line(y(row) + row.size), column.size, 1 / ratio);
+          }
+          if (!merge || nextColumn === column.index || nextColumn >= merge.column + merge.columns) {
+            context.fillRect(line(x(column) + column.size), y(row), 1 / ratio, row.size);
+          }
+        }
+      }
     }
     const painted = new Map<string, { pen: CellBorder; x: number; y: number; x2: number; y2: number }>();
     const add = (pen: CellBorder | undefined, x: number, y: number, x2: number, y2: number) => {
       if (pen) painted.set([x, y, x2, y2].join(','), { pen, x, y, x2, y2 });
     };
-    const drawnMerges = new Set<object>();
+    drawn.clear();
     for (const row of rows) for (const column of columns) {
-      const merge = frame.sheet.merges.length ? mergeAt(frame.sheet, row.index, column.index) : undefined;
-      if (merge && drawnMerges.has(merge)) continue;
+      const merge = mergeAt(frame.sheet, row.index, column.index);
+      if (merge && drawn.has(merge)) continue;
+      if (merge) drawn.add(merge);
       const style = findCell(frame.sheet, merge ?? { row: row.index, column: column.index })?.style;
       if (!style?.borders && !style?.borderDetails) continue;
       const borders = cellBorders(style);
+      const rect = merge ? extentRect(merge, row, column) : { x: x(column), y: y(row), width: column.size, height: row.size };
+      const a = rect.x, b = rect.y, c = a + rect.width, d = b + rect.height;
       const cellRows = merge ? rows.filter(track => track.index >= merge.row && track.index < merge.row + merge.rows) : [row];
       const cellColumns = merge ? columns.filter(track => track.index >= merge.column && track.index < merge.column + merge.columns) : [column];
-      if (merge) drawnMerges.add(merge);
-      const r1 = cellRows[0]!, r2 = cellRows.at(-1)!, c1 = cellColumns[0]!, c2 = cellColumns.at(-1)!;
-      const a = x(c1), b = y(r1), c = x(c2) + c2.size, d = y(r2) + r2.size;
-      const leftEdge = !merge || c1.index === merge.column, rightEdge = !merge || c2.index === merge.column + merge.columns - 1;
-      const topEdge = !merge || r1.index === merge.row, bottomEdge = !merge || r2.index === merge.row + merge.rows - 1;
-      // Split outlines into physical segments so adjacent styled cells share one painted line.
+      // Shared worksheet edges use the same segment keys as the adjoining cells.
       for (const track of cellColumns) {
-        if (topEdge) add(borders.top, x(track), b, x(track) + track.size, b);
-        if (bottomEdge) add(borders.bottom, x(track), d, x(track) + track.size, d);
+        add(borders.top, x(track), b, x(track) + track.size, b);
+        add(borders.bottom, x(track), d, x(track) + track.size, d);
       }
       for (const track of cellRows) {
-        if (leftEdge) add(borders.left, a, y(track), a, y(track) + track.size);
-        if (rightEdge) add(borders.right, c, y(track), c, y(track) + track.size);
+        add(borders.left, a, y(track), a, y(track) + track.size);
+        add(borders.right, c, y(track), c, y(track) + track.size);
       }
-      if (leftEdge && rightEdge && topEdge && bottomEdge) {
-        add(borders.diagonalUp, a, d, c, b);
-        add(borders.diagonalDown, a, b, c, d);
-      }
+      add(borders.diagonalUp, a, d, c, b);
+      add(borders.diagonalDown, a, b, c, d);
     }
     for (const segment of painted.values()) drawBorder(context, segment.pen, segment.x, segment.y, segment.x2, segment.y2, scale, textColor, forced);
 
@@ -188,9 +240,14 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     for (const area of areas) outline(area);
     const activeRow = rows.find(row => row.index === selection.anchor.row);
     const activeColumn = columns.find(column => column.index === selection.anchor.column);
-    if (activeRow && activeColumn) {
+    const activeMerge = mergeAt(frame.sheet, selection.anchor.row, selection.anchor.column);
+    const mergeRow = activeMerge && rows.find(track => track.index >= activeMerge.row && track.index < activeMerge.row + activeMerge.rows);
+    const mergeColumn = activeMerge && columns.find(track => track.index >= activeMerge.column && track.index < activeMerge.column + activeMerge.columns);
+    const activeRect = activeMerge ? mergeRow && mergeColumn && extentRect(activeMerge, mergeRow, mergeColumn) :
+      activeRow && activeColumn && { x: x(activeColumn), y: y(activeRow), width: activeColumn.size, height: activeRow.size };
+    if (activeRect) {
       context.lineWidth = 2;
-      context.strokeRect(x(activeColumn) + 1, y(activeRow) + 1, Math.max(0, activeColumn.size - 2), Math.max(0, activeRow.size - 2));
+      context.strokeRect(activeRect.x + 1, activeRect.y + 1, Math.max(0, activeRect.width - 2), Math.max(0, activeRect.height - 2));
     }
     if (frame.referenceArea) {
       context.strokeStyle = forced ? 'CanvasText' : token('--formula-reference');

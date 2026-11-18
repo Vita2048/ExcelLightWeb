@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from 'react';
 import type { PasteMode } from '../../application/editing-commands';
+import { DialogTitleBar } from '../dialogs/DialogTitleBar';
 import { DialogActions } from '../dialogs/DialogActions';
 
 export function PasteTextDialog({ mode, error, onSubmit, onClose }: {
@@ -23,7 +24,7 @@ export function PasteTextDialog({ mode, error, onSubmit, onClose }: {
     onClose();
   }}>
     <form onSubmit={event => { event.preventDefault(); onSubmit(text); }}>
-      <h2 id={id}>{title}</h2>
+      <DialogTitleBar spaced><h2 id={id}>{title}</h2></DialogTitleBar>
       <label>Paste clipboard text here<textarea ref={input} value={text} rows={5}
         onChange={event => setText(event.currentTarget.value)} /></label>
       <p role="status">{error}</p>

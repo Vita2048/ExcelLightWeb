@@ -1,6 +1,7 @@
 import { cellKey, documentLimits, findCell, ownDto, type CellStyle } from '../core/workbook';
 import { equalDto } from '../core/workbook-delta';
 import { requireDocument } from '../core/workbook-validation';
+import type { AlignmentPatch } from './alignment-commands';
 import type { BorderDraft } from '../core/formats/borders';
 import { applyBorderDraft, mirrorBorderDraft } from './border-commands';
 import { isNumberFormat } from '../core/formats/format-code';
@@ -41,13 +42,15 @@ export function changeStyles(basis: WorkbookSnapshot, ranges: readonly EditRange
 }
 
 export function formatStyles(basis: WorkbookSnapshot, ranges: readonly EditRange[], patch: AppearancePatch,
-  numberCode?: string, borders: BorderDraft = {}): SetCellsCommand {
+  numberCode?: string, borders: BorderDraft = {}, alignment: AlignmentPatch = {}): SetCellsCommand {
   requireDocument(numberCode === undefined || isNumberFormat(numberCode), 'Enter a valid Excel number format.');
   const withBorder = Object.keys(borders).length > 0;
   const sheets = new Map(basis.document.sheets.map(sheet => [sheet.id, sheet]));
   const command = changeStyles(basis, ranges, 'Format Cells', (style, row, column, area) => {
     const appearance = updateAppearance(style, patch);
-    const next = (withBorder ? applyBorderDraft(sheets.get(area.sheetId)!, area, appearance, row, column, borders) : appearance) ?? {};
+    const aligned = Object.keys(alignment).length ? Object.fromEntries(Object.entries({ ...appearance, ...alignment })
+      .filter(([, value]) => value !== undefined)) as CellStyle : appearance;
+    const next = (withBorder ? applyBorderDraft(sheets.get(area.sheetId)!, area, aligned, row, column, borders) : aligned) ?? {};
     if (numberCode === undefined || numberCode === style?.numberFormat) return next;
     const { numberFormat: _prior, ...rest } = next;
     return /^general$/iu.test(numberCode) ? rest : { ...rest, numberFormat: numberCode };

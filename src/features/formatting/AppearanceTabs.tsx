@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { DialogTitleBar } from '../dialogs/DialogTitleBar';
 import { createPortal } from 'react-dom';
 import { backgroundPatch, fillPatterns, fillShadings, fontFamilies, fontSizes, isFontFamily, parseFontSize,
   underlineOf, underlineOptions, underlinePatch, type AppearancePatch, type FillShading, type Underline } from '../../core/formats/appearance';
@@ -180,8 +181,8 @@ function GradientDialog({ style, onChange, onClose }: { style: CellStyle; onChan
   function close() { ref.current?.close(); onClose(); }
   return createPortal(<dialog ref={ref} aria-labelledby={id} className="paste-dialog gradient-dialog"
     onCancel={event => { event.preventDefault(); event.stopPropagation(); close(); }}>
-    <div className="format-dialog-heading"><h2 id={id}>Fill Effects</h2>
-      <button type="button" className="format-dialog-close" aria-label="Close Fill Effects" onClick={close}>×</button></div>
+    <DialogTitleBar><h2 id={id}>Fill Effects</h2>
+      <button type="button" className="format-dialog-close" aria-label="Close Fill Effects" onClick={close}>×</button></DialogTitleBar>
     <div className="appearance-choice">
       <strong>Gradient</strong>
       <span>Two colors</span>

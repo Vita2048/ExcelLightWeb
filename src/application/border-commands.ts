@@ -7,9 +7,35 @@ import { checkedSheet, expandMerges, type EditRange } from './editing-commands';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { CellEdit, SetCellsCommand } from './workbook-session';
 
+const mergesByRow = new WeakMap<SheetDocument, ReadonlyMap<number, readonly CellExtent[]>>();
+
 export function mergeAt(sheet: SheetDocument, row: number, column: number): CellExtent | undefined {
-  return sheet.merges.find(merge => row >= merge.row && row < merge.row + merge.rows &&
-    column >= merge.column && column < merge.column + merge.columns);
+  if (!sheet.merges.length) return undefined;
+  let byRow = mergesByRow.get(sheet);
+  if (!byRow) {
+    const indexed = new Map<number, CellExtent[]>();
+    for (const merge of sheet.merges) {
+      for (let position = merge.row; position < merge.row + merge.rows; position++) {
+        const entries = indexed.get(position);
+        if (entries) entries.push(merge);
+        else indexed.set(position, [merge]);
+      }
+    }
+    for (const entries of indexed.values()) entries.sort((a, b) => a.column - b.column);
+    byRow = indexed;
+    mergesByRow.set(sheet, byRow);
+  }
+  const entries = byRow.get(row);
+  if (!entries) return undefined;
+  let low = 0, high = entries.length;
+  while (low < high) {
+    const index = (low + high) >>> 1;
+    const merge = entries[index]!;
+    if (column < merge.column) high = index;
+    else if (column >= merge.column + merge.columns) low = index + 1;
+    else return merge;
+  }
+  return undefined;
 }
 
 export interface BorderEdit extends BorderSegment { readonly pen: CellBorder | null }
