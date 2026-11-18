@@ -125,7 +125,7 @@ test('ribbon operates by keyboard, changes view independently of chrome, and exp
   await home.focus();
   await home.press('ArrowRight');
   await expect(page.getByRole('tab', { name: 'Insert' })).toBeFocused();
-  await expect(page.getByRole('tabpanel')).toHaveText('Insert commands are unavailable.');
+  await expect(page.getByRole('tabpanel').getByRole('button', { name: 'Table', exact: true })).toBeVisible();
   await page.keyboard.press('End');
   await expect(page.getByRole('tab', { name: 'View' })).toBeFocused();
   const titleHeight = (await page.locator('.title-bar').boundingBox())!.height;

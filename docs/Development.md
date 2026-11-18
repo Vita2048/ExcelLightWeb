@@ -82,6 +82,10 @@ Run the desktop source assertions against the local Release assemblies with `dot
 
 `dotnet run --project tests/desktop-alignment/Oracle.csproj` executes the desktop alignment and merge assertions against the existing Release assemblies. Pass `-p:DesktopSource=<absolute path>` and, when needed, `-p:DesktopBin=<absolute path>` for another checkout.
 
+## Names and tables
+
+`npm run check` includes [name and table transactions](../tests/integration/table-commands.test.ts): reserved and duplicate names, copied-sheet identities, header normalization, cached headers, occupied totals, explicit style overrides, whole-record deletion and resize. After a production build, run `npm run test:e2e -- tests/e2e/names-tables.spec.ts` for the Create Table and New Name dialogs, Name Manager, the range picker, Table Design, contextual-tab memory, the resize grip and the total-row menu in Chromium, Firefox and WebKit. The keyboard ribbon check in [worksheet](../tests/e2e/worksheet.spec.ts) expects the Insert Table button. No separate desktop oracle project was added for this sprint. Sort and filter interaction remains in S15.
+
 ## Browser Python feasibility
 
 Run the S02 probe with Node, Python 3, curl and the Playwright browsers listed above. Set the process variable `PYTHON` if your Python executable uses another name.

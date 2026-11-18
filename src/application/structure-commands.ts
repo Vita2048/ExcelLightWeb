@@ -3,6 +3,7 @@ import { intersection, rewriteSheetReferences, sameSheet, shiftReferences, type 
 import { documentLimits, emptySheet, type AxisDimension, type CellDocument, type CellExtent,
   type IdFactory, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { ordinalNameKey, requireDocument } from '../core/workbook-validation';
+import { lastColumn, lastRow, ownsTableFilter, tableDesign, tablesOnSheet } from '../core/workbook-names';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { StructureCommand } from './workbook-session';
 
@@ -142,6 +143,23 @@ export function editAxis(basis: WorkbookSnapshot, id: string, edit: AxisEdit): S
     : { left: edit.start, right: axisLimit(edit.axis), top: edit.lane?.[0] ?? 1, bottom: edit.lane?.[1] ?? documentLimits.rows };
   requireDocument(!edit.lane || !target.merges.some(merge => intersection(box(merge), affected)),
     'Unmerge cells before shifting this lane.');
+  const tables = tablesOnSheet(basis.document, id);
+  for (const table of tables) {
+    if (!intersection(box(table.area), affected)) continue;
+    const vertical = edit.axis === 'row';
+    const first = vertical ? table.area.column : table.area.row;
+    const last = vertical ? lastColumn(table.area) : lastRow(table.area);
+    requireDocument(!edit.lane || (edit.lane[0] <= first && edit.lane[1] >= last),
+      'Shift the full width or height of the table to keep its records together.');
+    requireDocument(edit.delete || rangeShift(edit, table.area), 'Insertion would move a table beyond the worksheet boundary.');
+    const design = tableDesign(table);
+    if (edit.delete && vertical && design.totalRow) {
+      const end = edit.start + edit.count - 1;
+      requireDocument(end < lastRow(table.area) || edit.start > lastRow(table.area) || edit.start <= table.area.row,
+        'Turn off the Total Row before deleting it.');
+    }
+  }
+  const names = basis.document.names.map(name => shiftName(name, id, edit));
   function moved(index: number): number | undefined {
     const next = shiftIndex(edit, index);
     requireDocument(next !== undefined || edit.delete, 'Insertion would discard authored cells or dimensions at the worksheet boundary.');
@@ -156,22 +174,27 @@ export function editAxis(basis: WorkbookSnapshot, id: string, edit: AxisEdit): S
       const next = rewriteCell(cell, source => shiftReferences(source, sheet.name, target.name, edit));
       return index === cell[edit.axis] ? [next] : [{ ...next, [edit.axis]: index }];
     });
-    if (edit.lane) return { ...sheet, cells };
     const dimensions = sheet[key].flatMap(dimension => {
+      if (edit.lane) return [dimension];
       const index = moved(dimension.index);
       return index === undefined ? [] : [{ ...dimension, index }];
     });
     const merges = sheet.merges.flatMap(merge => {
+      if (edit.lane) return [merge];
       const next = rangeShift(edit, merge);
       requireDocument(next || edit.delete, 'Insertion would discard a merged range at the worksheet boundary.');
       return next && next.rows * next.columns > 1 ? [next] : [];
     });
     const { filter, ...rest } = sheet;
+    const owner = tables.find(table => ownsTableFilter(filter, table));
+    if (edit.lane && !owner) return { ...sheet, cells };
+    if (owner && names.find(name => name.id === owner.id)?.area.invalid) return { ...rest, cells, merges, [key]: dimensions };
     const nextFilter = filter && rangeShift(edit, filter);
     if (!filter || !nextFilter) return { ...rest, cells, merges, [key]: dimensions };
     const { sort, criteria } = filter;
-    const column = sort && (edit.axis === 'row' ? sort.column : shiftIndex(edit, sort.column));
-    const nextCriteria = edit.axis === 'row' ? criteria : criteria.flatMap(criterion => {
+    const shiftColumns = edit.axis === 'column' && (!edit.lane || edit.lane[0] <= filter.row && edit.lane[1] >= lastRow(filter));
+    const column = sort && (shiftColumns ? shiftIndex(edit, sort.column) : sort.column);
+    const nextCriteria = !shiftColumns ? criteria : criteria.flatMap(criterion => {
       const column = shiftIndex(edit, criterion.column);
       return column === undefined ? [] : [{ ...criterion, column }];
     });
@@ -179,7 +202,6 @@ export function editAxis(basis: WorkbookSnapshot, id: string, edit: AxisEdit): S
       ...nextFilter, criteria: nextCriteria, ...(sort && column !== undefined && { sort: { ...sort, column } }),
     } };
   });
-  const names = basis.document.names.map(name => shiftName(name, id, edit));
   return { kind: 'structure', document: { ...basis.document, sheets, names },
     label: (edit.delete ? 'Delete ' : 'Insert ') + (edit.lane ? 'cells' : edit.axis + 's') };
 }

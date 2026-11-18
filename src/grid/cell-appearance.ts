@@ -1,4 +1,5 @@
-import type { CellStyle } from '../core/workbook';
+import type { CellStyle, Coordinate, WorkbookName } from '../core/workbook';
+import { extentContains, tableDesign } from '../core/workbook-names';
 
 export function cellFont(style: CellStyle | undefined, fallback: string, scale = 1): { css: string; size: number; shift: number } {
   const normalSize = (style?.fontSize ?? 10.5) * 4 / 3 * scale;
@@ -271,4 +272,50 @@ export function usesLightPaper(style?: CellStyle): boolean {
   if (!paper) return false;
   const channels = [0, 2, 4].map(index => Number.parseInt(paper.slice(index, index + 2), 16));
   return channels[0]! * .2126 + channels[1]! * .7152 + channels[2]! * .0722 > 170;
+}
+
+export function effectiveCellStyle(
+  style: CellStyle | undefined,
+  point: Coordinate,
+  tables: readonly WorkbookName[],
+): CellStyle | undefined {
+  if (!tables.length) return style;
+  const table = tables.find(t => !t.area.invalid && extentContains(t.area, point));
+  if (!table) return style;
+  const design = tableDesign(table);
+  const area = table.area;
+  const header = point.row === area.row && design.headerRow;
+  const total = point.row === area.row + area.rows - 1 && design.totalRow;
+  const strong = header || total || (design.firstColumn && point.column === area.column) ||
+    (design.lastColumn && point.column === area.column + area.columns - 1);
+  const stripedRow = design.bandedRows && ((point.row - area.row - (design.headerRow ? 1 : 0)) % 2 !== 0);
+  const striped = stripedRow || (design.bandedColumns && ((point.column - area.column) % 2 === 1));
+
+  let accent: string, plain: string, band: string;
+  switch (design.style) {
+    case 'Blue':
+      accent = '4F81BD'; plain = 'DCE6F1'; band = 'B8CCE4'; break;
+    case 'Green':
+      accent = '548235'; plain = 'E2EFDA'; band = 'C6DFB2'; break;
+    case 'Orange':
+      accent = 'C65911'; plain = 'FCE4D6'; band = 'F8CBAD'; break;
+    case 'Purple':
+      accent = '8064A2'; plain = 'E4DFEC'; band = 'CCC0DA'; break;
+    default:
+      accent = '303844'; plain = '23262B'; band = '2A3037'; break;
+  }
+  const fill = design.style === 'Neutral'
+    ? (header || total ? accent : stripedRow ? band : plain)
+    : (strong ? accent : striped ? band : plain);
+
+  const fillRgb = style?.fillRgb ?? (style?.fillDetails ? undefined : fill);
+  const textRgb = style?.textRgb ?? (strong || design.style === 'Neutral' ? 'F5F5F5' : '172B4D');
+  const bold = Boolean(style?.bold || strong);
+
+  return {
+    ...style,
+    ...(fillRgb && { fillRgb }),
+    textRgb,
+    bold,
+  };
 }

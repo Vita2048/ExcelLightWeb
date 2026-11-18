@@ -210,6 +210,18 @@ function rewrite(source: string, visit: (ref: FormulaReference) => string): stri
   return pieces.join('');
 }
 
+/** Shift references whose rows lie entirely inside [first, last]. A reference that extends outside that block stays put. */
+export function shiftEnclosedRows(source: string, first: number, last: number, dr: number): string {
+  return rewrite(source, ref => {
+    const rows = [ref.first.row, ref.last.row];
+    if (rows.some(row => row === undefined || row < first || row > last)) return source.slice(ref.start, ref.end);
+    const shift = (point: Endpoint) => endpointText(point, point.row! + dr, point.column);
+    const start = shift(ref.first);
+    const end = shift(ref.last);
+    return start === '#REF!' || end === '#REF!' ? '#REF!' : ref.prefix + start + (ref.range ? ':' + end : '');
+  });
+}
+
 export function copyReferences(source: string, dr: number, dc: number): string {
   return rewrite(source, ref => {
     const shift = (point: Endpoint) => endpointText(point,

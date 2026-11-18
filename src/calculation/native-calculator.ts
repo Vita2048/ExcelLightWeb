@@ -2,6 +2,7 @@ import { formatCellValue } from '../core/formats/cell-format';
 import type { CacheUpdate } from '../application/workbook-protocol';
 import { parseFormula, referenceBox, UnsupportedFormulaReference, type FormulaExpression, type FormulaReference } from '../core/formula-references';
 import { cellKey, documentLimits, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
+import { lastColumn, lastRow, resolveWorkbookName } from '../core/workbook-names';
 import { ordinalNameKey } from '../core/workbook-validation';
 import { todaySerial } from './formula-dates';
 import { evaluateFunction, sumIfRange, supportedFunctions } from './formula-functions';
@@ -152,7 +153,10 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     let volatile = false;
     let unsupported = !!cell.requiresExternalCalculation;
     for (const node of formulaNodes(parsed.expression)) {
-      if (node.kind === 'name') unsupported = true;
+      if (node.kind === 'name') {
+        const area = resolveWorkbookName(document, node.name);
+        if (!area) unsupported = true;
+      }
       if (node.kind === 'call') {
         if (!supportedFunctions.has(node.name)) unsupported = true;
         if (node.name === 'SUBTOTAL') containsSubtotal = true;
@@ -165,10 +169,22 @@ export function prepareNativeGraph(document: WorkbookDocument) {
       resolvedReferences.set(ref, range);
       return [range];
     });
+    for (const node of formulaNodes(parsed.expression)) {
+      if (node.kind === 'name') {
+        const area = resolveWorkbookName(document, node.name);
+        if (area && !area.invalid) {
+          ranges.push({ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) });
+        }
+      }
+    }
     function candidateRanges(expression: FormulaExpression | undefined): Range[] {
       if (expression?.kind === 'reference') {
         const range = resolvedReferences.get(expression.reference);
         return range ? [range] : [];
+      }
+      if (expression?.kind === 'name') {
+        const area = resolveWorkbookName(document, expression.name);
+        return area && !area.invalid ? [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }] : [];
       }
       if (expression?.kind === 'call' && expression.name === 'IF') return expression.args.slice(1).flatMap(candidateRanges);
       return [];
@@ -195,7 +211,7 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     for (const input of list) input.dependents.push(node);
     dependencies.set(id, list.map(input => input.target));
   }
-  return { nodes, resolvedReferences, dependencies, ...evaluationOrder(nodes.values()) };
+  return { nodes, resolvedReferences, dependencies, names: document.names, ...evaluationOrder(nodes.values()) };
 }
 
 export function indexNativeInputs(document: WorkbookDocument) {
@@ -218,7 +234,7 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
   const group = parts.find(part => part.type === 'group')?.value;
   const number = (value: Scalar) => numberValue(value, decimal, group);
   const text = (value: Exclude<Scalar, FormulaError>) => textValue(value, decimal);
-  const { nodes, resolvedReferences, order, cycles, dependencies } = graph;
+  const { nodes, resolvedReferences, order, cycles, dependencies, names } = graph;
   const sorted = new Map<string, CellDocument[]>();
   const evaluated = new Map<CellDocument, Scalar>();
   const diagnostics = new Map<string, string>();
@@ -342,7 +358,13 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
           case 'error': return error(expression.value as Parameters<typeof error>[0]);
           case 'array': return { kind: 'array', rows: expression.rows.length, columns: expression.rows[0]!.length,
             at: (row, column) => scalar(evaluateTerm(expression.rows[row]![column]!)) };
-          case 'name': return error('#NAME?');
+          case 'name': {
+            const nameDoc = { names } as WorkbookDocument;
+            const area = resolveWorkbookName(nameDoc, expression.name);
+            if (!area) return error('#NAME?');
+            if (area.invalid) return error('#REF!');
+            return [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }];
+          }
           case 'reference': {
             const range = resolvedReferences.get(expression.reference);
             return range ? [range] : error('#REF!');

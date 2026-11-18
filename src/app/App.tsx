@@ -12,6 +12,13 @@ import { activeFormatBrush, captureFormatBrush, formatStyles, paintStyles, type 
 import { underlinePatch, type AppearancePatch } from '../core/formats/appearance';
 import { changeDimensions, changeSheet, editAxis } from '../application/structure-commands';
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
+import {
+  changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, parseNameExtent,
+  refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
+} from '../application/table-commands';
+import { extentContains, lastColumn, lastRow, tableDesign, tablesOnSheet } from '../core/workbook-names';
+import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
+import type { TableDesign, WorkbookName } from '../core/workbook';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
 import { NativeScheduler, type CalculationStatus } from '../calculation/native-scheduler';
@@ -149,7 +156,33 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     root.current?.querySelector<HTMLTextAreaElement>('[data-cell-editor="' + surface + '"]')?.focus({ preventScroll: true });
   });
 
+  const tables = useMemo(() => tablesOnSheet(snapshot.document, sheet.id), [snapshot.document, sheet.id]);
+  const activeTable = useMemo(() => tables.find(t => extentContains(t.area, selection.anchor)), [tables, selection.anchor]);
+  const [definitionDraft, setDefinitionDraft] = useState<DefinitionDraft | undefined>();
+  const [nameManagerOpen, setNameManagerOpen] = useState(false);
+  const [pickedManagerExtent, setPickedManagerExtent] = useState<string | undefined>();
+  const [rangePicker, setRangePicker] = useState<{
+    initial: string;
+    onDone: (result: string | null) => void;
+  }>();
+
   function setSelection(next: GridSelection): boolean {
+    if (rangePicker) {
+      setSelections(current => new Map(current).set(sheet.id, next));
+      const selArea = selectionAreas(next)[0];
+      if (selArea) {
+        const areaExtent = {
+          sheetId: sheet.id,
+          row: selArea.top,
+          column: selArea.left,
+          rows: selArea.bottom - selArea.top + 1,
+          columns: selArea.right - selArea.left + 1,
+        };
+        const refText = refersTo(snapshot.document, areaExtent);
+        setRangePicker(prev => prev ? { ...prev, initial: refText } : undefined);
+      }
+      return true;
+    }
     if (!editing.commit()) return false;
     editing.selectionChanged();
     setSelections(current => new Map(current).set(sheet.id, next));
@@ -239,6 +272,194 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       requestedFocus.current = true;
       setActiveSheetId(active);
     } else requestAnimationFrame(focusGrid);
+  }
+
+  function openCreateDialog(table: boolean) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    const selArea = selectionAreas(selection)[0];
+    const initialArea = selArea ? {
+      sheetId: sheet.id,
+      row: selArea.top,
+      column: selArea.left,
+      rows: selArea.bottom - selArea.top + 1,
+      columns: selArea.right - selArea.left + 1,
+    } : { sheetId: sheet.id, row: selection.anchor.row, column: selection.anchor.column, rows: 1, columns: 1 };
+
+    const name = table ? nextTableName(basis.document) : '';
+    const extentText = refersTo(basis.document, initialArea);
+    const hasHeaders = table ? selectionHasHeaders(basis.document, initialArea) : false;
+    setDefinitionDraft({
+      name,
+      comment: '',
+      extentText,
+      isTable: table,
+      isEdit: false,
+      hasHeaders,
+    });
+  }
+
+  function openEditDialog(entry: WorkbookName, lockExtent = false) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    setDefinitionDraft({
+      id: entry.id,
+      name: entry.name,
+      comment: entry.comment ?? '',
+      extentText: refersTo(basis.document, entry.area),
+      isTable: !!entry.isTable,
+      isEdit: true,
+      lockExtent: lockExtent && !!entry.isTable,
+    });
+  }
+
+  function handleDefinitionSubmit(name: string, comment: string, extentText: string, headers: boolean): string | undefined {
+    try {
+      const basis = session.capture();
+      const isTable = definitionDraft?.isTable ?? false;
+      const isEdit = definitionDraft?.isEdit ?? false;
+      const id = definitionDraft?.id ?? makeId();
+      const prior = basis.document.names.find(entry => entry.id === id);
+      const keepInvalid = isEdit && prior?.area.invalid && extentText.trim().replace(/^=/u, '') === '#REF!';
+      const area = definitionDraft?.lockExtent && prior ? prior.area :
+        keepInvalid ? prior.area : parseNameExtent(basis.document, sheet.id, extentText);
+      const entry: WorkbookName = {
+        id,
+        name,
+        comment,
+        area,
+        isTable,
+        ...(prior?.design && { design: prior.design }),
+        ...(prior?.headerLabels && { headerLabels: prior.headerLabels }),
+      };
+      let command: StructureCommand;
+      if (isTable) {
+        if (!isEdit) {
+          command = createTable(basis, entry, headers, makeId);
+        } else {
+          command = resizeTable(basis, entry, makeId);
+        }
+      } else {
+        command = defineName(basis, entry);
+      }
+      applyStructure(basis, command);
+      setDefinitionDraft(undefined);
+      return undefined;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function handleApplyManagerExtent(id: string, extentText: string): string | undefined {
+    try {
+      const basis = session.capture();
+      const entry = basis.document.names.find(n => n.id === id);
+      requireDocument(entry, 'Select a valid name.');
+      requireDocument(!entry.isTable, 'Resize the table from the worksheet or Table Design.');
+      const area = parseNameExtent(basis.document, entry.area.sheetId, extentText);
+      const updated = { ...entry, area };
+      const command = entry.isTable ? resizeTable(basis, updated, makeId) : defineName(basis, updated);
+      applyStructure(basis, command);
+      return undefined;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function handleDeleteName(id: string) {
+    try {
+      const basis = session.capture();
+      applyStructure(basis, deleteName(basis, id));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function showNamedExtent(extentText: string) {
+    let area;
+    try {
+      area = parseNameExtent(session.capture().document, sheet.id, extentText);
+    } catch {
+      requestAnimationFrame(focusGrid);
+      return;
+    }
+    const next: GridSelection = {
+      anchor: { row: area.row, column: area.column },
+      end: { row: lastRow(area), column: lastColumn(area) },
+      kind: 'cells',
+      additional: [],
+    };
+    setSelections(current => new Map(current).set(area.sheetId, next));
+    if (area.sheetId !== sheet.id) {
+      requestedFocus.current = true;
+      setActiveSheetId(area.sheetId);
+    }
+    requestAnimationFrame(() => {
+      worksheet.current?.reveal(next.anchor);
+      worksheet.current?.focus();
+    });
+  }
+
+  function handlePickRangeFromDefinition(name: string, comment: string, extentText: string) {
+    setDefinitionDraft(current => current && { ...current, name, comment, extentText });
+    showNamedExtent(extentText);
+    setRangePicker({
+      initial: extentText,
+      onDone: picked => {
+        setRangePicker(undefined);
+        if (picked) setDefinitionDraft(current => current && { ...current, extentText: picked });
+      },
+    });
+  }
+
+  function handlePickRangeFromManager(extentText: string) {
+    showNamedExtent(extentText);
+    setRangePicker({
+      initial: extentText,
+      onDone: picked => {
+        setRangePicker(undefined);
+        if (picked) setPickedManagerExtent(picked);
+      },
+    });
+  }
+
+  function handleTableRename(name: string) {
+    if (!activeTable) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, renameTable(basis, activeTable.id, name));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handleTableChangeDesign(patch: Partial<TableDesign>) {
+    if (!activeTable) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, changeTableDesign(basis, activeTable.id, patch, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handleTableResize(table: WorkbookName, rows: number, cols: number) {
+    try {
+      const basis = session.capture();
+      const nextArea = { ...table.area, rows, columns: cols };
+      applyStructure(basis, resizeTable(basis, { ...table, area: nextArea }, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handleTotalFunction(tableId: string, col: number, code: number) {
+    try {
+      const basis = session.capture();
+      applyStructure(basis, setTotalFunction(basis, tableId, col, code, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
   }
 
   function currentAuthoredBasis(basis: WorkbookSnapshot) {
@@ -534,7 +755,15 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       handle = () => run({ kind: 'paste', mode: 'values' });
     } else if (event.altKey && key === '=') {
       handle = () => run({ kind: 'autosum', aggregate: 'SUM' });
-    } else if (!control && (key === 'delete' || key === 'backspace')) {
+    } else if (!control && key === 'delete') {
+      const basis = session.capture();
+      const deleteTableCmd = deleteTableSelection(basis, ranges());
+      if (deleteTableCmd) {
+        handle = () => applyStructure(basis, deleteTableCmd);
+      } else {
+        handle = () => run({ kind: 'clear', mode: 'contents' });
+      }
+    } else if (!control && key === 'backspace') {
       handle = () => run({ kind: 'clear', mode: 'contents' });
     } else if (!control && key === 'f2') {
       handle = () => beginInline();
@@ -623,7 +852,15 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         const zoom = worksheet.current?.zoomToSelection();
         if (zoom !== undefined) onView({ zoom });
         worksheet.current?.focus();
-      }} />
+      }}
+      activeTable={activeTable}
+      onTableRename={handleTableRename}
+      onTableResize={() => { if (activeTable) openEditDialog(activeTable); }}
+      onTableChangeDesign={handleTableChangeDesign}
+      onTableClick={() => openCreateDialog(true)}
+      onNameManagerClick={() => { if (editing.commit()) setNameManagerOpen(true); }}
+      onDefineNameClick={() => openCreateDialog(false)}
+      />
 
       <main className="workbook" aria-label="Workbook">
         {(view.formulaBar || editing.draft?.surface === 'formula') && <div className="formula-bar">
@@ -663,7 +900,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           }}
           editor={editing.draft?.surface === 'inline' ? { at: editing.draft.target, input: <CellEditor {...editorProps('inline')} /> } : undefined}
           zoom={view.zoom} headings={view.headings} gridlines={view.gridlines} showFormulas={view.showFormulas}
-          staleCells={calculation.stale} separator={separator} />
+          staleCells={calculation.stale} separator={separator}
+          tables={tables}
+          rangePicking={rangePicker !== undefined}
+          onRangePickFinish={accept => rangePicker?.onDone(accept ? rangePicker.initial : null)}
+          onResizeTable={handleTableResize}
+          onTotalFunction={handleTotalFunction}
+        />
         <nav className="sheet-strip" aria-label="Worksheets">
           <div className="sheet-navigation">
             <button type="button" className="icon-button" aria-label="Previous sheet" disabled={sheetIndex === 0}
@@ -771,6 +1014,24 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           try { performStructure(structure.action, structure.target, structure.basis, input); setStructure(undefined); }
           catch (error) { return error instanceof Error ? error.message : 'The structural edit failed.'; }
         }} />}
+      {definitionDraft && <NameDefinitionDialog definition={definitionDraft}
+        suspended={rangePicker !== undefined}
+        onPickRange={handlePickRangeFromDefinition}
+        onSubmit={handleDefinitionSubmit}
+        onCancel={() => { setDefinitionDraft(undefined); requestAnimationFrame(focusGrid); }} />}
+      {nameManagerOpen && <NameManagerDialog document={snapshot.document}
+        suspended={rangePicker !== undefined || definitionDraft !== undefined}
+        pickedExtent={pickedManagerExtent}
+        onConsumePick={() => setPickedManagerExtent(undefined)}
+        onNew={() => openCreateDialog(false)}
+        onEdit={entry => openEditDialog(entry, true)}
+        onDelete={handleDeleteName}
+        onPickRange={handlePickRangeFromManager}
+        onApplyExtent={handleApplyManagerExtent}
+        onClose={() => { setNameManagerOpen(false); setPickedManagerExtent(undefined); requestAnimationFrame(focusGrid); }} />}
+      {rangePicker && <RangePickerWidget initialRange={rangePicker.initial}
+        onConfirm={range => rangePicker.onDone(range)}
+        onCancel={() => rangePicker.onDone(null)} />}
     </div>
   );
 }

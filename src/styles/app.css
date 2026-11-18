@@ -26,7 +26,8 @@ button:disabled { cursor: default; opacity: .5; }
 .workbook-title { border-left: 1px solid var(--border); padding-left: 12px; font-weight: 600; }
 .product-title { color: var(--muted); margin-left: auto; font-size: 12px; white-space: nowrap; }
 
-.ribbon { flex: none; }
+/* 31px tabs, their 1px border and the 100px panel. A shorter ribbon moves the grid when Table Design closes. */
+.ribbon { flex: none; min-height: 132px; }
 .ribbon-tabs {
   display: flex; align-items: stretch; gap: 2px; padding-inline: 8px;
   overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--top-field);
@@ -497,6 +498,82 @@ button:disabled { cursor: default; opacity: .5; }
   .alignment-tab { grid-template-columns: minmax(0, 1fr); }
   .alignment-orientation { grid-area: auto; }
 }
+
+/* Table Design Ribbon */
+.table-properties-content { display: flex; flex-direction: column; gap: 4px; justify-content: center; height: 100%; }
+.table-name-row { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.table-name-input { width: 165px; height: 26px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; padding: 2px 6px; }
+.table-resize-btn { height: 26px; padding: 0 8px; }
+.table-options-grid { display: grid; grid-template-columns: repeat(3, auto); grid-template-rows: repeat(3, 21px); column-gap: 16px; row-gap: 2px; align-items: center; font-size: 12px; }
+.table-options-grid label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.table-styles-row { display: flex; gap: 6px; align-items: center; height: 100%; }
+.table-style-preview-btn { padding: 4px; background: transparent; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.table-style-preview-btn.selected { border-color: #60cdff; outline: 1px solid #60cdff; }
+.table-style-swatch { width: 48px; display: flex; flex-direction: column; gap: 2px; }
+.table-style-swatch-header { height: 10px; border-radius: 1px; }
+.table-style-swatch-row { height: 6px; border-radius: 1px; }
+
+/* Table & Name Dialogs */
+.name-definition-dialog { width: min(430px, calc(100vw - 24px)); padding: 0; border-radius: 9px; }
+.name-definition-dialog .format-dialog-heading, .name-manager-dialog .format-dialog-heading { padding: 11px 16px 3px; }
+.name-definition-dialog .format-dialog-heading h2, .name-manager-dialog .format-dialog-heading h2 { margin: 0; font-size: 16px; }
+.name-definition-dialog .name-dialog-fields { padding: 8px 16px 4px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.name-dialog-row { display: grid; grid-template-columns: 80px minmax(0, 1fr); column-gap: 12px; align-items: center; }
+.name-dialog-row textarea { width: 100%; height: 82px; resize: none; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; padding: 4px 6px; }
+.name-dialog-row input[type="text"] { width: 100%; height: 28px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; padding: 2px 6px; }
+.name-dialog-scope { font-size: 13px; color: var(--text); }
+.range-input-row { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; align-items: center; }
+.range-pick-btn { min-width: 32px; height: 28px; padding: 0 6px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; cursor: pointer; }
+.range-pick-btn:disabled, .name-dialog-row input:disabled, .name-manager-refers-input:disabled { opacity: 0.5; cursor: not-allowed; }
+.table-headers-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font-size: 13px; }
+.dialog-error { color: #f87171; margin: 4px 0; font-size: 12px; }
+
+/* Name Manager Dialog */
+.name-manager-dialog { width: min(660px, calc(100vw - 24px)); padding: 0; border-radius: 9px; }
+.name-manager-body { padding: 8px 16px 0; display: flex; flex-direction: column; gap: 10px; }
+.name-definition-dialog .dialog-actions, .name-manager-dialog .dialog-actions {
+  display: flex; justify-content: end; gap: 8px; margin: 0; padding: 11px 16px; background: var(--sheet);
+}
+.name-definition-dialog .dialog-actions button, .name-manager-dialog .dialog-actions button {
+  width: 88px; height: 32px; background: var(--raised);
+}
+.name-definition-dialog .dialog-actions button[type='submit'] {
+  background: var(--accent); border-color: var(--accent); color: var(--top-bar);
+}
+.name-manager-toolbar { display: flex; justify-content: space-between; align-items: center; }
+.name-manager-actions { display: flex; gap: 8px; }
+.name-manager-btn { padding: 5px 14px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; cursor: pointer; }
+.name-manager-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.name-manager-filter select { padding: 4px 8px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; }
+.name-manager-table-wrapper { width: 100%; height: 200px; overflow: auto; border: 1px solid var(--border); background: var(--sheet); }
+.name-manager-grid { width: 100%; border-collapse: collapse; font-size: 12px; min-width: 580px; }
+.name-manager-grid th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); color: var(--text); }
+.name-manager-grid td { padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; text-overflow: ellipsis; overflow: hidden; max-width: 160px; }
+.name-manager-grid tr:hover { background: var(--raised); cursor: pointer; }
+.name-manager-grid tr.selected { background: var(--accent); color: var(--top-bar); }
+.name-manager-refers-section { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.name-manager-refers-row { display: grid; grid-template-columns: auto auto 1fr auto; column-gap: 6px; align-items: center; }
+.refers-control-btn { min-width: 28px; height: 28px; padding: 0 6px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; cursor: pointer; }
+.refers-control-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.name-manager-refers-input { width: 100%; height: 28px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; padding: 2px 6px; }
+
+/* Floating Range Picker */
+.range-picker-floating-panel { position: fixed; top: 166px; right: 12px; z-index: 100; background: var(--panel); border: 1px solid #60CDFF; border-radius: 8px; padding: 12px; }
+.range-picker-heading { font-weight: 600; font-size: 13px; margin-bottom: 8px; }
+.range-picker-input-row { display: flex; gap: 8px; align-items: center; }
+.range-picker-input { width: 220px; height: 28px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; padding: 2px 6px; }
+.range-picker-action-btn { padding: 4px 12px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; cursor: pointer; }
+
+/* Table Resize Handle & Total Button */
+.table-resize-handle { position: absolute; width: 9px; height: 9px; padding: 0; margin: 0; border: none; background: transparent; cursor: nwse-resize; line-height: 0; }
+.total-button-container { position: absolute; }
+.total-button { display: flex; align-items: center; justify-content: center; background: var(--sheet); border: 1px solid var(--border); color: var(--text); border-radius: 2px; padding: 0; cursor: pointer; }
+.total-button:hover { background: var(--raised); }
+.total-dropdown-menu { position: absolute; top: 100%; left: 0; z-index: 20; min-width: 140px; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); padding: 4px 0; }
+.total-dropdown-item { display: flex; align-items: center; width: 100%; padding: 5px 10px; border: none; background: transparent; color: var(--text); font-size: 12px; text-align: left; cursor: pointer; }
+.total-dropdown-item:hover { background: var(--raised); }
+.total-dropdown-check { width: 16px; display: inline-block; }
+
 @media (forced-colors: active) {
   :root { --ribbon-glyph-blue: currentColor; --ribbon-glyph-gold: currentColor; --ribbon-glyph-pink: currentColor;
     --ribbon-glyph-red: currentColor; --ribbon-glyph-paper: Canvas; --ribbon-glyph-outline: currentColor; --ribbon-glyph-white: Canvas; }
@@ -504,7 +581,10 @@ button:disabled { cursor: default; opacity: .5; }
   .shift-dialog .shift-options input:checked, .ribbon-flyout button[aria-checked='true'] .ribbon-flyout-glyph { border-color: Highlight; }
   .ribbon-panel button[aria-pressed='true']:not(.ribbon-palette button, .border-menu button), .orientation-controls button[aria-pressed='true'] { border-color: Highlight; }
   .orientation-needle { stroke: Highlight; }
-  .shift-dialog .dialog-actions button[type='submit'], .merge-confirmation .dialog-actions button[type='submit'] {
+  .shift-dialog .dialog-actions button[type='submit'], .merge-confirmation .dialog-actions button[type='submit'],
+  .name-definition-dialog .dialog-actions button[type='submit'] {
     background: Highlight; color: HighlightText; border-color: Highlight;
   }
+  .table-style-preview-btn.selected { border-color: Highlight; outline-color: Highlight; }
+  .name-manager-grid tr.selected { background: Highlight; color: HighlightText; }
 }

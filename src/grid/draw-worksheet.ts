@@ -1,8 +1,8 @@
-import { findCell, type CellBorder, type CellDocument, type CellExtent, type SheetDocument } from '../core/workbook';
+import { findCell, type CellBorder, type CellDocument, type CellExtent, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { mergeAt } from '../application/border-commands';
 import { cellBorders, type BorderSegment } from '../core/formats/borders';
 import { drawBorder } from './border-rendering';
-import { drawCellFill, drawAlignedText, usesLightPaper } from './cell-appearance';
+import { drawCellFill, drawAlignedText, effectiveCellStyle, usesLightPaper } from './cell-appearance';
 import { columnName, gridMetrics, type GridAxis, type Track } from './grid-geometry';
 import { presentCell, includes, type Area, type GridSelection } from './grid-selection';
 
@@ -30,6 +30,8 @@ interface GridFrame {
   readonly separator: ',' | ';';
   readonly referenceArea?: Area | undefined;
   readonly borderPreview?: { readonly area: Area } | { readonly segments: readonly BorderSegment[]; readonly pen: CellBorder } | undefined;
+  readonly resizePreview?: Area | undefined;
+  readonly tables?: readonly WorkbookName[] | undefined;
   readonly frozenRows: number;
   readonly frozenColumns: number;
   readonly frozenHeight: number;
@@ -110,23 +112,27 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
         if (merge) drawn.add(merge);
         const target = merge ?? point;
         const cell = findCell(frame.sheet, target);
+        const cellStyle = effectiveCellStyle(cell?.style, target, frame.tables ?? []);
+        const effectiveCell: CellDocument | undefined = cell ? (cellStyle !== cell.style ? { ...cell, ...(cellStyle ? { style: cellStyle } : {}) } as CellDocument : cell) : undefined;
         const selected = areas.some(area => includes(area, target));
         const active = target.row === selection.anchor.row && target.column === selection.anchor.column;
         const rect = merge ? extentRect(merge, row, column) :
           { x: x(column), y: y(row), width: column.size, height: row.size };
-        if (!forced) drawCellFill(context, cell?.style, rect.x, rect.y, rect.width, rect.height, scale);
+        if (!forced) drawCellFill(context, cellStyle, rect.x, rect.y, rect.width, rect.height, scale);
         if (selected && !active) {
           context.fillStyle = tint;
           context.fillRect(rect.x, rect.y, rect.width, rect.height);
         }
-        if (!cell) continue;
-        if (!merge && cell.style?.alignment === 'centerContinuous') {
+        if (!effectiveCell) continue;
+        if (!merge && effectiveCell.style?.alignment === 'centerContinuous') {
           const hasText = (item: CellDocument) => !!presentCell(item, frame.showFormulas, frame.separator).text;
-          const across = (index: number) => {
+          const across = (index: number): CellDocument | undefined => {
             const candidate = findCell(frame.sheet, { row: row.index, column: index });
-            return candidate?.style?.alignment === 'centerContinuous' && !mergeAt(frame.sheet, row.index, index) ? candidate : undefined;
+            const candidateStyle = effectiveCellStyle(candidate?.style, { row: row.index, column: index }, frame.tables ?? []);
+            return candidateStyle?.alignment === 'centerContinuous' && !mergeAt(frame.sheet, row.index, index) ?
+              (candidate && candidateStyle !== candidate.style ? { ...candidate, ...(candidateStyle ? { style: candidateStyle } : {}) } as CellDocument : candidate) : undefined;
           };
-          let anchor = cell;
+          let anchor = effectiveCell;
           if (!hasText(anchor)) {
             for (let prior = column.index - 1; prior >= 1; prior--) {
               const candidate = across(prior);
@@ -144,7 +150,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
           }
           const bounds = extentRect({ row: row.index, column: anchor.column, rows: 1, columns: end - anchor.column + 1 }, row, column);
           entries.push({ cell: anchor, ...bounds, selected, active });
-        } else entries.push({ cell, ...rect, selected, active });
+        } else entries.push({ cell: effectiveCell, ...rect, selected, active });
       }
     }
     for (const { cell, x: cellX, y: cellY, width, height, selected, active } of entries) {
@@ -219,7 +225,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     }
     for (const segment of painted.values()) drawBorder(context, segment.pen, segment.x, segment.y, segment.x2, segment.y2, scale, textColor, forced);
 
-    const outline = (area: Area) => {
+    const outline = (area: Area, width = 1 / ratio) => {
       const firstRow = rows.find(row => row.index >= area.top);
       const lastRow = lastTrack(rows, area.bottom);
       const firstColumn = columns.find(column => column.index >= area.left);
@@ -228,7 +234,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
           firstRow.index > lastRow.index || firstColumn.index > lastColumn.index) return;
       const leftEdge = x(firstColumn), rightEdge = x(lastColumn) + lastColumn.size;
       const topEdge = y(firstRow), bottomEdge = y(lastRow) + lastRow.size;
-      context.lineWidth = 1 / ratio;
+      context.lineWidth = width;
       context.beginPath();
       if (firstRow.index === area.top) { context.moveTo(leftEdge, topEdge); context.lineTo(rightEdge, topEdge); }
       if (lastRow.index === area.bottom) { context.moveTo(leftEdge, bottomEdge); context.lineTo(rightEdge, bottomEdge); }
@@ -253,6 +259,14 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
       context.strokeStyle = forced ? 'CanvasText' : token('--formula-reference');
       context.setLineDash([4 * scale, 2 * scale]);
       outline(frame.referenceArea);
+      context.setLineDash([]);
+    }
+    if (frame.resizePreview) {
+      context.save();
+      context.strokeStyle = accent;
+      context.setLineDash([6 * scale, 4 * scale]);
+      outline(frame.resizePreview, 2);
+      context.restore();
     }
     const preview = frame.borderPreview;
     if (preview) {

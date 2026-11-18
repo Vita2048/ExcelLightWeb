@@ -2,7 +2,7 @@ import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
-import type { CellDocument } from '../../core/workbook';
+import type { CellDocument, TableDesign, WorkbookName } from '../../core/workbook';
 import type { NumberFormatChange } from '../../application/number-format-command';
 import { RibbonFlyout, RibbonGlyph } from './RibbonFlyout';
 import { AlignmentRibbon } from '../formatting/AlignmentRibbon';
@@ -13,6 +13,7 @@ import type { FormatTab } from '../formatting/FormatCellsDialog';
 import type { AppearancePatch } from '../../core/formats/appearance';
 import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
+import { TableDesignRibbon } from '../tables/TableDesignRibbon';
 
 const families = ['File', 'Home', 'Insert', 'Formulas', 'Data', 'View'] as const;
 type Family = typeof families[number];
@@ -46,11 +47,17 @@ interface RibbonProps {
   readonly onCalculationMode: (mode: CalculationMode) => void;
   readonly onCalculate: (scope: 'sheet' | 'workbook') => void;
   readonly onInsertFunction: (name: NativeFunction) => void;
+  readonly activeTable?: WorkbookName | undefined;
+  readonly onTableRename?: (name: string) => void;
+  readonly onTableResize?: () => void;
+  readonly onTableChangeDesign?: (patch: Partial<TableDesign>) => void;
+  readonly onTableClick?: () => void;
+  readonly onNameManagerClick?: () => void;
+  readonly onDefineNameClick?: () => void;
 }
 
-const unavailable: Record<'File' | 'Insert' | 'Data', string> = {
+const unavailable: Record<'File' | 'Data', string> = {
   File: 'File commands are unavailable.',
-  Insert: 'Insert commands are unavailable.',
   Data: 'Data commands are unavailable.',
 };
 
@@ -78,39 +85,90 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 }
 
 export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelection, onEdit, onStructure, calculationMode,
-  onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders }: RibbonProps) {
-  const [active, setActive] = useState<Family>('Home');
+  onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick }: RibbonProps) {
+  const [active, setActive] = useState<string>('Home');
+  const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
+  const [knownTables, setKnownTables] = useState<ReadonlySet<string>>(() => new Set());
+  const lastNonTableTab = useRef<string>('Home');
+  const tableTabWasActive = useRef<Map<string, boolean>>(new Map());
   const id = useId();
-  const tabs = useRef(new Map<Family, HTMLButtonElement>());
+  const tabs = useRef(new Map<string, HTMLButtonElement>());
+  const currentId = activeTable?.id;
+  // Switch the contextual tab during render. An effect paints one frame with every panel hidden, and the grid jumps.
+  if (currentId !== trackedTableId) {
+    const priorId = trackedTableId;
+    if (priorId !== undefined) tableTabWasActive.current.set(priorId, active === 'Table Design');
+    let nextActive = active;
+    if (currentId !== undefined) {
+      const isNew = !knownTables.has(currentId);
+      if (isNew) {
+        const nextKnown = new Set(knownTables);
+        nextKnown.add(currentId);
+        setKnownTables(nextKnown);
+      }
+      if (isNew || tableTabWasActive.current.get(currentId)) nextActive = 'Table Design';
+    } else if (active === 'Table Design') {
+      nextActive = lastNonTableTab.current;
+    }
+    if (nextActive !== active) setActive(nextActive);
+    setTrackedTableId(currentId);
+  }
+
+  const tabList = activeTable ? [...families, 'Table Design'] : families;
+
+  function selectTab(name: string) {
+    if (name !== 'Table Design') {
+      lastNonTableTab.current = name;
+    }
+    if (activeTable) {
+      tableTabWasActive.current.set(activeTable.id, name === 'Table Design');
+    }
+    setActive(name);
+  }
 
   function keyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let next: Family;
+    let next: string;
     switch (event.key) {
-      case 'ArrowLeft': next = families[(index + families.length - 1) % families.length]!; break;
-      case 'ArrowRight': next = families[(index + 1) % families.length]!; break;
-      case 'Home': next = families[0]; break;
-      case 'End': next = families[families.length - 1]!; break;
+      case 'ArrowLeft': next = tabList[(index + tabList.length - 1) % tabList.length]!; break;
+      case 'ArrowRight': next = tabList[(index + 1) % tabList.length]!; break;
+      case 'Home': next = tabList[0]!; break;
+      case 'End': next = tabList[tabList.length - 1]!; break;
       default: return;
     }
     event.preventDefault();
-    setActive(next);
+    selectTab(next);
     tabs.current.get(next)?.focus();
   }
 
   return (
     <div className="ribbon">
       <div role="tablist" aria-label="Ribbon" className="ribbon-tabs">
-        {families.map((name, index) => (
+        {tabList.map((name, index) => (
           <button type="button" key={name} role="tab" id={id + '-tab-' + name}
             aria-selected={active === name} aria-controls={id + '-panel-' + name} tabIndex={active === name ? 0 : -1}
             ref={node => { if (node) tabs.current.set(name, node); else tabs.current.delete(name); }}
-            onClick={() => setActive(name)} onKeyDown={event => keyDown(event, index)}>{name}</button>
+            onClick={() => selectTab(name)} onKeyDown={event => keyDown(event, index)}>{name}</button>
         ))}
       </div>
-      {families.map(name => (
+      {tabList.map(name => (
         <div key={name} className="ribbon-panel" role="tabpanel" hidden={active !== name}
           tabIndex={name in unavailable ? 0 : undefined} id={id + '-panel-' + name} aria-labelledby={id + '-tab-' + name}>
-          {name === 'View' ? <>
+          {name === 'Table Design' && activeTable ? (
+            <TableDesignRibbon
+              table={activeTable}
+              onRename={onTableRename ?? (() => {})}
+              onResize={onTableResize ?? (() => {})}
+              onChangeDesign={onTableChangeDesign ?? (() => {})}
+            />
+          ) : name === 'Insert' ? (
+            <fieldset>
+              <legend>Tables</legend>
+              <button type="button" className="ribbon-command ribbon-large" onClick={onTableClick}>
+                <RibbonGlyph name="Table" size={32} />Table
+              </button>
+            </fieldset>
+          ) : name === 'View' ? <>
             <fieldset>
               <legend>Show</legend><div className="ribbon-stack view-checks">
               <label><input type="checkbox" checked={view.formulaBar}
@@ -177,6 +235,17 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
               <AutoSum onEdit={onEdit} />
             </fieldset>
             <fieldset>
+              <legend>Defined Names</legend>
+              <button type="button" className="ribbon-command ribbon-large" onClick={onNameManagerClick}>
+                <RibbonGlyph name="Name Manager" size={32} />Name Manager
+              </button>
+              <RibbonFlyout
+                label="Define Name"
+                icon="Define Name"
+                items={[{ label: 'Define Name...', icon: 'Define Name', select: onDefineNameClick ?? (() => {}) }]}
+              />
+            </fieldset>
+            <fieldset>
               <legend>Formula Auditing</legend>
               <button type="button" className="ribbon-command" aria-pressed={view.showFormulas}
                 onClick={() => onView({ showFormulas: !view.showFormulas })}><RibbonGlyph name="Insert Function" />Show Formulas</button>
@@ -191,7 +260,7 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
                 <button type="button" className="ribbon-command" onClick={() => onCalculate('sheet')}><RibbonGlyph name="Calculate Sheet" />Calculate Sheet</button>
               </div>
             </fieldset>
-          </> : <p>{unavailable[name]}</p>}
+          </> : <p>{unavailable[name as keyof typeof unavailable]}</p>}
         </div>
       ))}
     </div>

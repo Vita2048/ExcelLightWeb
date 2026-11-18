@@ -5,7 +5,10 @@ import {
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
 import { mergeAt } from '../application/border-commands';
 import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
-import { findCell, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument } from '../core/workbook';
+import { findCell, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument, type WorkbookName } from '../core/workbook';
+import { lastColumn, lastRow, tableDesign } from '../core/workbook-names';
+import { totalFunction } from '../application/table-commands';
+import { TotalRowDropdown } from '../features/tables/TotalRowDropdown';
 import type { Axis } from '../core/axis-edit';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
@@ -22,6 +25,7 @@ import {
 export interface WorksheetHandle {
   focus(): void;
   goTo(point: Coordinate): boolean;
+  reveal(point: Coordinate): void;
   zoomToSelection(): number;
   moveAfterEdit(point: Coordinate, key: AfterEditKey, reverse: boolean): void;
 }
@@ -52,6 +56,11 @@ interface WorksheetProps {
   readonly showFormulas: boolean;
   readonly staleCells: ReadonlySet<string>;
   readonly separator: ',' | ';';
+  readonly tables?: readonly WorkbookName[];
+  readonly rangePicking?: boolean;
+  readonly onRangePickFinish?: (accept: boolean) => void;
+  readonly onResizeTable?: (table: WorkbookName, rows: number, columns: number) => void;
+  readonly onTotalFunction?: (tableId: string, column: number, code: number) => void;
   readonly ref: Ref<WorksheetHandle>;
 }
 
@@ -90,6 +99,7 @@ export function Worksheet(props: WorksheetProps) {
   const drag = useRef<Drag | null>(null);
   const borderDrag = useRef<BorderDrag | null>(null);
   const [borderPreview, setBorderPreview] = useState<DrawGesture>();
+  const [resizePreview, setResizePreview] = useState<Area>();
   const resize = useRef<{ id: number; axis: Axis; origin: number; size: number; apply: (size: number) => void } | null>(null);
   const [guide, setGuide] = useState<{ axis: Axis; offset: number }>();
   const exitOnTab = useRef(false);
@@ -136,6 +146,10 @@ export function Worksheet(props: WorksheetProps) {
       reveal(point);
       focus();
       return true;
+    },
+    reveal(point) {
+      reveal(point);
+      focus();
     },
     moveAfterEdit(point, key, reverse) {
       const next = navigate(sheet, rows, columns, point, key, false, reverse, 1) ?? point;
@@ -186,15 +200,16 @@ export function Worksheet(props: WorksheetProps) {
   useLayoutEffect(() => {
     drawWorksheet(canvas.current!, {
       sheet, view, rows: rowTracks, columns: columnTracks, rowAxis: rows, columnAxis: columns, selection, areas, scale, headings, gridlines,
-      showFormulas, staleCells, separator, referenceArea: props.referenceArea,
+      showFormulas, staleCells, separator, referenceArea: props.referenceArea, tables: props.tables,
       borderPreview: props.borderTool && borderPreview && ('area' in borderPreview ? {
         area: { top: borderPreview.area.row, left: borderPreview.area.column,
           bottom: borderPreview.area.row + borderPreview.area.rows - 1, right: borderPreview.area.column + borderPreview.area.columns - 1 },
       } : { segments: borderPreview.segments, pen: props.borderPen ?? { style: 'dashed' } }),
       frozenRows: rows.frozen, frozenColumns: columns.frozen, frozenHeight: rows.frozenSize, frozenWidth: columns.frozenSize,
+      resizePreview,
     });
   }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells,
-    separator, props.referenceArea, props.borderTool, props.borderPen, borderPreview, rows, columns, palette]);
+    separator, props.referenceArea, props.tables, props.borderTool, props.borderPen, borderPreview, resizePreview, rows, columns, palette]);
 
   function alignTo(point: Coordinate) {
     const node = scroll.current!;
@@ -415,7 +430,18 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (props.onShortcut(event)) return;
+    if (props.rangePicking) {
+      if (event.key === 'Enter' || event.key === 'Escape') {
+        event.preventDefault();
+        props.onRangePickFinish?.(event.key === 'Enter');
+        return;
+      }
+      if (event.key === 'Tab') return;
+      if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+        event.preventDefault();
+        return;
+      }
+    } else if (props.onShortcut(event)) return;
     if (event.nativeEvent.isComposing || event.altKey) return;
     const control = event.ctrlKey || event.metaKey;
     const { key, shiftKey } = event;
@@ -449,7 +475,10 @@ export function Worksheet(props: WorksheetProps) {
     const extend = shiftKey && key !== 'Enter' && key !== 'Tab';
     const point = navigate(sheet, rows, columns, extend ? selection.end : anchor, key, control, shiftKey,
       Math.max(1, rowTracks.length - 1));
-    if (!point) return;
+    if (!point) {
+      if (props.rangePicking) event.preventDefault();
+      return;
+    }
     event.preventDefault();
     if (onSelection(select(selection, point, extend ? selection.kind : 'cells', extend))) reveal(point);
   }
@@ -478,6 +507,83 @@ export function Worksheet(props: WorksheetProps) {
   const editorHeight = Math.min(bodyHeight, Math.max(24, editMerge ? rows.span(editMerge.row, editMerge.row + editMerge.rows - 1) : editRow?.size ?? 0));
   const editorLeft = editColumn ? columns.screen(editColumn, view.x) : 0;
   const editorTop = editRow ? rows.screen(editRow, view.y) : 0;
+
+  function cellBounds(row: number, column: number) {
+    const rTrack = rows.track(row);
+    const cTrack = columns.track(column);
+    if (!rTrack || !cTrack) return undefined;
+    const screenX = left + columns.screen(cTrack, view.x);
+    const screenY = top + rows.screen(rTrack, view.y);
+    return {
+      left: screenX,
+      top: screenY,
+      right: screenX + cTrack.size,
+      bottom: screenY + rTrack.size,
+      width: cTrack.size,
+      height: rTrack.size,
+    };
+  }
+
+  function onStartResizeHandle(event: PointerEvent<HTMLButtonElement>, table: WorkbookName) {
+    event.stopPropagation();
+    event.preventDefault();
+    const button = event.currentTarget;
+    button.setPointerCapture(event.pointerId);
+    const initialTable = table;
+    let latestRows = table.area.rows;
+    let latestCols = table.area.columns;
+
+    function handlePointerMove(e: globalThis.PointerEvent) {
+      const node = scroll.current;
+      if (!node) return;
+      const rect = node.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const pt = pointAt(x, y, 'cells', true);
+      if (!pt) return;
+      latestRows = Math.max(1, pt.row - initialTable.area.row + 1);
+      latestCols = Math.max(1, pt.column - initialTable.area.column + 1);
+      setResizePreview({
+        top: initialTable.area.row,
+        left: initialTable.area.column,
+        bottom: initialTable.area.row + latestRows - 1,
+        right: initialTable.area.column + latestCols - 1,
+      });
+    }
+
+    function handlePointerUp(e: globalThis.PointerEvent) {
+      button.releasePointerCapture(e.pointerId);
+      button.removeEventListener('pointermove', handlePointerMove);
+      button.removeEventListener('pointerup', handlePointerUp);
+      button.removeEventListener('pointercancel', handlePointerUp);
+      setResizePreview(undefined);
+      if (latestRows !== initialTable.area.rows || latestCols !== initialTable.area.columns) {
+        props.onResizeTable?.(initialTable, latestRows, latestCols);
+      }
+    }
+
+    button.addEventListener('pointermove', handlePointerMove);
+    button.addEventListener('pointerup', handlePointerUp);
+    button.addEventListener('pointercancel', handlePointerUp);
+  }
+
+  function onHandleKeyDown(event: KeyboardEvent<HTMLButtonElement>, table: WorkbookName) {
+    let dr = 0, dc = 0;
+    switch (event.key) {
+      case 'ArrowUp': dr = -1; break;
+      case 'ArrowDown': dr = 1; break;
+      case 'ArrowLeft': dc = -1; break;
+      case 'ArrowRight': dc = 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const newR = Math.max(1, table.area.rows + dr);
+    const newC = Math.max(1, table.area.columns + dc);
+    if (newR !== table.area.rows || newC !== table.area.columns) {
+      props.onResizeTable?.(table, newR, newC);
+    }
+  }
 
   return (
     <div className="worksheet">
@@ -546,6 +652,56 @@ export function Worksheet(props: WorksheetProps) {
           width: editorWidth, height: editorHeight, fontSize: Math.max(10, 14 * scale),
         }}>{props.editor?.input}</div>
       </div>}
+      {!props.rangePicking && props.tables?.filter(t => !t.area.invalid && t.area.sheetId === sheet.id).map(table => {
+        const lastR = lastRow(table.area);
+        const lastC = lastColumn(table.area);
+        const bounds = cellBounds(lastR, lastC);
+        if (!bounds) return null;
+        if (bounds.right <= left + 9 || bounds.right > view.width ||
+            bounds.bottom <= top + 9 || bounds.bottom > view.height) return null;
+        return (
+          <button
+            key={table.id}
+            type="button"
+            className="table-resize-handle"
+            aria-label={'Resize table ' + table.name}
+            title={'Resize table ' + table.name}
+            style={{
+              left: bounds.right - 9,
+              top: bounds.bottom - 9,
+            }}
+            onPointerDown={e => onStartResizeHandle(e, table)}
+            onKeyDown={e => onHandleKeyDown(e, table)}
+          >
+            <svg width="9" height="9" viewBox="0 0 9 9">
+              <polygon points="0,9 9,0 9,9" fill="var(--accent)" />
+            </svg>
+          </button>
+        );
+      })}
+      {!props.rangePicking && (() => {
+        const activeTable = props.tables?.find(t =>
+          !t.area.invalid && t.area.sheetId === sheet.id && tableDesign(t).totalRow &&
+          lastRow(t.area) === selection.anchor.row &&
+          selection.anchor.column >= t.area.column && selection.anchor.column <= lastColumn(t.area)
+        );
+        if (!activeTable) return null;
+        const bounds = cellBounds(selection.anchor.row, selection.anchor.column);
+        if (!bounds) return null;
+        const size = Math.min(17 * scale, bounds.height);
+        const x = bounds.right + size <= view.width ? bounds.right : bounds.left - size;
+        const y = bounds.top + (bounds.height - size) / 2;
+        if (x < left || x + size > view.width || y < top || y + size > view.height) return null;
+        const cellDoc = findCell(sheet, selection.anchor);
+        const currentCode = totalFunction(cellDoc);
+        return (
+          <TotalRowDropdown
+            currentCode={currentCode}
+            position={{ x, y, size }}
+            onSelect={code => props.onTotalFunction?.(activeTable.id, selection.anchor.column, code)}
+          />
+        );
+      })()}
     </div>
   );
 }

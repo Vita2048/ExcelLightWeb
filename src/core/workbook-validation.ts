@@ -122,13 +122,13 @@ function validateStyle(style: CellStyle): void {
   }
 }
 
-function validateExtent(extent: CellExtent): void {
+export function validateExtent(extent: CellExtent): void {
   requireDocument(extent && isCoordinate(extent) &&
     inRange(extent.rows, 1, limits.rows - extent.row + 1) &&
     inRange(extent.columns, 1, limits.columns - extent.column + 1), 'Range is outside the sheet.');
 }
 
-function overlaps(a: CellExtent, b: CellExtent): boolean {
+export function overlaps(a: CellExtent, b: CellExtent): boolean {
   return a.row < b.row + b.rows && b.row < a.row + a.rows &&
     a.column < b.column + b.columns && b.column < a.column + a.columns;
 }
