@@ -6,6 +6,9 @@ import { categories, currencies, currencyChoices, formatName, localeForCategory,
   presets, specialLocales, typeChoices, type CurrencyChoice, type NumberCategory } from '../../core/formats/number-catalog';
 import { documentLimits, type CellDocument } from '../../core/workbook';
 import { isFontFamily, normalFont, parseFontSize, updateAppearance, type AppearancePatch } from '../../core/formats/appearance';
+import { BorderTab } from './BorderTab';
+import type { BorderEditorState } from '../../application/border-commands';
+import type { BorderDraft } from '../../core/formats/borders';
 import { FillTab, FontTab } from './AppearanceTabs';
 import { DialogActions } from '../dialogs/DialogActions';
 
@@ -15,24 +18,27 @@ const localeNames = new Intl.DisplayNames(['en'], { type: 'language' });
 const localeLabel = (tag: string) => localeNames.of(tag) ?? tag;
 
 const tabs = ['Number', 'Alignment', 'Font', 'Border', 'Fill'] as const;
-const availableTabs = ['Number', 'Font', 'Fill'] as const;
+const availableTabs = ['Number', 'Font', 'Border', 'Fill'] as const;
 export type FormatTab = typeof availableTabs[number];
 
 function available(item: typeof tabs[number]): item is FormatTab {
   return availableTabs.some(tab => tab === item);
 }
 
-export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, onSubmit, onCancel }: {
+export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderEditor, onSubmit, onCancel }: {
   cell: CellDocument | undefined;
   locale: string;
   usedCodes: readonly string[];
   initialTab: FormatTab;
-  onSubmit: (patch: AppearancePatch, code?: string) => string | undefined;
+  borderEditor: BorderEditorState | undefined;
+  onSubmit: (patch: AppearancePatch, code: string | undefined, borders: BorderDraft) => string | undefined;
   onCancel: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const tabId = useId();
   const [tab, setTab] = useState(initialTab);
+  const [borders, setBorders] = useState<BorderDraft>({});
+  const enabledTabs: readonly FormatTab[] = borderEditor ? availableTabs : availableTabs.filter(item => item !== 'Border');
   const [patch, setPatch] = useState<AppearancePatch>({});
   const [family, setFamily] = useState(cell?.style?.fontFamily ?? 'Segoe UI');
   const [size, setSize] = useState(String(cell?.style?.fontSize ?? 11));
@@ -96,26 +102,26 @@ export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, onSubmi
 
   return <dialog ref={ref} className="paste-dialog number-dialog" aria-labelledby={tabId + '-title'}
     onCancel={event => { if (event.target === event.currentTarget) { event.preventDefault(); onCancel(); } }}>
-    <form noValidate onSubmit={event => { event.preventDefault(); if (valid) setError(onSubmit(patch, touched ? code : undefined) ?? ''); }}>
+    <form noValidate onSubmit={event => { event.preventDefault(); if (valid) setError(onSubmit(patch, touched ? code : undefined, borders) ?? ''); }}>
       <div className="format-dialog-heading">
         <h2 id={tabId + '-title'}>Format Cells</h2>
         <button type="button" className="format-dialog-close" aria-label="Close Format Cells" onClick={onCancel}>×</button>
       </div>
       <div className="appearance-tabs" role="tablist" aria-label="Format Cells options">
-        {tabs.map(item => available(item) ? <button type="button" key={item} role="tab" id={tabId + '-' + item}
+        {tabs.map(item => available(item) && enabledTabs.includes(item) ? <button type="button" key={item} role="tab" id={tabId + '-' + item}
           aria-controls={tabId + '-panel-' + item} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1}
           onClick={() => setTab(item)} onKeyDown={event => {
-            const index = availableTabs.indexOf(item);
-            const last = availableTabs.length - 1;
-            const next = event.key === 'ArrowLeft' ? (index + last) % availableTabs.length :
-              event.key === 'ArrowRight' ? (index + 1) % availableTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? last : -1;
+            const index = enabledTabs.indexOf(item);
+            const last = enabledTabs.length - 1;
+            const next = event.key === 'ArrowLeft' ? (index + last) % enabledTabs.length :
+              event.key === 'ArrowRight' ? (index + 1) % enabledTabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? last : -1;
             if (next < 0) return;
             event.preventDefault();
-            const nextTab = availableTabs[next]!;
+            const nextTab = enabledTabs[next]!;
             setTab(nextTab);
             document.getElementById(tabId + '-' + nextTab)?.focus();
           }}>{item}</button> : <button key={item} type="button" role="tab" disabled aria-selected={false}
-            title={item + ' formatting is unavailable in this sprint'}>{item}</button>)}
+            title={item === 'Border' ? 'Select one contiguous area for borders' : 'Alignment formatting is unavailable'}>{item}</button>)}
       </div>
       <div className="format-dialog-panes">
         <div role="tabpanel" id={tabId + '-panel-Number'} aria-labelledby={tabId + '-Number'} hidden={tab !== 'Number'} className="number-dialog-body">
@@ -197,6 +203,9 @@ export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, onSubmi
             updatePatch(normalFont);
           }} />}
         </div>
+        {borderEditor && <div role="tabpanel" id={tabId + '-panel-Border'} aria-labelledby={tabId + '-Border'} hidden={tab !== 'Border'}>
+          <BorderTab initial={borderEditor} draft={borders} onChange={setBorders} />
+        </div>}
         <div role="tabpanel" id={tabId + '-panel-Fill'} aria-labelledby={tabId + '-Fill'} hidden={tab !== 'Fill'}>
           {tab === 'Fill' && <FillTab style={appearance} onChange={updatePatch} />}
         </div>

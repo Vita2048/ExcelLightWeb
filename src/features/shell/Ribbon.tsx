@@ -4,6 +4,7 @@ import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
 import type { CellDocument } from '../../core/workbook';
 import type { NumberFormatChange } from '../../application/number-format-command';
+import { BorderRibbon, type BorderRibbonProps } from '../formatting/BorderRibbon';
 import { FontRibbon } from '../formatting/FontRibbon';
 import type { FormatTab } from '../formatting/FormatCellsDialog';
 import type { AppearancePatch } from '../../core/formats/appearance';
@@ -27,6 +28,7 @@ interface RibbonProps {
   readonly onZoomToSelection: () => void;
   readonly onEdit: (action: EditAction) => void;
   readonly cell: CellDocument | undefined;
+  readonly borders: BorderRibbonProps;
   readonly onAppearance: (patch: AppearancePatch, focus?: boolean) => void;
   readonly onAppearanceError: (error: string, focus: boolean) => void;
   readonly onFormatDialog: (tab: FormatTab) => void;
@@ -75,7 +77,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 }
 
 export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure, calculationMode,
-  onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter }: RibbonProps) {
+  onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders }: RibbonProps) {
   const [active, setActive] = useState<Family>('Home');
   const id = useId();
   const tabs = useRef(new Map<Family, HTMLButtonElement>());
@@ -141,6 +143,7 @@ export function Ribbon({ view, onView, onZoomToSelection, onEdit, onStructure, c
             </fieldset>
             <FontRibbon style={cell?.style} onApply={onAppearance} onInvalid={onAppearanceError}
               onDialog={() => onFormatDialog('Font')} />
+            <BorderRibbon {...borders} />
             <NumberRibbon cell={cell} onFormat={onNumberFormat} onDialog={() => onStructure('format-cells')} />
             <StructureRibbon onAction={onStructure} />
             <fieldset>

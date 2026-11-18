@@ -1,6 +1,8 @@
 import { cellKey, documentLimits, findCell, ownDto, type CellStyle } from '../core/workbook';
 import { equalDto } from '../core/workbook-delta';
 import { requireDocument } from '../core/workbook-validation';
+import type { BorderDraft } from '../core/formats/borders';
+import { applyBorderDraft, mirrorBorderDraft } from './border-commands';
 import { isNumberFormat } from '../core/formats/format-code';
 import { updateAppearance, type AppearancePatch } from '../core/formats/appearance';
 import { checkedSheet, expandMerges, type EditRange } from './editing-commands';
@@ -8,7 +10,7 @@ import type { WorkbookSnapshot } from './workbook-protocol';
 import type { CellEdit, SetCellsCommand } from './workbook-session';
 
 export function changeStyles(basis: WorkbookSnapshot, ranges: readonly EditRange[], label: string,
-  update: (style: CellStyle | undefined, row: number, column: number) => CellStyle | undefined,
+  update: (style: CellStyle | undefined, row: number, column: number, area: EditRange) => CellStyle | undefined,
   includeMerges = true): SetCellsCommand {
   const edits: CellEdit[] = [];
   const visited = new Map<string, Set<number>>();
@@ -27,7 +29,7 @@ export function changeStyles(basis: WorkbookSnapshot, ranges: readonly EditRange
         seen.add(key);
         requireDocument(++count <= documentLimits.cells, 'Format selection is too large.');
         const cell = findCell(sheet, target);
-        const changed = update(cell?.style, row, column);
+        const changed = update(cell?.style, row, column, area);
         if (changed === cell?.style) continue;
         const style = changed && Object.keys(changed).length ? changed : undefined;
         if (equalDto(style, cell?.style)) continue;
@@ -39,14 +41,28 @@ export function changeStyles(basis: WorkbookSnapshot, ranges: readonly EditRange
 }
 
 export function formatStyles(basis: WorkbookSnapshot, ranges: readonly EditRange[], patch: AppearancePatch,
-  numberCode?: string): SetCellsCommand {
+  numberCode?: string, borders: BorderDraft = {}): SetCellsCommand {
   requireDocument(numberCode === undefined || isNumberFormat(numberCode), 'Enter a valid Excel number format.');
-  return changeStyles(basis, ranges, 'Format Cells', style => {
-    const next = updateAppearance(style, patch);
+  const withBorder = Object.keys(borders).length > 0;
+  const sheets = new Map(basis.document.sheets.map(sheet => [sheet.id, sheet]));
+  const command = changeStyles(basis, ranges, 'Format Cells', (style, row, column, area) => {
+    const appearance = updateAppearance(style, patch);
+    const next = (withBorder ? applyBorderDraft(sheets.get(area.sheetId)!, area, appearance, row, column, borders) : appearance) ?? {};
     if (numberCode === undefined || numberCode === style?.numberFormat) return next;
     const { numberFormat: _prior, ...rest } = next;
     return /^general$/iu.test(numberCode) ? rest : { ...rest, numberFormat: numberCode };
   });
+  if (!withBorder) return command;
+
+  const bySheet = new Map<string, EditRange[]>();
+  for (const range of ranges) {
+    const areas = bySheet.get(range.sheetId) ?? [];
+    areas.push(expandMerges(range, sheets.get(range.sheetId)!));
+    bySheet.set(range.sheetId, areas);
+  }
+  const mirrors = Array.from(bySheet, ([id, areas]) => mirrorBorderDraft(sheets.get(id)!, areas, borders)).flat();
+  requireDocument(command.edits.length + mirrors.length <= documentLimits.cells, 'Format selection is too large.');
+  return { ...command, edits: [...command.edits, ...mirrors] };
 }
 
 export interface FormatBrush {

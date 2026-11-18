@@ -6,6 +6,7 @@ tests/desktop-interchange/obj/
 tests/desktop-formulas/obj/
 tests/desktop-formats/obj/
 tests/desktop-appearance/obj/
+tests/desktop-borders/obj/
 playwright-report/
 .env*
 !.env.example

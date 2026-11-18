@@ -1,3 +1,4 @@
+import { borderStyles, borderEdges } from './formats/borders';
 import { fillPatterns, fillShadings, isFontFamily } from './formats/appearance';
 import {
   cellKey, documentLimits as limits, DocumentError, formulaErrors, inRange, isCoordinate,
@@ -73,9 +74,6 @@ export function validateCellValue(value: CellContent | CellCache, cache = false)
   }
 }
 
-const borderStyles = new Set(['hair', 'dotted', 'dashDotDot', 'dashDot', 'dashed', 'thin', 'mediumDashDotDot',
-  'slantDashDot', 'mediumDashDot', 'mediumDashed', 'medium', 'thick', 'double']);
-const borderEdges = new Set(['top', 'right', 'bottom', 'left', 'diagonalUp', 'diagonalDown']);
 
 
 function validColor(value: string | undefined): boolean {
@@ -115,7 +113,8 @@ function validateStyle(style: CellStyle): void {
     requireDocument(style.borderDetails && typeof style.borderDetails === 'object', 'Invalid border detail.');
     const { diagonalUp, diagonalDown } = style.borderDetails;
     for (const [side, edge] of Object.entries(style.borderDetails)) {
-      requireDocument(borderEdges.has(side) && edge && borderStyles.has(edge.style) && validColor(edge.rgb),
+      requireDocument(borderEdges.some(key => key === side) && edge && typeof edge.style === 'string' &&
+        edge.style !== 'none' && Object.hasOwn(borderStyles, edge.style) && validColor(edge.rgb),
         'Invalid border detail.');
     }
     requireDocument(!diagonalUp || !diagonalDown ||

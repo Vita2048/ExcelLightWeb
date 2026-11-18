@@ -62,3 +62,34 @@ test('session snapshots supply formula source, visible values and selection stat
   await expect(nameBox).toHaveValue('Z1000');
   await expect(formulaBar).toHaveValue('Last cell');
 });
+
+test('draws and erases on a frozen cell at zoom after scrolling both axes', async ({ page }) => {
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.goto(path + '?frozen');
+  const grid = page.getByRole('grid', { name: 'Inputs' });
+  for (let click = 0; click < 5; click++) await page.getByRole('button', { name: 'Zoom in' }).click();
+  await expect(page.getByRole('slider', { name: 'Zoom' })).toHaveAttribute('aria-valuetext', '150%');
+  const nameBox = page.getByRole('textbox', { name: 'Name box' });
+  await nameBox.fill('B2');
+  await nameBox.press('Enter');
+  await grid.evaluate(node => node.scrollTo({ left: 190, top: 74 }));
+  await expect.poll(() => grid.evaluate(node => [node.scrollLeft, node.scrollTop])).toEqual([190, 74]);
+  const commands = page.getByRole('group', { name: 'Borders actions' });
+  const open = () => page.getByRole('button', { name: 'Borders menu' }).click();
+  await open();
+  await commands.getByRole('button', { name: 'Border Line Color' }).click();
+  await page.getByRole('dialog', { name: 'Border Line Color' }).getByRole('button', { name: 'Color #FF0000', exact: true }).click();
+  await open();
+  await commands.getByText('Line Style', { exact: true }).click();
+  await commands.getByRole('button', { name: 'Thick', exact: true }).click();
+  const box = (await grid.boundingBox())!;
+  // The row-1 bottom edge stays at 78 CSS pixels after both scroll offsets change.
+  await page.mouse.click(box.x + 108, box.y + 77);
+  await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 0, 0, 255]]);
+  await open();
+  await commands.getByRole('button', { name: 'Erase Border', exact: true }).click();
+  await page.mouse.click(box.x + 108, box.y + 77);
+  await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 255, 255, 255]]);
+  await grid.press('Control+z');
+  await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 0, 0, 255]]);
+});

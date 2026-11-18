@@ -30,13 +30,14 @@ export function ColorPalette({ value, colors = [...themeColors, ...standards], o
   </div>;
 }
 
-export function ColorControl({ label, value, automatic, ribbon = false, display = 'label', onChange }: {
+export function ColorControl({ label, value, automatic, ribbon = false, display = 'label', recentColors, onChange }: {
   label: string;
   value: string | undefined;
   automatic?: boolean;
   ribbon?: boolean;
   display?: 'label' | 'value' | 'bar' | 'text';
-  onChange: (color?: string) => void;
+  recentColors?: readonly string[];
+  onChange: (color?: string, custom?: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
@@ -50,19 +51,20 @@ export function ColorControl({ label, value, automatic, ribbon = false, display 
         style={{ background: value ? '#' + value : display === 'value' ? '#fff' : undefined }} />}
       {!combo ? label : !bar && (automatic ? 'Automatic' : 'No Color')}
     </button>
-    {open && <ColorPicker ribbon={ribbon} label={label} value={value} automatic={automatic === true} onClose={() => {
+    {open && <ColorPicker ribbon={ribbon} label={label} value={value} recentColors={recentColors ?? []} automatic={automatic === true} onClose={() => {
       setOpen(false);
       button.current?.focus();
     }} onChange={onChange} />}
   </>;
 }
 
-function ColorPicker({ label, value, automatic, ribbon, onChange, onClose }: {
+function ColorPicker({ label, value, automatic, ribbon, recentColors, onChange, onClose }: {
   label: string;
   value: string | undefined;
   automatic: boolean;
   ribbon: boolean;
-  onChange: (value?: string) => void;
+  recentColors: readonly string[];
+  onChange: (value?: string, custom?: boolean) => void;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -71,23 +73,26 @@ function ColorPicker({ label, value, automatic, ribbon, onChange, onClose }: {
   const rgb = parseColor(hex);
   useLayoutEffect(() => { if (!ref.current!.open) ref.current!.showModal(); }, []);
   function close() { ref.current?.close(); onClose(); }
-  function choose(color?: string) { close(); onChange(color); }
+  function choose(color?: string, custom = false) { close(); onChange(color, custom); }
   return createPortal(<dialog ref={ref} className="paste-dialog appearance-popover" aria-labelledby={title}
     onCancel={event => { event.preventDefault(); event.stopPropagation(); close(); }}>
     <h2 id={title}>{label}</h2>
     <button type="button" onClick={() => choose()}>{automatic ? 'Automatic' : ribbon ? 'No Fill' : 'No Color'}</button>
     {([['Theme colors', ribbon ? ribbonColors : themeColors], ['Standard colors', standards]] as const).map(([name, colors]) =>
       <fieldset key={name}><legend>{name}</legend><ColorPalette colors={colors} value={value} onChange={choose} /></fieldset>)}
+    {!!recentColors.length && <fieldset><legend>Recent colors</legend>
+      <ColorPalette colors={recentColors} value={value} onChange={choose} />
+    </fieldset>}
     <div className="custom-color">
       <label>Custom color<input type="color" aria-label="Choose custom color" value={'#' + (rgb ?? '000000')}
         onChange={event => setHex(event.currentTarget.value)} /></label>
       <label>Custom color hex<input type="text" maxLength={7} placeholder="#RRGGBB" value={hex}
         onChange={event => setHex(event.currentTarget.value)}
-        onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (rgb) choose(rgb); } }} /></label>
+        onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); if (rgb) choose(rgb, true); } }} /></label>
     </div>
     {hex && !rgb && <p role="alert">Enter six hexadecimal color digits.</p>}
     <div className="dialog-actions">
-      <button type="button" disabled={!rgb} onClick={() => rgb && choose(rgb)}>Apply custom color</button>
+      <button type="button" disabled={!rgb} onClick={() => rgb && choose(rgb, true)}>Apply custom color</button>
       <button type="button" onClick={close}>Cancel</button>
     </div>
   </dialog>, document.body);

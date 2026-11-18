@@ -2,10 +2,14 @@ import {
   useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
   type ClipboardEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref,
 } from 'react';
-import { findCell, worksheetViewport, type Coordinate, type SheetDocument } from '../core/workbook';
+import type { BorderMode, BorderSegment } from '../core/formats/borders';
+import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
+import { findCell, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument } from '../core/workbook';
 import type { Axis } from '../core/axis-edit';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
+import drawBorderCursor from './cursors/draw-border.svg';
+import eraseBorderCursor from './cursors/erase-border.svg';
 import selectColumnCursor from './cursors/select-column.svg';
 import selectRowCursor from './cursors/select-row.svg';
 import { address, clamp, GridAxis, gridMetrics } from './grid-geometry';
@@ -25,6 +29,10 @@ interface WorksheetProps {
   readonly sheet: SheetDocument;
   readonly selection: GridSelection;
   readonly onSelection: (selection: GridSelection) => boolean;
+  readonly borderTool: BorderMode | undefined;
+  readonly borderPen: CellBorder | null;
+  readonly onBeginBorder: () => ((gesture: DrawGesture) => void) | undefined;
+  readonly onExitBorder: () => void;
   readonly paintActive: boolean;
   readonly onPaint: (area: Area) => void;
   readonly onReferencePick: () => ReferenceDrag | undefined;
@@ -56,6 +64,17 @@ interface Drag {
   readonly paint?: boolean;
 }
 
+interface BorderDrag {
+  readonly id: number;
+  readonly mode: BorderMode;
+  readonly start: BorderHit;
+  readonly apply: (gesture: DrawGesture) => void;
+  readonly erased: Map<string, BorderSegment>;
+  x: number;
+  y: number;
+  preview?: DrawGesture;
+}
+
 interface ReferenceDrag {
   readonly update: (area: Area) => void;
   readonly cancel: () => void;
@@ -68,6 +87,8 @@ export function Worksheet(props: WorksheetProps) {
   const scroll = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<Drag | null>(null);
+  const borderDrag = useRef<BorderDrag | null>(null);
+  const [borderPreview, setBorderPreview] = useState<DrawGesture>();
   const resize = useRef<{ id: number; axis: Axis; origin: number; size: number; apply: (size: number) => void } | null>(null);
   const [guide, setGuide] = useState<{ axis: Axis; offset: number }>();
   const exitOnTab = useRef(false);
@@ -79,10 +100,10 @@ export function Worksheet(props: WorksheetProps) {
   const scale = zoom / 100;
   const left = headings ? gridMetrics.rowHeader * scale : 0;
   const top = headings ? gridMetrics.columnHeader * scale : 0;
-  const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, sheet.rows, scale), [sheet.rows, scale]);
-  const columns = useMemo(() => new GridAxis(worksheetViewport.columns, gridMetrics.column, sheet.columns, scale), [sheet.columns, scale]);
-  const rowTracks = rows.visible(view.y, view.height - top);
-  const columnTracks = columns.visible(view.x, view.width - left);
+  const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, sheet.rows, scale, sheet.frozenPanes.rows), [sheet.rows, scale, sheet.frozenPanes.rows]);
+  const columns = useMemo(() => new GridAxis(worksheetViewport.columns, gridMetrics.column, sheet.columns, scale, sheet.frozenPanes.columns), [sheet.columns, scale, sheet.frozenPanes.columns]);
+  const rowTracks = rows.projected(view.y, view.height - top);
+  const columnTracks = columns.projected(view.x, view.width - left);
   const areas = selectionAreas(selection);
   const cellId = (point: Coordinate) => id + '-' + address(point);
 
@@ -165,24 +186,29 @@ export function Worksheet(props: WorksheetProps) {
     drawWorksheet(canvas.current!, {
       sheet, view, rows: rowTracks, columns: columnTracks, selection, areas, scale, headings, gridlines,
       showFormulas, staleCells, separator, referenceArea: props.referenceArea,
+      borderPreview: props.borderTool && borderPreview && ('area' in borderPreview ? {
+        area: { top: borderPreview.area.row, left: borderPreview.area.column,
+          bottom: borderPreview.area.row + borderPreview.area.rows - 1, right: borderPreview.area.column + borderPreview.area.columns - 1 },
+      } : { segments: borderPreview.segments, pen: props.borderPen ?? { style: 'dashed' } }),
+      frozenRows: rows.frozen, frozenColumns: columns.frozen, frozenHeight: rows.frozenSize, frozenWidth: columns.frozenSize,
     });
   }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells,
-    separator, props.referenceArea, palette]);
+    separator, props.referenceArea, props.borderTool, props.borderPen, borderPreview, rows, columns, palette]);
 
   function alignTo(point: Coordinate) {
     const node = scroll.current!;
     const nextRow = rows.tracks.find(track => track.index >= point.row);
     const nextColumn = columns.tracks.find(track => track.index >= point.column);
-    if (nextRow) node.scrollTop = nextRow.start;
-    if (nextColumn) node.scrollLeft = nextColumn.start;
+    if (nextRow) node.scrollTop = Math.max(0, nextRow.start - rows.frozenSize);
+    if (nextColumn) node.scrollLeft = Math.max(0, nextColumn.start - columns.frozenSize);
     measure();
   }
 
   function pointAt(x: number, y: number, kind: AreaKind, bounded = false): Coordinate | undefined {
     const node = scroll.current!;
     const locate = (axis: GridAxis, position: number, header: number, offset: number, size: number) => {
-      const relative = (bounded ? clamp(position, header, size - 0.01) : position) - header + offset;
-      return axis.at(bounded ? clamp(relative, 0, axis.total - 0.01) : relative)?.index;
+      const relative = (bounded ? clamp(position, header, size - 0.01) : position) - header;
+      return (axis.atScreen(relative, offset) ?? (bounded && relative >= 0 ? axis.tracks.at(-1) : undefined))?.index;
     };
     const row = kind === 'columns' || kind === 'sheet' ? rows.tracks[0]?.index :
       locate(rows, y, top, node.scrollTop, node.clientHeight);
@@ -196,10 +222,11 @@ export function Worksheet(props: WorksheetProps) {
     if (x < 0 || y < 0 || x >= node.clientWidth || y >= node.clientHeight) return;
     const axis: Axis | undefined = x < left && y >= top ? 'row' : y < top && x >= left ? 'column' : undefined;
     if (!axis) return;
-    const coord = axis === 'row' ? y - top + node.scrollTop : x - left + node.scrollLeft;
+    const coord = axis === 'row' ? y - top : x - left;
+    const offset = axis === 'row' ? node.scrollTop : node.scrollLeft;
     const tracks = axis === 'row' ? rows : columns;
-    const track = tracks.at(edge ? Math.max(0, coord - 4) : coord);
-    if (track && (!edge || Math.abs(track.start + track.size - coord) <= 4)) return { axis, track };
+    const track = tracks.atScreen(edge ? Math.max(0, coord - 4) : coord, offset);
+    if (track && (!edge || Math.abs(tracks.screen(track, offset) + track.size - coord) <= 4)) return { axis, track };
   }
 
   function moveDrag() {
@@ -222,6 +249,47 @@ export function Worksheet(props: WorksheetProps) {
     if ((xOverflow !== 0 || yOverflow !== 0) && drag.current) frame.current = requestAnimationFrame(moveDrag);
   }
 
+  useLayoutEffect(() => {
+    const active = borderDrag.current;
+    if (active && active.mode !== props.borderTool) {
+      borderDrag.current = null;
+      setBorderPreview(undefined);
+    }
+  }, [props.borderTool]);
+
+  function borderHit(x: number, y: number, erase: boolean) {
+    const node = scroll.current!;
+    return hitBorder(sheet, { rows, columns, scrollX: node.scrollLeft, scrollY: node.scrollTop }, x - left, y - top, erase);
+  }
+
+  function addErase(active: BorderDrag, hit: BorderHit | undefined) {
+    const edge = hit?.segment;
+    if (edge && active.erased.size < 26_000) active.erased.set([edge.edge, edge.row, edge.column].join(','), edge);
+  }
+
+  function updateBorder(active: BorderDrag, event: PointerEvent<HTMLDivElement>) {
+    const node = event.currentTarget;
+    const box = node.getBoundingClientRect();
+    const rawX = event.clientX - box.left, rawY = event.clientY - box.top;
+    const x = clamp(rawX, left, node.clientWidth - .01), y = clamp(rawY, top, node.clientHeight - .01);
+    node.scrollLeft += clamp(rawX - x, -35, 35);
+    node.scrollTop += clamp(rawY - y, -30, 30);
+    if (active.mode === 'erase') {
+      const dx = x - active.x, dy = y - active.y;
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 4));
+      for (let step = 1; step <= steps; step++) addErase(active,
+        borderHit(active.x + dx * step / steps, active.y + dy * step / steps, true));
+    } else {
+      const hit = borderHit(x, y, false);
+      if (hit) {
+        active.preview = drawGesture(active.mode, active.start, hit);
+        setBorderPreview(active.preview);
+      }
+    }
+    active.x = x;
+    active.y = y;
+  }
+
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || !event.isPrimary) return;
     const node = event.currentTarget;
@@ -229,6 +297,25 @@ export function Worksheet(props: WorksheetProps) {
     const x = event.clientX - bounds.left;
     const y = event.clientY - bounds.top;
     if (x >= node.clientWidth || y >= node.clientHeight) return;
+    if (props.borderTool) {
+      if (x >= left && y >= top) {
+        const start = borderHit(x, y, props.borderTool === 'erase');
+        const apply = start && props.onBeginBorder();
+        if (!start || !apply) return;
+        const active: BorderDrag = { id: event.pointerId, mode: props.borderTool, start, apply, x, y, erased: new Map() };
+        if (active.mode === 'erase') addErase(active, start);
+        else {
+          active.preview = drawGesture(active.mode, start, start);
+          setBorderPreview(active.preview);
+        }
+        borderDrag.current = active;
+        event.preventDefault();
+        node.setPointerCapture(event.pointerId);
+        focus();
+        return;
+      }
+      props.onExitBorder();
+    }
     const header = headerAt(x, y, true);
     if (header && event.pointerType !== 'touch') {
       const apply = props.onHeaderResize(header.axis, header.track.index);
@@ -271,7 +358,13 @@ export function Worksheet(props: WorksheetProps) {
     const heading = header ?? headerAt(event.clientX - bounds.left, event.clientY - bounds.top, false);
     node.style.cursor = axis === 'row' ? 'row-resize' : axis === 'column' ? 'col-resize' :
       heading?.axis === 'row' ? `url("${selectRowCursor}") 14 8, default` :
-      heading?.axis === 'column' ? `url("${selectColumnCursor}") 8 14, default` : props.paintActive ? 'crosshair' : '';
+      heading?.axis === 'column' ? `url("${selectColumnCursor}") 8 14, default` : props.borderTool === 'erase' ? `url("${eraseBorderCursor}") 7 17, cell` :
+      props.borderTool ? `url("${drawBorderCursor}") 2 18, crosshair` : props.paintActive ? 'crosshair' : '';
+    const stroke = borderDrag.current;
+    if (stroke?.id === event.pointerId) {
+      if (stroke.mode === props.borderTool) updateBorder(stroke, event);
+      return;
+    }
     if (resize.current?.id === event.pointerId) {
       const offset = axis === 'row' ? event.clientY - bounds.top : event.clientX - bounds.left;
       setGuide({ axis: axis!, offset });
@@ -286,6 +379,17 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   function endDrag(event: PointerEvent<HTMLDivElement>) {
+    const stroke = borderDrag.current;
+    if (stroke?.id === event.pointerId) {
+      borderDrag.current = null;
+      if (event.type === 'pointerup' && stroke.mode === props.borderTool) {
+        updateBorder(stroke, event);
+        if (stroke.mode === 'erase') stroke.apply({ segments: [...stroke.erased.values()] });
+        else if (stroke.preview) stroke.apply(stroke.preview);
+      }
+      setBorderPreview(undefined);
+      return;
+    }
     const sizing = resize.current;
     if (sizing?.id === event.pointerId) {
       resize.current = null;
@@ -361,8 +465,8 @@ export function Worksheet(props: WorksheetProps) {
   const bodyHeight = Math.max(0, view.height - top);
   const editorWidth = Math.min(bodyWidth, Math.max(80, editColumn?.size ?? 0));
   const editorHeight = Math.min(bodyHeight, Math.max(24, editRow?.size ?? 0));
-  const editorLeft = (editColumn?.start ?? 0) - view.x;
-  const editorTop = (editRow?.start ?? 0) - view.y;
+  const editorLeft = editColumn ? columns.screen(editColumn, view.x) : 0;
+  const editorTop = editRow ? rows.screen(editRow, view.y) : 0;
 
   return (
     <div className="worksheet">
@@ -393,7 +497,7 @@ export function Worksheet(props: WorksheetProps) {
             props.onHeaderFit(header.axis, header.track.index);
             return;
           }
-          if (!props.referenceArea && x >= left && y >= top && x < node.clientWidth && y < node.clientHeight &&
+          if (!props.referenceArea && !props.borderTool && x >= left && y >= top && x < node.clientWidth && y < node.clientHeight &&
               pointAt(x, y, 'cells')) props.onEdit();
         }}
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>

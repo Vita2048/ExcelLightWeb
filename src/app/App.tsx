@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { EditRange } from '../application/editing-commands';
 import { applyNumberFormat, type NumberFormatChange } from '../application/number-format-command';
+import { applyBorderPreset, applyBorderStroke, inspectBorders } from '../application/border-commands';
+import { borderModes, borderPen, type BorderAction, type BorderMode, type BorderPreset, type BorderStyle } from '../core/formats/borders';
+import type { DrawGesture } from '../grid/border-geometry';
 import { FormatCellsDialog, type FormatTab } from '../features/formatting/FormatCellsDialog';
 import { activeFormatBrush, captureFormatBrush, formatStyles, paintStyles, type FormatBrush } from '../application/style-commands';
 import { underlinePatch, type AppearancePatch } from '../core/formats/appearance';
@@ -113,6 +116,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const requestedFocus = useRef(false);
   const [menu, setMenu] = useState<{ x: number; y: number; target: StructureTarget; actions: readonly StructureAction[] }>();
   const [formatDraft, setFormatDraft] = useState<{ basis: WorkbookSnapshot; ranges: readonly EditRange[]; cell: CellReference; tab: FormatTab }>();
+  const [lineStyle, setLineStyle] = useState<BorderStyle>('thin');
+  const [lineColor, setLineColor] = useState<string>();
+  const [borderAction, rememberBorder] = useState<BorderAction>('bottom');
+  const [tool, setBorderTool] = useState<{ mode: BorderMode; sessionId: string; sheetId: string }>();
   const [brush, setBrush] = useState<(FormatBrush & { readonly locked: boolean })>();
   const painter = activeFormatBrush(snapshot, brush);
   const [structure, setStructure] = useState<{ action: DialogAction; target: StructureTarget; basis: WorkbookSnapshot }>();
@@ -122,6 +129,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const renaming = useRef(false);
   const sheet = sheets.find(candidate => candidate.id === activeSheetId) ?? sheets[0]!;
   const sheetIndex = sheets.indexOf(sheet);
+  const borderTool = tool?.sessionId === snapshot.sessionId && tool.sheetId === sheet.id ? tool : undefined;
+  const borderEditor = useMemo(() => formatDraft?.ranges.length === 1 ?
+    inspectBorders(formatDraft.basis, formatDraft.ranges[0]!) : undefined, [formatDraft]);
   const selected = selections.get(sheet.id) ?? defaultSelection;
   const selection = useMemo(() => {
     const row = visibleIndex(selected.anchor.row, sheet.rows, worksheetViewport.rows);
@@ -170,6 +180,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }
     editing.selectionChanged();
     if (!painter?.locked) setBrush(undefined);
+    setBorderTool(undefined);
     requestedFocus.current = true;
     setActiveSheetId(nextSheetId);
   }
@@ -218,6 +229,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       editing.clearCut();
       scheduler.current?.changed(true);
     }
+    setBorderTool(undefined);
     if (active && active !== sheet.id) {
       if (!painter?.locked) setBrush(undefined);
       requestedFocus.current = true;
@@ -242,6 +254,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function runNumberFormat(change: NumberFormatChange) {
     if (!editing.commit()) return;
+    setBorderTool(undefined);
     setBrush(undefined);
     try { applyStyleCommand(applyNumberFormat(session.capture(), ranges(), change)); }
     catch (error) { editing.reject(error); }
@@ -252,6 +265,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!editing.commit()) return;
     if (Object.keys(patch).length) {
       setBrush(undefined);
+      setBorderTool(undefined);
       try { applyStyleCommand(formatStyles(session.capture(), ranges(), patch)); }
       catch (error) { editing.reject(error); }
     }
@@ -260,6 +274,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function armPainter(locked: boolean) {
     if (!editing.commit()) return;
+    setBorderTool(undefined);
     try {
       if (painter && (!locked || painter.locked)) setBrush(undefined);
       else {
@@ -284,6 +299,38 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       applyStyleCommand(paintStyles(session.capture(), target, painter));
       if (!painter.locked) setBrush(undefined);
     } catch (error) { editing.reject(error); }
+  }
+
+  function runBorder(action: BorderAction) {
+    if (!editing.commit()) return;
+    try {
+      const basis = session.capture();
+      if (Object.hasOwn(borderModes, action)) {
+        setBrush(undefined);
+        setBorderTool({ mode: action as BorderMode, sheetId: sheet.id, sessionId: basis.sessionId });
+        editing.clearStatus();
+      } else {
+        setBorderTool(undefined);
+        const selected = ranges();
+        requireDocument(selected.length === 1, 'Select one contiguous range for borders.');
+        applyStyleCommand(applyBorderPreset(basis, selected[0]!, action as BorderPreset, borderPen(lineStyle, lineColor), lineColor));
+      }
+      rememberBorder(action);
+    } catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
+  function beginBorderStroke() {
+    if (!borderTool || !editing.commit()) return;
+    const basis = session.capture();
+    const pen = borderTool.mode === 'erase' ? null : borderPen(lineStyle, lineColor);
+    return (gesture: DrawGesture) => {
+      try {
+        const current = currentAuthoredBasis(basis);
+        applyStyleCommand('area' in gesture ? applyBorderPreset(current, { sheetId: sheet.id, ...gesture.area },
+          borderTool.mode === 'grid' ? 'all' : 'outside', pen) : applyBorderStroke(current, sheet.id, gesture.segments, pen));
+      } catch (error) { editing.reject(error); }
+    };
   }
 
   function targetHeader(axis: Axis, index: number): StructureTarget {
@@ -348,6 +395,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     const basis = session.capture();
     if (action === 'format-cells') {
       setBrush(undefined);
+      setBorderTool(undefined);
+      if (tab === 'Border' && target.ranges.length !== 1) {
+        editing.reject(new Error('Select one contiguous range for borders.'));
+        requestAnimationFrame(focusGrid);
+        return;
+      }
       const first = target.ranges[0]!;
       const inside = target.ranges.some(range => activeTarget.sheetId === range.sheetId &&
         activeTarget.row >= range.row && activeTarget.row < range.row + range.rows &&
@@ -398,6 +451,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function beginInline(text?: string) {
     setBrush(undefined);
+    setBorderTool(undefined);
     editing.begin(activeTarget, 'inline', text);
   }
 
@@ -486,10 +540,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   return (
     <div className="app-shell" ref={root} onKeyDownCapture={event => {
-      if (event.key === 'Escape' && painter && !(event.target instanceof Element && event.target.closest('dialog'))) {
+      if (event.key === 'Escape' && (painter || borderTool) && !(event.target instanceof Element && event.target.closest('dialog, [popover]:popover-open'))) {
         event.preventDefault();
         event.stopPropagation();
         setBrush(undefined);
+        setBorderTool(undefined);
         editing.clearStatus();
       }
     }}>
@@ -506,7 +561,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         <span className="product-title">ExcelLight Web</span>
       </header>
 
-      <Ribbon cell={findCell(sheet, selection.anchor)} onNumberFormat={runNumberFormat} onAppearance={runAppearance}
+      <Ribbon borders={{ action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode, onAction: runBorder,
+        onStyle: style => { setLineStyle(style); runBorder(borderTool?.mode ?? 'draw'); },
+        onColor: color => { setLineColor(color); runBorder(borderTool?.mode ?? 'draw'); },
+        onDialog: () => openStructure('format-cells', undefined, 'Border') }} cell={findCell(sheet, selection.anchor)} onNumberFormat={runNumberFormat} onAppearance={runAppearance}
         onAppearanceError={(error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); }}
         onFormatDialog={tab => openStructure('format-cells', undefined, tab)}
         painter={painter ? painter.locked ? 'locked' : 'single' : undefined} onPainter={armPainter} view={view} onView={onView} onEdit={run} onStructure={openStructure}
@@ -537,6 +595,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           }
         }} sheet={sheet} selection={selection} onSelection={setSelection} onAdjacentSheet={chooseAdjacent}
           paintActive={!!painter} onPaint={paint}
+          borderTool={borderTool?.mode} borderPen={borderPen(lineStyle, lineColor)} onBeginBorder={beginBorderStroke}
+          onExitBorder={() => setBorderTool(undefined)}
           referenceArea={editing.draft?.pick?.sheetId === sheet.id ? editing.draft.pick.area : undefined}
           onReferencePick={() => {
             const caret = editorSelection();
@@ -609,7 +669,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       <footer className="status-bar" aria-label="Worksheet status">
         <span className={editing.status || calculationMessage ? 'edit-status' : 'ready'} role="status">
           {[editing.status, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
-            ' · Select a destination or press Enter · Esc cancels', calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
+            ' · Select a destination or press Enter · Esc cancels', borderTool && borderModes[borderTool.mode] + ' · Esc exits', calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
         </span>
         {!editing.status && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
         <output className="selection-stats" aria-label="Selection statistics" aria-live="off">
@@ -632,13 +692,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       {menu && <StructureMenu {...menu} onAction={action => openStructure(action, menu.target)}
         onClose={() => { setMenu(undefined); requestAnimationFrame(focusGrid); }} />}
       {formatDraft && <FormatCellsDialog cell={findReferencedCell(snapshot.document, formatDraft.cell)} locale={locale}
-        usedCodes={usedNumberCodes} initialTab={formatDraft.tab}
+        usedCodes={usedNumberCodes} initialTab={formatDraft.tab} borderEditor={borderEditor}
         onCancel={() => { setFormatDraft(undefined); requestAnimationFrame(focusGrid); }}
-        onSubmit={(patch, code) => {
+        onSubmit={(patch, code, borders) => {
           try {
-            if (code !== undefined || Object.keys(patch).length) {
+            if (code !== undefined || Object.keys(patch).length || Object.keys(borders).length) {
               const basis = currentAuthoredBasis(formatDraft.basis);
-              applyStyleCommand(formatStyles(basis, formatDraft.ranges, patch, code));
+              applyStyleCommand(formatStyles(basis, formatDraft.ranges, patch, code, borders));
             }
             setFormatDraft(undefined);
             requestAnimationFrame(focusGrid);

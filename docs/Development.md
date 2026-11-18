@@ -70,6 +70,12 @@ Run the existing desktop Font/Fill and Format Painter source assertions against 
 dotnet run --project tests/desktop-appearance/Oracle.csproj
 ```
 
+## Border and drawing tool checks
+
+Run `npx vitest run tests/integration/border-commands.test.ts tests/unit/border-geometry.test.ts` for shared segments, mixed drafts, merged anchor mapping, dialog outline replacement and removal, preset and stroke undo, and zoomed hit testing. After building, run `npm run test:e2e -- tests/e2e/borders.spec.ts` for the production ribbon, dialog preview controls, all four visible sides of a replaced and cleared outline, remembered tools, and drawing and erasing gestures. `npm run test:worksheet` includes a stored two-axis freeze fixture that checks canvas pixels after scrolling and zooming.
+
+Run the desktop source assertions against the local Release assemblies with `dotnet run --project tests/desktop-borders/Oracle.csproj`. Pass `-p:DesktopSource=<absolute path>` and, when needed, `-p:DesktopBin=<absolute path>` for another desktop checkout.
+
 ## Browser Python feasibility
 
 Run the S02 probe with Node, Python 3, curl and the Playwright browsers listed above. Set the process variable `PYTHON` if your Python executable uses another name.

@@ -249,7 +249,7 @@ test('Format Cells tabs keep desktop order and edited panes on a narrow viewport
   const tabs = dialog.getByRole('tablist');
   await expect(tabs.getByRole('tab')).toHaveText(['Number', 'Alignment', 'Font', 'Border', 'Fill']);
   await expect(tabs.getByRole('tab', { name: 'Alignment' })).toBeDisabled();
-  await expect(tabs.getByRole('tab', { name: 'Border' })).toBeDisabled();
+  await expect(tabs.getByRole('tab', { name: 'Border' })).toBeEnabled();
   await tabs.getByRole('tab', { name: 'Number' }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(tabs.getByRole('tab', { name: 'Font', selected: true })).toBeFocused();
