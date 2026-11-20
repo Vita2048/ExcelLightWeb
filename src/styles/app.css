@@ -588,3 +588,49 @@ button:disabled { cursor: default; opacity: .5; }
   .table-style-preview-btn.selected { border-color: Highlight; outline-color: Highlight; }
   .name-manager-grid tr.selected { background: Highlight; color: HighlightText; }
 }
+
+/* S15 sort, filter and worksheet funnels. */
+.sort-dialog { width: min(620px, calc(100vw - 24px)); }
+.sort-dialog > form > .dialog-actions, .sort-options-dialog .dialog-actions, .sort-warning-dialog .dialog-actions { margin-top: 12px; }
+.sort-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 36px; }
+.paste-dialog .sort-tools label, .paste-dialog .sort-check { display: flex; align-items: center; gap: 6px; min-height: 32px; }
+.sort-grid {
+  display: grid; grid-template-columns: auto minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 4px 8px; margin-top: 8px; align-items: center;
+}
+.sort-grid > span:not(:first-child) { font-size: 13px; color: var(--muted); }
+.sort-grid select { height: 32px; padding: 0 8px; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; }
+.sort-options-dialog { width: min(280px, calc(100vw - 24px)); }
+.sort-heading { font-size: 13px; font-weight: 600; margin: 12px 0 2px; }
+.sort-warning-dialog { width: min(440px, calc(100vw - 24px)); }
+.sort-preview { font-size: 13px; }
+.filter-button {
+  position: absolute; z-index: 1; display: grid; place-items: center; padding: 0; border: 0;
+  border-left: 1px solid var(--gridline); background: var(--grid-header); color: var(--muted); cursor: pointer;
+}
+.filter-button:hover, .filter-button:focus-visible { background: var(--raised); color: var(--text); }
+.filter-button.filter-active { color: var(--accent); }
+.filter-dropdown {
+  position: fixed; z-index: 15; display: block; width: min(260px, calc(100vw - 8px)); padding: 12px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--accent); border-radius: 8px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+}
+.filter-dropdown form { display: grid; gap: 4px; }
+.filter-dropdown button {
+  background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; min-height: 32px; padding: 4px 8px;
+}
+.filter-dropdown button:disabled { opacity: .5; }
+.filter-action { display: block; width: 100%; text-align: start; }
+.filter-dropdown hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; width: 100%; }
+.filter-search { min-height: 32px; padding: 0 8px; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; }
+.filter-values { border: 1px solid var(--border); padding: 4px; margin-top: 4px; }
+.filter-values label { display: flex; align-items: center; gap: 6px; min-height: 28px; font-size: 13px; }
+.filter-list { max-height: 220px; overflow: auto; }
+.filter-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.filter-actions button { min-width: 88px; }
+.filter-actions button[type='submit'] { background: var(--accent); border-color: var(--accent); color: var(--top-bar); }
+
+@media (forced-colors: active) {
+  .filter-button, .filter-dropdown, .filter-values, .sort-grid select { border-color: CanvasText; }
+  .filter-actions button[type='submit'] { background: Highlight; color: HighlightText; border-color: Highlight; }
+}

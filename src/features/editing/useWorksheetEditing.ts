@@ -280,7 +280,7 @@ export function useWorksheetEditing(
     draft, status, begin, update, commit, cancel, moveHistory, run, manualPaste, closeManualPaste, submitManualPaste,
     pickSlot, beginReferencePick, showCrossSheetDraft,
     blur: (surface: EditSurface) => { if (liveDraft.current?.surface === surface) commit(); },
-    editorText, reject, clearStatus: () => setStatus(''),
+    editorText, reject, report: (message: string) => setStatus(message), clearStatus: () => setStatus(''),
     composing: () => composing.current,
     compose: (active: boolean) => { composing.current = active; },
     keepCaret: () => { if (liveDraft.current?.direct) showDraft({ ...liveDraft.current, direct: false }); },

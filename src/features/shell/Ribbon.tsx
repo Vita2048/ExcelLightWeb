@@ -14,6 +14,7 @@ import type { AppearancePatch } from '../../core/formats/appearance';
 import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 import { TableDesignRibbon } from '../tables/TableDesignRibbon';
+import { DataSortFilterRibbon, SortFilterHomeMenu, type FilterCommands } from '../data/DataRibbon';
 
 const families = ['File', 'Home', 'Insert', 'Formulas', 'Data', 'View'] as const;
 type Family = typeof families[number];
@@ -54,11 +55,15 @@ interface RibbonProps {
   readonly onTableClick?: () => void;
   readonly onNameManagerClick?: () => void;
   readonly onDefineNameClick?: () => void;
+  readonly filter: FilterCommands;
+  readonly onSort: (ascending: boolean, dialog: boolean) => void;
+  readonly onToggleFilter: () => void;
+  readonly onClearFilter: () => void;
+  readonly onReapplyFilter: () => void;
 }
 
-const unavailable: Record<'File' | 'Data', string> = {
+const unavailable: Record<'File', string> = {
   File: 'File commands are unavailable.',
-  Data: 'Data commands are unavailable.',
 };
 
 function EditMenu({ label, choices, onEdit }: {
@@ -86,7 +91,8 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 
 export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelection, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
-  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick }: RibbonProps) {
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
+  filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
   const [knownTables, setKnownTables] = useState<ReadonlySet<string>>(() => new Set());
@@ -177,8 +183,7 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
                 onChange={event => onView({ gridlines: event.currentTarget.checked })} /> Gridlines</label>
               <label><input type="checkbox" checked={view.headings}
                 onChange={event => onView({ headings: event.currentTarget.checked })} /> Headings</label>
-              <label><input type="checkbox" checked={view.showFormulas}
-                onChange={event => onView({ showFormulas: event.currentTarget.checked })} /> Show Formulas</label></div>
+              </div>
             </fieldset>
             <fieldset>
               <legend>Zoom</legend>
@@ -225,6 +230,8 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
                 ['Clear Contents', { kind: 'clear', mode: 'contents' }],
               ]} />
               </div>
+              <SortFilterHomeMenu filter={filter} onSort={onSort} onToggleFilter={onToggleFilter}
+                onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} />
             </fieldset>
           </> : name === 'Formulas' ? <>
             <fieldset>
@@ -260,7 +267,9 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
                 <button type="button" className="ribbon-command" onClick={() => onCalculate('sheet')}><RibbonGlyph name="Calculate Sheet" />Calculate Sheet</button>
               </div>
             </fieldset>
-          </> : <p>{unavailable[name as keyof typeof unavailable]}</p>}
+          </> : name === 'Data' ? <DataSortFilterRibbon filter={filter} onSort={onSort} onToggleFilter={onToggleFilter}
+            onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} /> :
+          <p>{unavailable[name as keyof typeof unavailable]}</p>}
         </div>
       ))}
     </div>

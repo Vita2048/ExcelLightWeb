@@ -48,6 +48,7 @@ export interface RibbonItem {
   readonly group?: string;
   readonly divider?: boolean;
   readonly checked?: boolean;
+  readonly disabled?: boolean;
   readonly select?: () => void;
   readonly children?: readonly RibbonItem[];
 }
@@ -143,7 +144,7 @@ export function RibbonFlyout({ label, caption, icon, items, large = false }: {
       return <div key={text} role="none" className={index > 0 && (newGroup || item.divider) ? 'ribbon-flyout-divider' : undefined}>
         {group && newGroup && <div className="ribbon-flyout-heading" aria-hidden="true">{group}</div>}
         <button type="button" className={detail !== undefined ? 'ribbon-flyout-sample' : undefined}
-          role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={checked}
+          role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={checked} disabled={item.disabled}
           aria-haspopup={item.children ? 'menu' : undefined} aria-expanded={item.children ? submenu?.item === item : undefined}
           onClick={event => enter(item, event.currentTarget)}>
           <span className="ribbon-flyout-glyph" aria-hidden="true">{glyph ? <RibbonGlyph name={glyph} size={detail !== undefined ? 32 : 22} /> :

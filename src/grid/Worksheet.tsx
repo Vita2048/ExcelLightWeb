@@ -6,7 +6,8 @@ import type { BorderMode, BorderSegment } from '../core/formats/borders';
 import { mergeAt } from '../application/border-commands';
 import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
 import { findCell, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument, type WorkbookName } from '../core/workbook';
-import { lastColumn, lastRow, tableDesign } from '../core/workbook-names';
+import { extentContains, lastColumn, lastRow, tableDesign } from '../core/workbook-names';
+import { filteredRows, headerLabel } from '../application/data-commands';
 import { totalFunction } from '../application/table-commands';
 import { TotalRowDropdown } from '../features/tables/TotalRowDropdown';
 import type { Axis } from '../core/axis-edit';
@@ -61,6 +62,7 @@ interface WorksheetProps {
   readonly onRangePickFinish?: (accept: boolean) => void;
   readonly onResizeTable?: (table: WorkbookName, rows: number, columns: number) => void;
   readonly onTotalFunction?: (tableId: string, column: number, code: number) => void;
+  readonly onFilter?: (row: number, column: number, x: number, y: number) => void;
   readonly ref: Ref<WorksheetHandle>;
 }
 
@@ -111,7 +113,11 @@ export function Worksheet(props: WorksheetProps) {
   const scale = zoom / 100;
   const left = headings ? gridMetrics.rowHeader * scale : 0;
   const top = headings ? gridMetrics.columnHeader * scale : 0;
-  const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, sheet.rows, scale, sheet.frozenPanes.rows), [sheet.rows, scale, sheet.frozenPanes.rows]);
+  // Filter-hidden rows keep their index but leave the projected axis, like the desktop worksheet.
+  const filtered = useMemo(() => filteredRows(sheet), [sheet]);
+  const rowDimensions = useMemo(() => [...sheet.rows,
+    ...[...filtered].map(index => ({ index, hidden: true }))], [sheet.rows, filtered]);
+  const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, rowDimensions, scale, sheet.frozenPanes.rows), [rowDimensions, scale, sheet.frozenPanes.rows]);
   const columns = useMemo(() => new GridAxis(worksheetViewport.columns, gridMetrics.column, sheet.columns, scale, sheet.frozenPanes.columns), [sheet.columns, scale, sheet.frozenPanes.columns]);
   const rowTracks = rows.projected(view.y, view.height - top);
   const columnTracks = columns.projected(view.x, view.width - left);
@@ -585,6 +591,40 @@ export function Worksheet(props: WorksheetProps) {
     }
   }
 
+  function filterControls() {
+    const filter = sheet.filter;
+    const tables = (props.tables ?? []).filter(table => !table.area.invalid && table.area.sheetId === sheet.id);
+    const headers = new Set<number>();
+    if (filter) headers.add(filter.row);
+    for (const table of tables) {
+      const design = tableDesign(table);
+      if (design.headerRow && design.filterButton) headers.add(table.area.row);
+    }
+    function owns(row: number, column: number) {
+      return !!filter && filter.row === row && column >= filter.column && column < filter.column + filter.columns ||
+        tables.some(table => table.area.row === row && extentContains(table.area, { row, column }) &&
+          tableDesign(table).headerRow && tableDesign(table).filterButton);
+    }
+    const controls: { row: number; column: number; label: string; active: boolean;
+      sort: { readonly ascending: boolean } | undefined; left: number; top: number; width: number; height: number }[] = [];
+    for (const row of rowTracks) {
+      if (!headers.has(row.index)) continue;
+      for (const column of columnTracks) {
+        if (!owns(row.index, column.index)) continue;
+        const bounds = cellBounds(row.index, column.index);
+        if (!bounds) continue;
+        const sort = filter && filter.row === row.index && filter.sort?.column === column.index ? filter.sort : undefined;
+        const width = Math.min(bounds.width, (sort ? 27.5 : 18) * scale);
+        if (width < 8 || bounds.height < 8) continue;
+        if (bounds.right - width < left || bounds.right > view.width || bounds.top < top || bounds.bottom > view.height) continue;
+        controls.push({ row: row.index, column: column.index, label: headerLabel(sheet, row.index, column.index),
+          active: !!filter && filter.row === row.index && filter.criteria.some(item => item.column === column.index),
+          sort, left: bounds.right - width, top: bounds.top, width, height: bounds.height });
+      }
+    }
+    return controls;
+  }
+
   return (
     <div className="worksheet">
       <div ref={scroll} className="worksheet-scroll" role="grid" aria-label={sheet.name}
@@ -652,6 +692,25 @@ export function Worksheet(props: WorksheetProps) {
           width: editorWidth, height: editorHeight, fontSize: Math.max(10, 14 * scale),
         }}>{props.editor?.input}</div>
       </div>}
+      {!props.rangePicking && filterControls().map(control => <button
+        key={control.row + '-' + control.column}
+        type="button"
+        className={'filter-button' + (control.active ? ' filter-active' : '')}
+        aria-label={'Filter ' + control.label}
+        title={'Filter ' + control.label}
+        style={{ left: control.left, top: control.top, width: control.width, height: control.height }}
+        onClick={event => {
+          const bounds = event.currentTarget.getBoundingClientRect();
+          props.onFilter?.(control.row, control.column, bounds.left, bounds.bottom);
+        }}
+      >
+        <svg width={12 * scale} height={12 * scale} viewBox="0 0 16 16" aria-hidden="true">
+          {control.sort && <path d={control.sort.ascending ? 'M2 13 V3 M.5 6 L2 4.5 L3.5 6' : 'M2 3 V13 M.5 10 L2 11.5 L3.5 10'}
+            fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />}
+          <path d={control.sort ? 'M6 3 H15 V4.5 L11 8 V12.5 H8 V8 L6 4.5 Z' : 'M5 3 H15 V4.5 L11 8 V12.5 H8 V8 L5 4.5 Z'}
+            fill={control.active ? 'var(--accent)' : 'currentColor'} stroke="none" />
+        </svg>
+      </button>)}
       {!props.rangePicking && props.tables?.filter(t => !t.area.invalid && t.area.sheetId === sheet.id).map(table => {
         const lastR = lastRow(table.area);
         const lastC = lastColumn(table.area);

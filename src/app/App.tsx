@@ -11,12 +11,19 @@ import { FormatCellsDialog, type FormatTab } from '../features/formatting/Format
 import { activeFormatBrush, captureFormatBrush, formatStyles, paintStyles, type FormatBrush } from '../application/style-commands';
 import { underlinePatch, type AppearancePatch } from '../core/formats/appearance';
 import { changeDimensions, changeSheet, editAxis } from '../application/structure-commands';
+import {
+  columnValues, currentRegion, filterRange, filteredRows, headerLabel, localeTextOrder, looksLikeHeader, rangeLabel,
+  recordSummary, setFilter, sortData, sortKeyFor, type FilterValue,
+} from '../application/data-commands';
+import { columnLetters } from '../core/formula-references';
+import { FilterDropdown } from '../features/data/FilterDropdown';
+import { SortDialog, SortOptionsDialog, SortWarningDialog, type SortDraft, type SortExtent } from '../features/data/SortDialog';
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
 import {
   changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, parseNameExtent,
   refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
 } from '../application/table-commands';
-import { extentContains, lastColumn, lastRow, tableDesign, tablesOnSheet } from '../core/workbook-names';
+import { extentContains, lastColumn, lastRow, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
 import type { TableDesign, WorkbookName } from '../core/workbook';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
@@ -48,8 +55,10 @@ interface StructureTarget {
 }
 const dialogActions: ReadonlySet<StructureAction> = new Set(['insert-cells', 'delete-cells', 'delete-sheet', 'place-sheet', 'size-row', 'size-column']);
 
-function visibleIndex(index: number, dimensions: WorkbookDocument['sheets'][number]['rows'], limit: number): number {
+function visibleIndex(index: number, dimensions: WorkbookDocument['sheets'][number]['rows'], limit: number,
+  filtered?: ReadonlySet<number>): number {
   const hidden = new Set(dimensions.filter(dimension => dimension.hidden).map(dimension => dimension.index));
+  if (filtered) for (const row of filtered) hidden.add(row);
   if (!hidden.has(index)) return index;
   for (let next = index + 1; next <= limit; next++) if (!hidden.has(next)) return next;
   for (let next = index - 1; next >= 1; next--) if (!hidden.has(next)) return next;
@@ -135,6 +144,16 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const painter = activeFormatBrush(snapshot, brush);
   const [structure, setStructure] = useState<{ action: DialogAction; target: StructureTarget; basis: WorkbookSnapshot }>();
   const [rename, setRename] = useState<{ id: string; basis: WorkbookSnapshot }>();
+  const [sortDialog, setSortDialog] = useState<{ basis: WorkbookSnapshot; range: SortExtent; draft: SortDraft }>();
+  const [sortOptions, setSortOptions] = useState<{ basis: WorkbookSnapshot; range: SortExtent; draft: SortDraft }>();
+  const [sortWarning, setSortWarning] = useState<{
+    selection: SortExtent; region: SortExtent; resume: (expand: boolean | null) => void;
+  }>();
+  const [filterMenu, setFilterMenu] = useState<{
+    basis: WorkbookSnapshot; column: number; header: string; textColumn: boolean; values: readonly FilterValue[];
+    selected: readonly string[]; hasColumnFilter: boolean; anchor: { x: number; y: number };
+  }>();
+  const textOrder = useMemo(() => localeTextOrder(locale), [locale]);
   const usedNumberCodes = useMemo(() => [...new Set(formatDraft?.basis.document.sheets.flatMap(item =>
     item.cells.flatMap(cell => cell.style?.numberFormat ?? [])))], [formatDraft]);
   const renaming = useRef(false);
@@ -144,11 +163,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const borderEditor = useMemo(() => formatDraft?.ranges.length === 1 ?
     inspectBorders(formatDraft.basis, formatDraft.ranges[0]!) : undefined, [formatDraft]);
   const selected = selections.get(sheet.id) ?? defaultSelection;
+  const sheetFiltered = useMemo(() => filteredRows(sheet), [sheet]);
   const selection = useMemo(() => {
-    const row = visibleIndex(selected.anchor.row, sheet.rows, worksheetViewport.rows);
+    const row = visibleIndex(selected.anchor.row, sheet.rows, worksheetViewport.rows, sheetFiltered);
     const column = visibleIndex(selected.anchor.column, sheet.columns, worksheetViewport.columns);
     return mergeSelection(sheet, row === selected.anchor.row && column === selected.anchor.column ? selected : singleSelection({ row, column }));
-  }, [selected, sheet]);
+  }, [selected, sheet, sheetFiltered]);
   const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
   const focusGrid = () => worksheet.current?.focus();
@@ -461,6 +481,256 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       editing.reject(err instanceof Error ? err : new Error(String(err)));
     }
   }
+
+  function runSort(range: SortExtent, draft: SortDraft) {
+    const basis = session.capture();
+    const outcome = session.execute(sortData(basis, { sheetId: sheet.id, ...range }, draft.column,
+      draft.header, draft.ascending, draft.caseSensitive, textOrder));
+    if (outcome.changed) {
+      editing.selectionChanged();
+      editing.clearCut();
+      scheduler.current?.changed(true);
+    }
+    editing.report('Sorted ' + rangeLabel(range) + ' by column ' + columnLetters(draft.column) + ', ' +
+      (draft.ascending ? 'smallest to largest' : 'largest to smallest') + '. Records moved together.');
+    requestAnimationFrame(focusGrid);
+  }
+
+  function requestSort(ascending: boolean, dialog: boolean, choice?: 'expand' | 'current') {
+    if (!editing.commit()) return;
+    let selectedRange: EditRange;
+    try {
+      const chosen = ranges();
+      requireDocument(chosen.length === 1, 'Select one contiguous range to sort.');
+      selectedRange = chosen[0]!;
+    } catch (error) { editing.reject(error); return; }
+    try {
+      const basis = session.capture();
+      const origin = activeTable ? activeTable.area : currentRegion(basis.document, selectedRange);
+      const top = Math.min(origin.row, selectedRange.row);
+      const left = Math.min(origin.column, selectedRange.column);
+      const region: SortExtent = { row: top, column: left,
+        rows: Math.max(lastRow(origin), lastRow(selectedRange)) - top + 1,
+        columns: Math.max(lastColumn(origin), lastColumn(selectedRange)) - left + 1 };
+      let range: SortExtent;
+      if (selectedRange.rows * selectedRange.columns === 1) range = region;
+      else if (region.row < selectedRange.row || lastRow(region) > lastRow(selectedRange) ||
+          region.column < selectedRange.column || lastColumn(region) > lastColumn(selectedRange)) {
+        if (choice === undefined) {
+          setSortWarning({ selection: selectedRange, region, resume: expand => {
+            setSortWarning(undefined);
+            if (expand !== null) requestSort(ascending, dialog, expand ? 'expand' : 'current');
+          } });
+          return;
+        }
+        range = choice === 'expand' ? region : selectedRange;
+      } else range = selectedRange;
+      const filterHeader = sheet.filter && range.row === sheet.filter.row && lastRow(range) === lastRow(sheet.filter);
+      const draft: SortDraft = {
+        column: clamp(selection.anchor.column, range.column, lastColumn(range)),
+        header: activeTable ? tableDesign(activeTable).headerRow :
+          !!(filterHeader || looksLikeHeader(basis, { sheetId: sheet.id, ...range })),
+        ascending, caseSensitive: false,
+      };
+      if (dialog) { setSortDialog({ basis, range, draft }); return; }
+      runSort(range, draft);
+    } catch (error) { editing.reject(error); }
+  }
+
+  function submitSort(draft: SortDraft) {
+    const open = sortDialog;
+    if (!open) return;
+    setSortDialog(undefined);
+    try {
+      requireDocument(session.isCurrentAuthored(open.basis), 'The workbook changed. Open Sort again.');
+      runSort(open.range, draft);
+    } catch (error) { editing.reject(error); }
+  }
+
+  function openSortOptions(draft: SortDraft) {
+    if (!sortDialog) return;
+    setSortOptions({ ...sortDialog, draft });
+    setSortDialog(undefined);
+  }
+
+  function finishSortOptions(caseSensitive: boolean) {
+    if (!sortOptions) return;
+    setSortDialog({ ...sortOptions, draft: { ...sortOptions.draft, caseSensitive } });
+    setSortOptions(undefined);
+  }
+
+  function cancelSortOptions() {
+    if (!sortOptions) return;
+    setSortDialog(sortOptions);
+    setSortOptions(undefined);
+  }
+
+  function toggleFilter() {
+    if (!editing.commit()) return;
+    try {
+      if (activeTable) {
+        const design = tableDesign(activeTable);
+        requireDocument(design.headerRow, "Show the table's Header Row before enabling filter buttons.");
+        handleTableChangeDesign({ filterButton: !design.filterButton });
+        return;
+      }
+      const basis = session.capture();
+      const current = basis.document.sheets.find(item => item.id === sheet.id)!;
+      if (current.filter) {
+        session.execute(setFilter(basis, sheet.id, null));
+        editing.selectionChanged();
+        editing.clearCut();
+        scheduler.current?.changed(true);
+        editing.report('Filter removed. Manually hidden rows stay hidden.');
+        requestAnimationFrame(focusGrid);
+        return;
+      }
+      const chosen = ranges();
+      requireDocument(chosen.length === 1, 'Select one contiguous range to filter.');
+      const target = filterRange(basis.document, chosen[0]!);
+      session.execute(setFilter(basis, sheet.id, { row: target.row, column: target.column,
+        rows: target.rows, columns: target.columns, criteria: [] }));
+      editing.selectionChanged();
+      editing.clearCut();
+      scheduler.current?.changed(true);
+      editing.report('Filter applied to ' + rangeLabel(target) + '. Choose values from a header funnel.');
+      requestAnimationFrame(focusGrid);
+    } catch (error) { editing.reject(error); }
+  }
+
+  function clearFilter() {
+    if (!editing.commit()) return;
+    try {
+      const basis = session.capture();
+      const current = basis.document.sheets.find(item => item.id === sheet.id)!;
+      requireDocument(current.filter, 'There is no filter to clear.');
+      session.execute(setFilter(basis, sheet.id, { ...current.filter, criteria: [] }));
+      editing.selectionChanged();
+      editing.clearCut();
+      scheduler.current?.changed(true);
+      editing.report('Filter cleared. Manually hidden rows stay hidden.');
+      requestAnimationFrame(focusGrid);
+    } catch (error) { editing.reject(error); }
+  }
+
+  function reapplyFilter() {
+    if (!editing.commit()) return;
+    if (!sheet.filter) { editing.reject(new Error('There is no filter to reapply.')); return; }
+    scheduler.current?.changed(true);
+    editing.report('Filter reapplied. ' + (recordSummary(sheet) ?? 'All records are visible.'));
+    requestAnimationFrame(focusGrid);
+  }
+
+  function openFilter(row: number, column: number, x: number, y: number) {
+    setFilterMenu(undefined);
+    if (!editing.commit()) return;
+    try {
+      let basis = session.capture();
+      let current = basis.document.sheets.find(item => item.id === sheet.id)!;
+      const table = tablesOnSheet(basis.document, sheet.id).find(item => item.area.row === row &&
+        column >= item.area.column && column < lastColumn(item.area));
+      if (table) {
+        const design = tableDesign(table);
+        if (!design.headerRow || !design.filterButton) return;
+        const input = tableInputExtent(table);
+        if (current.filter && (current.filter.row !== input.row || current.filter.column !== input.column) &&
+            current.filter.criteria.length > 0) {
+          throw new Error("Clear the other range's filter before filtering this table.");
+        }
+        if (!current.filter || current.filter.row !== input.row || current.filter.column !== input.column) {
+          session.execute(setFilter(basis, sheet.id, { row: input.row, column: input.column,
+            rows: input.rows, columns: input.columns, criteria: [] }));
+          basis = session.capture();
+          current = basis.document.sheets.find(item => item.id === sheet.id)!;
+          scheduler.current?.changed(true);
+        }
+      }
+      const filter = current.filter;
+      if (!filter || column < filter.column || column > lastColumn(filter)) return;
+      const values = columnValues(current, filter, column, textOrder);
+      const criterion = filter.criteria.find(item => item.column === column);
+      const textKeys = current.cells.filter(cell => cell.column === column && cell.row > filter.row &&
+        cell.row <= lastRow(filter)).map(cell => sortKeyFor(cell, cell.row)).filter(key => key.kind !== 'blank');
+      setFilterMenu({ basis, column, header: headerLabel(current, filter.row, column),
+        textColumn: textKeys.length > 0 && textKeys.every(key => key.kind === 'text'),
+        values, selected: criterion ? [...criterion.allowed] : values.map(value => value.key),
+        hasColumnFilter: !!criterion, anchor: { x, y } });
+    } catch (error) { editing.reject(error); }
+  }
+
+  function applyFilter(selected: readonly string[]) {
+    const open = filterMenu;
+    if (!open) return;
+    setFilterMenu(undefined);
+    try {
+      requireDocument(session.isCurrent(open.basis), 'Workbook changed. Open the filter again to choose current values.');
+      const latest = session.capture();
+      const live = latest.document.sheets.find(item => item.id === sheet.id)?.filter;
+      requireDocument(live, 'The filter was removed.');
+      const valueKeys = new Set(open.values.map(value => value.key));
+      const criterion = live.criteria.find(item => item.column === open.column);
+      const chosen = new Set(selected);
+      const picked = open.values.filter(value => chosen.has(value.key)).map(value => value.key);
+      const kept = criterion ? criterion.allowed.filter(key => !valueKeys.has(key)) : [];
+      const criteria = live.criteria.filter(item => item.column !== open.column);
+      if (picked.length !== open.values.length || (criterion && criteria.length > 0)) {
+        criteria.push({ column: open.column, allowed: [...picked, ...kept] });
+      }
+      criteria.sort((left, right) => left.column - right.column);
+      const outcome = session.execute(setFilter(latest, sheet.id, { ...live, criteria }));
+      if (outcome.changed) {
+        editing.selectionChanged();
+        editing.clearCut();
+        scheduler.current?.changed(true);
+      }
+      const applied = session.active.sheets.find(item => item.id === sheet.id)!;
+      editing.report('Filtered ' + open.header + '. ' + (recordSummary(applied) ?? ''));
+    } catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
+  function sortFilterColumn(ascending: boolean) {
+    const open = filterMenu;
+    if (!open) return;
+    setFilterMenu(undefined);
+    try {
+      const basis = session.capture();
+      const live = basis.document.sheets.find(item => item.id === sheet.id)?.filter;
+      requireDocument(live, 'There is no filter to sort.');
+      const outcome = session.execute(sortData(basis, { sheetId: sheet.id, row: live.row, column: live.column,
+        rows: live.rows, columns: live.columns }, open.column, true, ascending, false, textOrder));
+      if (outcome.changed) {
+        editing.selectionChanged();
+        editing.clearCut();
+        scheduler.current?.changed(true);
+      }
+      editing.report('Sorted the filtered records. Hidden rows were included and the filter still applies.');
+    } catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
+  function clearFilterColumn() {
+    const open = filterMenu;
+    if (!open) return;
+    setFilterMenu(undefined);
+    try {
+      const basis = session.capture();
+      const live = basis.document.sheets.find(item => item.id === sheet.id)?.filter;
+      requireDocument(live, 'There is no filter to clear.');
+      const outcome = session.execute(setFilter(basis, sheet.id, { ...live,
+        criteria: live.criteria.filter(item => item.column !== open.column) }));
+      if (outcome.changed) {
+        editing.selectionChanged();
+        editing.clearCut();
+        scheduler.current?.changed(true);
+      }
+      editing.report('Cleared the filter for this column. Manually hidden rows stay hidden.');
+    } catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
+  const filterCommands = { active: !!sheet.filter, clearable: !!sheet.filter?.criteria.length,
+    reapplyable: !!sheet.filter };
 
   function currentAuthoredBasis(basis: WorkbookSnapshot) {
     requireDocument(session.isCurrentAuthored(basis), 'The workbook changed. Open the command again.');
@@ -860,6 +1130,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       onTableClick={() => openCreateDialog(true)}
       onNameManagerClick={() => { if (editing.commit()) setNameManagerOpen(true); }}
       onDefineNameClick={() => openCreateDialog(false)}
+      filter={filterCommands} onSort={requestSort} onToggleFilter={toggleFilter}
+      onClearFilter={clearFilter} onReapplyFilter={reapplyFilter}
       />
 
       <main className="workbook" aria-label="Workbook">
@@ -906,6 +1178,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           onRangePickFinish={accept => rangePicker?.onDone(accept ? rangePicker.initial : null)}
           onResizeTable={handleTableResize}
           onTotalFunction={handleTotalFunction}
+          onFilter={openFilter}
         />
         <nav className="sheet-strip" aria-label="Worksheets">
           <div className="sheet-navigation">
@@ -1032,6 +1305,18 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       {rangePicker && <RangePickerWidget initialRange={rangePicker.initial}
         onConfirm={range => rangePicker.onDone(range)}
         onCancel={() => rangePicker.onDone(null)} />}
+      {sortDialog && <SortDialog sheet={sortDialog.basis.document.sheets.find(item => item.id === sheet.id)!}
+        range={sortDialog.range} draft={sortDialog.draft} onSubmit={submitSort} onOptions={openSortOptions}
+        onCancel={() => { setSortDialog(undefined); requestAnimationFrame(focusGrid); }} />}
+      {sortOptions && <SortOptionsDialog caseSensitive={sortOptions.draft.caseSensitive}
+        onSubmit={finishSortOptions} onCancel={cancelSortOptions} />}
+      {sortWarning && <SortWarningDialog selection={sortWarning.selection} region={sortWarning.region}
+        onChoose={expand => sortWarning.resume(expand)} onCancel={() => sortWarning.resume(null)} />}
+      {filterMenu && <FilterDropdown anchor={filterMenu.anchor} header={filterMenu.header}
+        textColumn={filterMenu.textColumn} values={filterMenu.values} selected={filterMenu.selected}
+        hasColumnFilter={filterMenu.hasColumnFilter} onApply={applyFilter} onClearColumn={clearFilterColumn}
+        onSort={sortFilterColumn}
+        onCancel={() => { setFilterMenu(undefined); requestAnimationFrame(focusGrid); }} />}
     </div>
   );
 }

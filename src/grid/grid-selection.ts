@@ -1,5 +1,6 @@
 import { expandMerges } from '../application/editing-commands';
 import { mergeAt } from '../application/border-commands';
+import { filteredRows } from '../application/data-commands';
 import { cellKey, findCell, worksheetViewport as viewport, type CellDocument, type Coordinate, type SheetDocument } from '../core/workbook';
 import { formatCellValue, type FormattedCell } from '../core/formats/cell-format';
 import { presentFormula } from '../features/formulas/formula-presentation';
@@ -105,11 +106,13 @@ export function presentCell(cell: CellDocument | undefined, source: boolean, sep
 export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[]) {
   const hiddenRows = new Set(sheet.rows.filter(row => row.hidden).map(row => row.index));
   const hiddenColumns = new Set(sheet.columns.filter(column => column.hidden).map(column => column.index));
+  const filtered = filteredRows(sheet);
   let count = 0;
   let numeric = 0;
   let sum = 0;
   function include(cell: CellDocument | undefined) {
-    if (!cell || cell.content.kind === 'blank' || hiddenRows.has(cell.row) || hiddenColumns.has(cell.column)) return;
+    if (!cell || cell.content.kind === 'blank' || hiddenRows.has(cell.row) || hiddenColumns.has(cell.column) ||
+        filtered.has(cell.row)) return;
     count++;
     const value = cell.content.kind === 'formula' || cell.content.kind === 'python' ? cell.cache : cell.content;
     if (value?.kind === 'number') {
