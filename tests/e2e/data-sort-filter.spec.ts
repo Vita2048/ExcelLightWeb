@@ -171,6 +171,9 @@ test('sorts next to surrounding data with the desktop Sort Warning and honors ta
     ['A1', 'x'], ['B1', 'keep'],
     ['A2', 'b'], ['B2', '2'],
     ['A3', 'a'], ['B3', '1'],
+    ['D2', 'n'], ['E2', 'u'],
+    ['D3', 'p'], ['E3', 'v'],
+    ['D4', 'q'],
   ]);
   await extend(page, 'A1', 2, 0);
   await page.getByRole('tab', { name: 'Data', exact: true }).click();
@@ -212,4 +215,60 @@ test('sorts next to surrounding data with the desktop Sort Warning and honors ta
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('button', { name: 'Filter a', exact: true })).toBeVisible();
+
+  // Outside the table the table's filter leaves the toggle off, and pressing it filters the selected cells.
+  await extend(page, 'D2', 1, 1);
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Filter a', exact: true })).toBeVisible();
+  await toggle.click();
+  await expect(page.locator('.edit-status')).toHaveText('Filter applied to D2:E3. Choose values from a header funnel.');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+  await toggle.click();
+  await expect(page.locator('.edit-status')).toHaveText('Filter removed. Manually hidden rows stay hidden.');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+
+  // A single non-empty cell filters the data block around it.
+  await go(page, 'D3');
+  await toggle.click();
+  await expect(page.locator('.edit-status')).toHaveText('Filter applied to D2:E4. Choose values from a header funnel.');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  await toggle.click();
+
+  await go(page, 'D5');
+  await toggle.click();
+  await expect(page.locator('.edit-status')).toHaveText('Select a range with data before turning on the filter.');
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('opens the Sort dialog with the sort already applied to the table', async ({ page }) => {
+  await page.goto(path);
+  await enter(page, [
+    ['A1', 'Name'], ['B1', 'Score'],
+    ['A2', 'bbb'], ['B2', '1'],
+    ['A3', 'aaa'], ['B3', '2'],
+  ]);
+  await go(page, 'A1');
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Table', exact: true }).click();
+  const create = page.getByRole('dialog', { name: 'Create Table' });
+  await create.getByRole('textbox', { name: 'Range', exact: true }).fill("='Sheet1'!$A$1:$B$3");
+  await create.getByRole('checkbox', { name: 'My table has headers' }).check();
+  await create.getByRole('button', { name: 'OK', exact: true }).click();
+  await go(page, 'A1');
+  await page.getByRole('tab', { name: 'Data', exact: true }).click();
+  await page.getByRole('button', { name: 'Filter Score', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Filter Score', exact: true })
+    .getByRole('button', { name: 'Sort Largest to Smallest' }).click();
+  await expect(page.getByRole('gridcell', { name: 'A2, aaa' })).toBeAttached();
+
+  await page.getByRole('tab', { name: 'Home', exact: true }).click();
+  await page.getByRole('button', { name: 'Sort & Filter', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Custom Sort...' }).click();
+  const sort = page.getByRole('dialog', { name: 'Sort', exact: true });
+  await expect(sort.getByRole('combobox', { name: 'Sort column' })).toHaveValue('2');
+  await expect(sort.getByRole('combobox', { name: 'Sort order' })).toHaveValue('desc');
+  await expect(sort.getByRole('checkbox', { name: 'My data has headers' })).toBeChecked();
+  await sort.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(sort).toBeHidden();
 });

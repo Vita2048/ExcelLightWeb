@@ -23,7 +23,7 @@ import {
   changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, parseNameExtent,
   refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
 } from '../application/table-commands';
-import { extentContains, lastColumn, lastRow, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
+import { extentContains, lastColumn, lastRow, ownsTableFilter, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
 import type { TableDesign, WorkbookName } from '../core/workbook';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
@@ -526,11 +526,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         range = choice === 'expand' ? region : selectedRange;
       } else range = selectedRange;
       const filterHeader = sheet.filter && range.row === sheet.filter.row && lastRow(range) === lastRow(sheet.filter);
+      const applied = filterHeader && sheet.filter?.sort && sheet.filter.sort.column >= range.column &&
+        sheet.filter.sort.column <= lastColumn(range) ? sheet.filter.sort : undefined;
       const draft: SortDraft = {
-        column: clamp(selection.anchor.column, range.column, lastColumn(range)),
+        column: dialog && applied ? applied.column : clamp(selection.anchor.column, range.column, lastColumn(range)),
         header: activeTable ? tableDesign(activeTable).headerRow :
           !!(filterHeader || looksLikeHeader(basis, { sheetId: sheet.id, ...range })),
-        ascending, caseSensitive: false,
+        ascending: dialog && applied ? applied.ascending : ascending,
+        caseSensitive: false,
       };
       if (dialog) { setSortDialog({ basis, range, draft }); return; }
       runSort(range, draft);
@@ -576,7 +579,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }
       const basis = session.capture();
       const current = basis.document.sheets.find(item => item.id === sheet.id)!;
-      if (current.filter) {
+      const ownedByTable = !!current.filter && tables.some(table => ownsTableFilter(current.filter, table));
+      if (current.filter && !ownedByTable) {
         session.execute(setFilter(basis, sheet.id, null));
         editing.selectionChanged();
         editing.clearCut();
@@ -588,6 +592,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const chosen = ranges();
       requireDocument(chosen.length === 1, 'Select one contiguous range to filter.');
       const target = filterRange(basis.document, chosen[0]!);
+      requireDocument(current.cells.some(cell => extentContains(target, { row: cell.row, column: cell.column })),
+        'Select a range with data before turning on the filter.');
+      // Outside a table the toggle reads off even while that table's filter runs, so it starts a range
+      // filter on the caret's data instead of removing the table's. The sheet holds one filter, so this
+      // replaces it the way the desktop ToggleFilterAsync does.
       session.execute(setFilter(basis, sheet.id, { row: target.row, column: target.column,
         rows: target.rows, columns: target.columns, criteria: [] }));
       editing.selectionChanged();
@@ -729,8 +738,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     requestAnimationFrame(focusGrid);
   }
 
-  const filterCommands = { active: !!sheet.filter, clearable: !!sheet.filter?.criteria.length,
-    reapplyable: !!sheet.filter };
+  const tableFilter = !!sheet.filter && tables.some(table => ownsTableFilter(sheet.filter, table));
+  const filterCommands = {
+    active: tableFilter ? !!sheet.filter && !!activeTable && ownsTableFilter(sheet.filter, activeTable) :
+      !!sheet.filter,
+    clearable: !!sheet.filter?.criteria.length, reapplyable: !!sheet.filter };
 
   function currentAuthoredBasis(basis: WorkbookSnapshot) {
     requireDocument(session.isCurrentAuthored(basis), 'The workbook changed. Open the command again.');
