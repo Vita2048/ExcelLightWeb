@@ -104,17 +104,72 @@ export type CellScalar =
   | { readonly kind: 'number'; readonly value: number }
   | { readonly kind: 'text'; readonly value: string }
   | { readonly kind: 'boolean'; readonly value: boolean };
-export type CellCache = CellScalar | { readonly kind: 'error'; readonly value: typeof formulaErrors[number] };
+export type CellCache =
+  | { readonly kind: 'number'; readonly value: number; readonly serializedText?: string }
+  | { readonly kind: 'text'; readonly value: string }
+  | { readonly kind: 'boolean'; readonly value: boolean }
+  | { readonly kind: 'error'; readonly value: typeof formulaErrors[number] };
+
+export interface PythonBinding {
+  readonly name: string;
+  readonly reference: string;
+}
+
+export interface PythonFigure {
+  readonly pngBase64: string;
+  readonly width: number;
+  readonly height: number;
+}
+
+export interface FigurePlacement {
+  readonly id: DocumentId;
+  readonly sheetId: DocumentId;
+  readonly row: number;
+  readonly column: number;
+  readonly rows: number;
+  readonly columns: number;
+  readonly offsetX?: number;
+  readonly offsetY?: number;
+  readonly width?: number;
+  readonly height?: number;
+  readonly renderedFigure?: PythonFigure | null;
+  readonly renderedSourceId?: string | null;
+}
+
+export interface PythonTable {
+  readonly rows: number;
+  readonly columns: number;
+  readonly cells: readonly (CellCache | null)[];
+  readonly notices: readonly string[];
+}
+
+export interface PythonBlock {
+  readonly id: DocumentId;
+  readonly source: string;
+  readonly bindings: readonly PythonBinding[];
+  readonly lastValue?: CellCache | null;
+  readonly hasResult?: boolean;
+  readonly inputFingerprint?: string | null;
+  readonly runtimeFingerprint?: string | null;
+  readonly status?: 'never' | 'succeeded' | 'failed' | 'cancelled' | 'timedOut' | 'workerExited' | string;
+  readonly error?: string | null;
+  readonly lastTable?: PythonTable | null;
+  readonly spillActive?: boolean;
+  readonly lastFigure?: PythonFigure | null;
+  readonly placements?: readonly FigurePlacement[];
+}
+
 export type CellContent = CellScalar
   | { readonly kind: 'blank' }
   | { readonly kind: 'formula'; readonly source: string }
-  | { readonly kind: 'python'; readonly blockId: DocumentId; readonly source: string };
+  | { readonly kind: 'python'; readonly blockId: DocumentId; readonly source: string; readonly block?: PythonBlock };
 export interface CellDocument extends Coordinate {
   readonly id: DocumentId;
   readonly content: CellContent;
   readonly style?: CellStyle;
   readonly cache?: CellCache;
   readonly requiresExternalCalculation?: boolean;
+  readonly spillOwner?: DocumentId;
 }
 export interface SheetDocument {
   readonly id: DocumentId;

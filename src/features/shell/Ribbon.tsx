@@ -1,4 +1,4 @@
-import { useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
@@ -28,6 +28,9 @@ export interface SheetView {
 }
 
 interface RibbonProps {
+  readonly inert?: boolean;
+  readonly fileBackstageOpen: boolean;
+  readonly onFileBackstage: () => void;
   readonly onAlign: (action: AlignmentAction) => void;
   readonly onMerge: (mode: MergeMode) => void;
   readonly merged: boolean;
@@ -67,10 +70,6 @@ interface RibbonProps {
   readonly onReplace: () => void;
 }
 
-const unavailable: Record<'File', string> = {
-  File: 'File commands are unavailable.',
-};
-
 function EditMenu({ label, choices, onEdit }: {
   label: string;
   choices: readonly (readonly [string, EditAction])[];
@@ -94,7 +93,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
   </div>;
 }
 
-export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
+export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
   activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
@@ -128,7 +127,16 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
 
   const tabList = activeTable ? [...families, 'Table Design'] : families;
 
+  useEffect(() => {
+    if (!fileBackstageOpen && active === 'File') setActive('Home');
+  }, [active, fileBackstageOpen]);
+
   function selectTab(name: string) {
+    if (name === 'File') {
+      setActive('File');
+      onFileBackstage();
+      return;
+    }
     if (name !== 'Table Design') {
       lastNonTableTab.current = name;
     }
@@ -153,7 +161,7 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
   }
 
   return (
-    <div className="ribbon">
+    <div className="ribbon" inert={inert}>
       <div role="tablist" aria-label="Ribbon" className="ribbon-tabs">
         {tabList.map((name, index) => (
           <button type="button" key={name} role="tab" id={id + '-tab-' + name}
@@ -164,7 +172,7 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
       </div>
       {tabList.map(name => (
         <div key={name} className="ribbon-panel" role="tabpanel" hidden={active !== name}
-          tabIndex={name in unavailable ? 0 : undefined} id={id + '-panel-' + name} aria-labelledby={id + '-tab-' + name}>
+          id={id + '-panel-' + name} aria-labelledby={id + '-tab-' + name}>
           {name === 'Table Design' && activeTable ? (
             <TableDesignRibbon
               table={activeTable}
@@ -289,8 +297,7 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
               </div>
             </fieldset>
           </> : name === 'Data' ? <DataSortFilterRibbon filter={filter} onSort={onSort} onToggleFilter={onToggleFilter}
-            onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} /> :
-          <p>{unavailable[name as keyof typeof unavailable]}</p>}
+            onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} /> : null}
         </div>
       ))}
     </div>

@@ -97,6 +97,15 @@ test('manual observation retains caches and Calculate Sheet evaluates its full p
   expect(values(runNativeGeneration(cachedScoped, 'automatic', scoped.generation))).toEqual([['downstream', 1, 1, 25]]);
 });
 
+test('resolves cross-sheet references when the sheet name contains an escaped apostrophe', () => {
+  const source = book(cell('input', 1, 1, 7));
+  const document = { ...source, sheets: [
+    { ...source.sheets[0]!, name: "O'Brien" },
+    { ...emptySheet('main', 'Main'), cells: [cell('result', 1, 1, "='O''Brien'!A1")] },
+  ] };
+  expect(values(runNativeGeneration(document, 'automatic'))).toEqual([['main', 1, 1, 7]]);
+});
+
 test('TODAY uses one injected reading per generation and flows through clean dependents', () => {
   const document = book(cell('today', 1, 1, '=TODAY()'), cell('also-today', 1, 2, '=TODAY()-A1'),
     cell('downstream', 1, 3, '=A1+1'), cell('unrelated', 1, 4, '=1'));

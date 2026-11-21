@@ -1,4 +1,4 @@
-import type { CellExtent, Coordinate, TableDesign, WorkbookDocument, WorkbookName } from './workbook';
+import { findCell, type CellExtent, type Coordinate, type TableDesign, type WorkbookDocument, type WorkbookName } from './workbook';
 
 export const tableStyles = ['Blue', 'Green', 'Orange', 'Purple'] as const;
 export const newTableDesign: Readonly<Required<TableDesign>> = Object.freeze({
@@ -50,4 +50,35 @@ export function resolveWorkbookName(document: WorkbookDocument, reference: strin
   if (entry.area.invalid || selector !== '[#DATA]') return entry.area;
   const input = tableInputExtent(entry);
   return { ...entry.area, row: input.row + Number(input.headerRow), rows: input.rows - Number(input.headerRow) };
+}
+
+export function migrateDetachedHeaders(document: WorkbookDocument): WorkbookDocument {
+  if (!document.names || document.names.length === 0) return document;
+  const migrated = document.names.map(name => {
+    if (!name || !name.area || name.area.invalid || !name.isTable) return name;
+    const sheet = document.sheets.find(s => s.id === name.area.sheetId);
+    if (!sheet) return name;
+    const design = tableDesign(name);
+    if (design.headerRow || (name.headerLabels && name.headerLabels.length > 0)) return name;
+    try {
+      const labels: string[] = [];
+      const seen = new Set<string>();
+      for (let col = name.area.column; col <= lastColumn(name.area); col++) {
+        const cell = findCell(sheet, { row: name.area.row, column: col });
+        if (!cell || cell.content.kind !== 'text') throw new Error('Table headers must be nonblank unique text.');
+        const val = cell.content.value;
+        if (!val || !val.trim()) throw new Error('Table headers must be nonblank unique text.');
+        const key = val.toUpperCase();
+        if (seen.has(key)) throw new Error('Table headers must be nonblank unique text.');
+        seen.add(key);
+        labels.push(val);
+      }
+      return name.area.rows > 1
+        ? { ...name, area: { ...name.area, row: name.area.row + 1, rows: name.area.rows - 1 }, headerLabels: labels }
+        : { ...name, area: { ...name.area, invalid: true }, headerLabels: labels };
+    } catch {
+      return { ...name, area: { ...name.area, invalid: true } };
+    }
+  });
+  return { ...document, names: migrated };
 }

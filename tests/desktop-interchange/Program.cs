@@ -1,6 +1,19 @@
 using ExcelLite.Core;
 using ExcelLite.Persistence;
 
+if (args.Length >= 3 && args[0] == "compare" && (args.Length - 1) % 2 == 0)
+{
+    for (var index = 1; index < args.Length; index += 2)
+    {
+        var original = NativePackage.Load(args[index]);
+        var rewritten = NativePackage.Load(args[index + 1]);
+        if (original != rewritten)
+            throw new InvalidOperationException($"Desktop native document differs after web round-trip: {Path.GetFileName(args[index])}.");
+    }
+    Console.WriteLine($"Desktop native round-trip equality passed for {(args.Length - 1) / 2} fixtures.");
+    return;
+}
+
 if (args is not [var operation, var path] || operation is not ("export" or "check"))
     throw new ArgumentException("Use export or check followed by a fixture directory.");
 

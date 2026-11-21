@@ -89,5 +89,6 @@ test('inline picking can add a cross-sheet reference with the formula bar hidden
   await editor.press('Enter');
   await expect(sourceSheet).toHaveAttribute('aria-current', 'true');
   await expect(page.getByRole('gridcell', { name: 'C3, 7', exact: true })).toBeAttached();
+  await expect(page.getByRole('gridcell', { name: 'C3, 7', exact: true })).toBeAttached();
   await expect(editor).toHaveCount(0);
 });

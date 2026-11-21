@@ -2,9 +2,11 @@ import { borderStyles, borderEdges } from './formats/borders';
 import { fillPatterns, fillShadings, isFontFamily } from './formats/appearance';
 import {
   cellKey, documentLimits as limits, DocumentError, formulaErrors, inRange, isCoordinate,
-  type AxisDimension, type CellCache, type CellContent, type CellExtent, type CellReference,
-  type CellStyle, type DocumentId, type SheetDocument, type WorkbookDocument,
+  type AxisDimension, type CellCache, type CellContent, type CellDocument, type CellExtent, type CellReference,
+  type CellStyle, type DocumentId, type FigurePlacement, type PythonFigure, type SheetDocument, type WorkbookDocument,
 } from './workbook';
+
+const pythonBindingReference = /^=(?:(?:'(?:[^']|'')+'|[^!']+)!)?\$?[A-Za-z]+\$?[0-9]+(?::\$?[A-Za-z]+\$?[0-9]+)?$/u;
 
 export function requireDocument(condition: unknown, message: string): asserts condition {
   if (!condition) throw new DocumentError(message);
@@ -48,8 +50,16 @@ function utf8Length(source: string): number {
 export function validateCellValue(value: CellContent | CellCache, cache = false): void {
   requireDocument(value && typeof value === 'object', 'Cell value is missing.');
   if (cache) {
-    requireDocument(Object.keys(value).length === 2 && Object.hasOwn(value, 'kind') && Object.hasOwn(value, 'value'),
-      'Calculation cache must contain a kind and scalar value.');
+    const keys = Object.keys(value);
+    const hasSerializedText = Object.hasOwn(value, 'serializedText');
+    const serializedText = (value as { readonly serializedText?: unknown }).serializedText;
+    requireDocument(Object.hasOwn(value, 'kind') && Object.hasOwn(value, 'value') &&
+      keys.every(key => key === 'kind' || key === 'value' || key === 'serializedText') &&
+      (!hasSerializedText || value.kind === 'number' && typeof serializedText === 'string' &&
+        serializedText.length <= limits.textLength &&
+        /^[\t\n\v\f\r ]*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[\t\n\v\f\r ]*$/u.test(serializedText) &&
+        Number(serializedText) === (value as { readonly value: number }).value),
+    'Calculation cache must contain a kind and scalar value.');
   }
   switch (value.kind) {
     case 'number':
@@ -65,13 +75,82 @@ export function validateCellValue(value: CellContent | CellCache, cache = false)
     case 'formula':
       return requireDocument(!cache && validText(value.source, limits.formulaLength) &&
         value.source.length >= 2 && value.source.startsWith('='), 'A formula must start with = and have valid source text.');
-    case 'python':
+    case 'python': {
       validateId(value.blockId);
-      return requireDocument(!cache && validText(value.source, limits.pythonSourceBytes) &&
+      requireDocument(!cache && validText(value.source, limits.pythonSourceBytes) &&
         utf8Length(value.source) <= limits.pythonSourceBytes, 'Invalid Python source (limit 1 MiB).');
+      if (value.block) {
+        requireDocument(value.block.id === value.blockId, 'Python block id must match.');
+        requireDocument(value.block.source === value.source, 'Invalid Python id/source (limit 1 MiB).');
+        requireDocument(Array.isArray(value.block.bindings) && value.block.bindings.length <= 100, 'Invalid or duplicate Python bindings.');
+        const bindingNames = new Set<string>();
+        for (const b of value.block.bindings) {
+          requireDocument(b && typeof b.name === 'string' && /^[A-Za-z_][A-Za-z_0-9]{0,63}$/.test(b.name), 'Bindings need a unique name and one A1 cell/range reference.');
+          requireDocument(!bindingNames.has(b.name), 'Invalid or duplicate Python bindings.');
+          bindingNames.add(b.name);
+          requireDocument(typeof b.reference === 'string' && b.reference.length <= 512 &&
+            (b.reference === '=#REF!' || pythonBindingReference.test(b.reference)),
+          'Bindings need a unique name and one A1 cell/range reference.');
+        }
+        if (value.block.status !== undefined) {
+          requireDocument(['never', 'succeeded', 'failed', 'cancelled', 'timedOut', 'workerExited'].includes(value.block.status), 'Invalid Python status.');
+        }
+        if (value.block.error != null) {
+          requireDocument(typeof value.block.error === 'string' && value.block.error.length <= 32767, 'Python metadata exceeds limits.');
+        }
+        if (value.block.inputFingerprint != null) {
+          requireDocument(typeof value.block.inputFingerprint === 'string' && value.block.inputFingerprint.length <= 128, 'Python metadata exceeds limits.');
+        }
+        if (value.block.runtimeFingerprint != null) {
+          requireDocument(typeof value.block.runtimeFingerprint === 'string' && value.block.runtimeFingerprint.length <= 128, 'Python metadata exceeds limits.');
+        }
+        if (value.block.lastValue != null) {
+          validateCellValue(value.block.lastValue, true);
+          requireDocument(value.block.hasResult, 'Python value requires result metadata.');
+        }
+        if (value.block.lastFigure != null) {
+          requireDocument(value.block.hasResult && value.block.lastTable == null && value.block.lastValue == null, 'Invalid figure result metadata.');
+          validateFigure(value.block.lastFigure);
+        }
+        if (value.block.lastTable != null) {
+          const t = value.block.lastTable;
+          requireDocument(inRange(t.rows, 1, 10000) && inRange(t.columns, 1, 100) && t.rows * t.columns <= 100000, 'Invalid table shape/notices (limit 100,000 cells).');
+          requireDocument(Array.isArray(t.cells) && t.cells.length === t.rows * t.columns, 'Invalid table shape/notices (limit 100,000 cells).');
+          for (const cache of t.cells) {
+            if (cache === null) continue;
+            requireDocument(cache.kind !== 'error', 'Unsupported table value.');
+            validateCellValue(cache, true);
+          }
+          requireDocument(Array.isArray(t.notices) && t.notices.length <= 100 && t.notices.every(n => typeof n === 'string' && n.length <= 32767), 'Invalid table shape/notices (limit 100,000 cells).');
+          requireDocument(value.block.hasResult, 'Invalid Python table result metadata.');
+          requireDocument(equalCache(t.cells[0] ?? null, value.block.lastValue ?? null), 'Python table anchor differs from its cached first value.');
+        }
+        if (value.block.spillActive) {
+          requireDocument(value.block.lastTable != null, 'Invalid Python table result metadata.');
+        }
+        if (value.block.placements) {
+          requireDocument(Array.isArray(value.block.placements) && value.block.placements.length <= 32, 'Invalid figure placements.');
+        }
+      }
+      return;
+    }
     default:
       throw new DocumentError('Unsupported cell value.');
   }
+}
+
+function equalCache(a: CellCache | null, b: CellCache | null): boolean {
+  if (a === null && b === null) return true;
+  if (a === null || b === null) return false;
+  return a.kind === b.kind && (a as { value: unknown }).value === (b as { value: unknown }).value &&
+    (a.kind !== 'number' || b.kind !== 'number' || a.serializedText === b.serializedText);
+}
+
+function validateFigure(fig: PythonFigure): void {
+  requireDocument(fig && typeof fig.pngBase64 === 'string' && Number.isInteger(fig.width) && Number.isInteger(fig.height), 'Invalid figure.');
+  requireDocument(fig.width >= 1 && fig.width <= 8192 && fig.height >= 1 && fig.height <= 8192 && fig.width * fig.height <= 16_000_000,
+    'Figure exceeds 16 million pixels / 8192 pixels per side.');
+  requireDocument(fig.pngBase64.length <= 22_369_624, 'Figure PNG exceeds 16 MiB.');
 }
 
 
@@ -206,6 +285,9 @@ function validateSheets(document: WorkbookDocument, addId: (id: DocumentId) => v
       requireDocument(!addresses.has(key), 'Duplicate cell coordinate.');
       addresses.add(key);
       addId(cell.id);
+      if (cell.spillOwner !== undefined) {
+        validateId(cell.spillOwner);
+      }
       validateCellValue(cell.content);
       if (cell.content.kind === 'formula') {
         requireDocument(++formulas <= limits.formulas, 'A workbook may contain at most 10,000 formulas.');
@@ -219,8 +301,8 @@ function validateSheets(document: WorkbookDocument, addId: (id: DocumentId) => v
         'Cannot put this cell in a merged range.');
       requireDocument(cell.requiresExternalCalculation === undefined || cell.requiresExternalCalculation === false ||
         cell.requiresExternalCalculation === true && cell.content.kind === 'formula', 'External calculation requires a formula.');
-      requireDocument(cell.content.kind !== 'blank' || cell.style !== undefined || cell.cache !== undefined,
-        'Unstyled blank cells without caches must be omitted.');
+      requireDocument(cell.content.kind !== 'blank' || cell.style !== undefined || cell.cache !== undefined || cell.spillOwner !== undefined,
+        'Blank cells are omitted unless they carry a style, cache or spill ownership.');
       if (cell.style !== undefined) validateStyle(cell.style);
       if (cell.cache !== undefined) validateCellValue(cell.cache, true);
     }
@@ -263,6 +345,137 @@ function validateNames(document: WorkbookDocument, addId: (id: DocumentId) => vo
   }
 }
 
+function equalContentToCache(content: CellContent, expected: CellCache | null): boolean {
+  if (expected == null) {
+    return content.kind === 'blank';
+  }
+  switch (expected.kind) {
+    case 'number':
+      return content.kind === 'number' && expected.value === content.value;
+    case 'boolean':
+      return content.kind === 'boolean' && expected.value === content.value;
+    case 'text':
+      return content.kind === 'text' && expected.value === content.value;
+    default:
+      return content.kind === 'blank';
+  }
+}
+
+function validateSpills(document: WorkbookDocument): void {
+  const spillChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
+  for (const sheet of document.sheets) {
+    for (const cell of sheet.cells) {
+      if (cell.spillOwner !== undefined) {
+        const list = spillChildren.get(cell.spillOwner) ?? [];
+        list.push({ sheetId: sheet.id, cell });
+        spillChildren.set(cell.spillOwner, list);
+      }
+    }
+  }
+
+  for (const [ownerId, children] of spillChildren) {
+    let anchorSheet: SheetDocument | undefined;
+    let anchorCell: CellDocument | undefined;
+    for (const s of document.sheets) {
+      const match = s.cells.find(c => c.content.kind === 'python' && c.content.blockId === ownerId);
+      if (match) {
+        anchorSheet = s;
+        anchorCell = match;
+        break;
+      }
+    }
+    if (!anchorSheet || !anchorCell || anchorCell.content.kind !== 'python') {
+      throw new DocumentError('Spill anchor is missing.');
+    }
+    const block = anchorCell.content.block;
+    if (!block || !block.spillActive || !block.lastTable) {
+      throw new DocumentError('Orphaned spill children.');
+    }
+    const table = block.lastTable;
+    const startRow = anchorCell.row;
+    const startCol = anchorCell.column;
+    const lastR = startRow + table.rows - 1;
+    const lastC = startCol + table.columns - 1;
+    requireDocument(inRange(lastR, 1, limits.rows) && inRange(lastC, 1, limits.columns), 'Selection exceeds rectangular cell limits.');
+
+    for (const { sheetId, cell } of children) {
+      if (sheetId !== anchorSheet.id || cell.row < startRow || cell.row > lastR || cell.column < startCol || cell.column > lastC || (cell.row === startRow && cell.column === startCol)) {
+        throw new DocumentError('Cannot change part of a Python spill; edit or move its complete output at the anchor.');
+      }
+      const expectedIndex = (cell.row - startRow) * table.columns + (cell.column - startCol);
+      const expected = table.cells[expectedIndex] ?? null;
+      if (!equalContentToCache(cell.content, expected)) {
+        throw new DocumentError(`Cannot change part of a Python spill at row ${cell.row}, column ${cell.column}; edit or move its complete output at the anchor.`);
+      }
+    }
+  }
+
+  for (const sheet of document.sheets) {
+    for (const cell of sheet.cells) {
+      if (cell.content.kind !== 'python' || !cell.content.block?.spillActive) continue;
+      const table = cell.content.block.lastTable;
+      if (!table) continue;
+      const startRow = cell.row;
+      const startCol = cell.column;
+      const lastR = startRow + table.rows - 1;
+      const lastC = startCol + table.columns - 1;
+      requireDocument(inRange(lastR, 1, limits.rows) && inRange(lastC, 1, limits.columns), 'Selection exceeds rectangular cell limits.');
+      const children = spillChildren.get(cell.content.blockId) ?? [];
+      if (children.length !== table.cells.length - 1) {
+        throw new DocumentError('Cannot split a Python spill; select its complete output or its anchor.');
+      }
+      for (const name of document.names) {
+        if (name.isTable && !name.area.invalid && name.area.sheetId === sheet.id) {
+          if (overlaps(name.area, { row: startRow, column: startCol, rows: table.rows, columns: table.columns })) {
+            throw new DocumentError('Python spill cannot overlap a workbook table.');
+          }
+        }
+      }
+    }
+  }
+}
+
+function validateFigures(document: WorkbookDocument): void {
+  const placements: FigurePlacement[] = [];
+  for (const sheet of document.sheets) {
+    for (const cell of sheet.cells) {
+      if (cell.content.kind === 'python' && cell.content.block?.placements) {
+        for (const p of cell.content.block.placements) {
+          placements.push(p);
+        }
+      }
+    }
+  }
+  if (placements.length > 32) {
+    throw new DocumentError('Maximum 32 distinct figure placements per workbook.');
+  }
+  const placementIds = new Set<string>();
+  for (const p of placements) {
+    validateId(p.id);
+    if (placementIds.has(p.id)) {
+      throw new DocumentError('Maximum 32 distinct figure placements per workbook.');
+    }
+    placementIds.add(p.id);
+    const sheet = document.sheets.find(s => s.id === p.sheetId);
+    requireDocument(sheet, 'Placement refers to a missing sheet.');
+    requireDocument(isCoordinate({ row: p.row, column: p.column }), 'Placement coordinate is outside grid.');
+    requireDocument(inRange(p.rows, 1, limits.rows - p.row + 1), 'Placement row extent is invalid.');
+    requireDocument(inRange(p.columns, 1, limits.columns - p.column + 1), 'Placement column extent is invalid.');
+    requireDocument(p.row + p.rows - 1 <= 1000 && p.column + p.columns - 1 <= 26, 'Placement extent is outside viewport.');
+    const { offsetX = 0, offsetY = 0, width = 0, height = 0 } = p;
+    requireDocument(Number.isFinite(offsetX) && Number.isFinite(offsetY) && Number.isFinite(width) && Number.isFinite(height), 'Invalid floating figure position or size.');
+    requireDocument(offsetX >= 0 && offsetX <= 4096 && offsetY >= 0 && offsetY <= 4096, 'Invalid floating figure position or size.');
+    requireDocument((width === 0 && height === 0) || (width >= 80 && height >= 60 && width <= 49152 && height <= 4096000), 'Invalid floating figure position or size.');
+    requireDocument((p.renderedFigure == null) === (p.renderedSourceId == null), 'Invalid chart render cache identity.');
+    if (p.renderedSourceId != null) {
+      requireDocument(p.renderedSourceId.length === 64 && /^[0-9a-fA-F]{64}$/.test(p.renderedSourceId), 'Invalid chart render cache identity.');
+    }
+    if (p.renderedFigure) {
+      validateFigure(p.renderedFigure);
+    }
+  }
+}
+
 export function validateWorkbook(document: WorkbookDocument): void {
   requireDocument(document?.formatVersion === 1 && document.dateSystem === '1900', 'Unsupported document version or date system.');
   requireDocument(Array.isArray(document.sheets) && inRange(document.sheets.length, 1, limits.sheets),
@@ -276,4 +489,6 @@ export function validateWorkbook(document: WorkbookDocument): void {
   addId(document.id);
   validateSheets(document, addId);
   validateNames(document, addId);
+  validateSpills(document);
+  validateFigures(document);
 }

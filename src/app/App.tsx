@@ -26,6 +26,16 @@ import { columnLetters } from '../core/formula-references';
 import { FilterDropdown } from '../features/data/FilterDropdown';
 import { SortDialog, SortOptionsDialog, SortWarningDialog, type SortDraft, type SortExtent } from '../features/data/SortDialog';
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
+import { loadNativePackage, saveNativePackage } from '../persistence/native';
+import {
+  defaultWorkspacePreferences, LocalWorkspaceError, LocalWorkspaceStore, WorkspaceConflictError, WorkspaceLease,
+  type LocalWorkspacePreferences, type LocalWorkspaceRecord, type RecoveryRecord, type WorkspaceFileHandle,
+} from '../persistence/local';
+import { downloadNativePackage, fileVersion, hasNativeSavePicker, pickNativeOpenFile, pickNativeSaveFile,
+  writeNativeFile } from '../persistence/local';
+import { FileBackstage, type FileAction } from '../features/files/FileBackstage';
+import { FileMessageDialog, OptionsDialog, RecoveryDialog, SaveAsDialog, UnsavedChangesDialog,
+  type ReplacementChoice } from '../features/files/FileDialogs';
 import {
   changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, parseNameExtent,
   refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
@@ -35,7 +45,7 @@ import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePic
 import type { TableDesign, WorkbookName } from '../core/workbook';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
-import { NativeScheduler, type CalculationStatus } from '../calculation/native-scheduler';
+import { NativeScheduler, type CalculationMode, type CalculationStatus } from '../calculation/native-scheduler';
 import { findCell, findReferencedCell, newWorkbook, worksheetViewport, type CellReference, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
 import { requireDocument } from '../core/workbook-validation';
 import { Ribbon, type SheetView } from '../features/shell/Ribbon';
@@ -55,12 +65,30 @@ const defaultSelection = singleSelection();
 const defaultView: SheetView = { zoom: 100, headings: true, gridlines: true, formulaBar: true, showFormulas: false };
 const statisticsFormat = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 10, useGrouping: false });
 const makeId = () => crypto.randomUUID();
+async function acquireRecoveryLease(lease: WorkspaceLease, workbookId: string): Promise<boolean> {
+  // A reload can race the previous page's asynchronous pagehide lease release.
+  // Give that transaction time to commit while still refusing a workbook held by another tab.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    if (await lease.switchTo(workbookId)) return true;
+    await new Promise(resolve => window.setTimeout(resolve, 100));
+  }
+  return false;
+}
 interface StructureTarget {
   readonly id: string;
   readonly ranges: readonly EditRange[];
   readonly header?: number;
 }
 const dialogActions: ReadonlySet<StructureAction> = new Set(['insert-cells', 'delete-cells', 'delete-sheet', 'place-sheet', 'size-row', 'size-column']);
+
+interface ActiveFileContext {
+  readonly name: string;
+  readonly source: 'untitled' | 'native' | 'xlsx' | 'recovery';
+  readonly sourceFileName?: string;
+  readonly fileHandle?: WorkspaceFileHandle;
+  readonly fileSize?: number;
+  readonly fileLastModified?: number;
+}
 
 function visibleIndex(index: number, dimensions: WorkbookDocument['sheets'][number]['rows'], limit: number,
   filtered?: ReadonlySet<number>): number {
@@ -120,19 +148,49 @@ function ShellIcon({ icon }: { icon: Icon }) {
 export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument }) {
   const [session] = useState(() => new WorkbookSession(initialWorkbook ?? newWorkbook(makeId), { makeId }));
   const [snapshot, setSnapshot] = useState(() => session.capture());
+  const [localStore] = useState(() => new LocalWorkspaceStore());
+  const [preferences, setPreferences] = useState<LocalWorkspacePreferences>(defaultWorkspacePreferences);
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const [activeFile, setActiveFile] = useState<ActiveFileContext>({ name: 'Book1', source: 'untitled' });
+  const [recentWorkbooks, setRecentWorkbooks] = useState<readonly LocalWorkspaceRecord[]>([]);
+  const [backstageOpen, setBackstageOpen] = useState(false);
+  const [fileBusy, setFileBusy] = useState(false);
+  const fileBusyRef = useRef(false);
+  const recoveryEpoch = useRef(0);
+  const [fileStatus, setFileStatus] = useState('');
+  const [recoveryStatus, setRecoveryStatus] = useState('');
+  const [storageError, setStorageError] = useState('');
+  const [pendingRecovery, setPendingRecovery] = useState<RecoveryRecord>();
+  const [workspaceConflict, setWorkspaceConflict] = useState('');
+  const [replacementPrompt, setReplacementPrompt] = useState(false);
+  const replacementResolver = useRef<((choice: ReplacementChoice) => void) | undefined>(undefined);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsResolver = useRef<((mode: CalculationMode | null) => void) | undefined>(undefined);
+  const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const saveAsResolver = useRef<((name: string | null) => void) | undefined>(undefined);
+  const [fileMessage, setFileMessage] = useState<{ title: string; message: string }>();
+  const workspaceLease = useRef<WorkspaceLease | undefined>(undefined);
+  const workspaceConflictRef = useRef<(id: string) => void>(() => {});
+  workspaceConflictRef.current = id => {
+    setWorkspaceConflict(id);
+    setFileStatus('This workbook is open in another tab. Editing is paused to protect its local copy.');
+  };
+  if (!workspaceLease.current) workspaceLease.current = new WorkspaceLease(localStore, id => workspaceConflictRef.current(id));
   const [calculation, setCalculation] = useState<CalculationStatus>(() => ({ mode: 'automatic', pending: false, stale: new Set() }));
   const scheduler = useRef<NativeScheduler>(null);
   const [locale] = useState(() => navigator.language);
   const separator = useMemo(() => localeArgumentSeparator(locale), [locale]);
   useEffect(() => {
+    if (!preferencesReady) return;
     const native = new NativeScheduler(session, (snapshot, status) => {
       setSnapshot(snapshot);
       setCalculation(status);
     }, locale);
     scheduler.current = native;
+    native.setMode(preferences.nativeCalculation);
     if (session.active.sheets.some(sheet => sheet.cells.some(cell => cell.content.kind === 'formula'))) native.changed(false);
     return () => { native.dispose(); scheduler.current = null; };
-  }, [session, locale]);
+  }, [session, locale, preferencesReady]);
   const sheets = snapshot.document.sheets;
   const [activeSheetId, setActiveSheetId] = useState(() => sheets[0]!.id);
   const [selections, setSelections] = useState<ReadonlyMap<DocumentId, GridSelection>>(() => new Map());
@@ -196,6 +254,532 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     initial: string;
     onDone: (result: string | null) => void;
   }>();
+
+  useEffect(() => {
+    let live = true;
+    const lease = workspaceLease.current!;
+    void (async () => {
+      try {
+        const [loadedPreferences, recent, recoveries] = await Promise.all([
+          localStore.loadPreferences(), localStore.listRecent(), localStore.listRecoveries(),
+        ]);
+        if (!live) return;
+        setPreferences(loadedPreferences);
+        setView(loadedPreferences.view);
+        setSearchHistory(loadedPreferences.searchHistory);
+        setSearchLook(loadedPreferences.searchLook);
+        setRecentWorkbooks(recent);
+        const blankId = session.active.id;
+        if (!await lease.switchTo(blankId)) {
+          setWorkspaceConflict(blankId);
+          return;
+        }
+        const recovery = initialWorkbook ? undefined : recoveries[0];
+        if (recovery) {
+          if (!await acquireRecoveryLease(lease, recovery.workbookId)) {
+            setFileMessage({ title: 'Recovery already open', message: 'This workbook is open in another tab. That tab owns the recovery copy; your current workbook was kept.' });
+            return;
+          }
+          const saved = await localStore.getWorkspace(recovery.workbookId);
+          if (saved && saved.updatedAt >= recovery.savedAt) {
+            await localStore.clearRecovery(recovery.workbookId, lease.owner);
+            await lease.switchTo(blankId);
+          } else if (live) {
+            setPendingRecovery(recovery);
+          }
+        }
+      } catch (error) {
+        if (live) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStorageError(message);
+          setFileStatus('Browser-local storage is unavailable. Use Export to download a backup.');
+        }
+      } finally {
+        if (live) setPreferencesReady(true);
+      }
+    })();
+    return () => {
+      live = false;
+      void lease.release().catch(() => {});
+    };
+  }, [initialWorkbook, localStore, session]);
+
+  useEffect(() => {
+    if (!preferencesReady) return;
+    const timer = window.setTimeout(() => {
+      void localStore.savePreferences(preferences).then(() => setStorageError(current =>
+        current.startsWith('Local settings could not be saved.') ? '' : current)).catch(error => {
+        const message = error instanceof Error ? error.message : String(error);
+        setStorageError('Local settings could not be saved. Changes apply for this session. ' + message);
+      });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [localStore, preferences, preferencesReady]);
+
+  useEffect(() => {
+    if (!preferencesReady || preferences.view === view) return;
+    setPreferences(current => current.view === view ? current : { ...current, view });
+  }, [preferences.view, preferencesReady, view]);
+
+  useEffect(() => {
+    if (!preferencesReady || preferences.searchHistory.find === searchHistory.find &&
+        preferences.searchHistory.replace === searchHistory.replace) return;
+    setPreferences(current => current.searchHistory.find === searchHistory.find &&
+      current.searchHistory.replace === searchHistory.replace ? current : { ...current, searchHistory });
+  }, [preferences.searchHistory.find, preferences.searchHistory.replace, preferencesReady, searchHistory]);
+
+  useEffect(() => {
+    if (!preferencesReady || preferences.searchLook === searchLook) return;
+    setPreferences(current => current.searchLook === searchLook ? current : { ...current, searchLook });
+  }, [preferences.searchLook, preferencesReady, searchLook]);
+
+  useEffect(() => {
+    const beforeUnload = (event: globalThis.BeforeUnloadEvent) => {
+      if (!session.isDirty) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    const suspend = () => { void workspaceLease.current?.suspend().catch(() => {}); };
+    const resume = () => { void workspaceLease.current?.resume().catch(() => {}); };
+    window.addEventListener('beforeunload', beforeUnload);
+    window.addEventListener('pagehide', suspend);
+    window.addEventListener('pageshow', resume);
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+      window.removeEventListener('pagehide', suspend);
+      window.removeEventListener('pageshow', resume);
+    };
+  }, [session, snapshot]);
+
+  useEffect(() => {
+    if (!preferencesReady || !session.isDirty || workspaceConflict || pendingRecovery ||
+        workspaceLease.current?.activeId !== snapshot.document.id) return;
+    const captured = snapshot;
+    const epoch = ++recoveryEpoch.current;
+    let live = true;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const packageBlob = await saveNativePackage(captured.document);
+          if (!live || epoch !== recoveryEpoch.current || !session.isCurrent(captured) || !session.isDirty) return;
+          await localStore.writeRecovery({
+            id: 'recovery:' + captured.document.id,
+            workbookId: captured.document.id,
+            name: activeFile.name,
+            package: packageBlob,
+            savedAt: Date.now(),
+            revision: captured.authoredRevision,
+          }, workspaceLease.current!.owner);
+          if (live && epoch === recoveryEpoch.current) setRecoveryStatus('Local recovery copy updated.');
+        } catch (error) {
+          if (!live || epoch !== recoveryEpoch.current) return;
+          const message = error instanceof Error ? error.message : String(error);
+          setStorageError('Local recovery is unavailable. Export a backup to keep a portable copy. ' + message);
+        }
+      })();
+    }, 900);
+    return () => { live = false; window.clearTimeout(timer); };
+  }, [activeFile.name, localStore, pendingRecovery, preferencesReady, session, snapshot, workspaceConflict]);
+
+  function askReplacement(): Promise<ReplacementChoice> {
+    return new Promise(resolve => {
+      replacementResolver.current = resolve;
+      setReplacementPrompt(true);
+    });
+  }
+
+  function chooseReplacement(choice: ReplacementChoice) {
+    const resolve = replacementResolver.current;
+    replacementResolver.current = undefined;
+    setReplacementPrompt(false);
+    resolve?.(choice);
+  }
+
+  function askSaveAsName(): Promise<string | null> {
+    return new Promise(resolve => {
+      saveAsResolver.current = resolve;
+      setSaveAsOpen(true);
+    });
+  }
+
+  function finishSaveAsName(name: string | null) {
+    const resolve = saveAsResolver.current;
+    saveAsResolver.current = undefined;
+    setSaveAsOpen(false);
+    resolve?.(name);
+  }
+
+  function askOptions(): Promise<CalculationMode | null> {
+    return new Promise(resolve => {
+      optionsResolver.current = resolve;
+      setOptionsOpen(true);
+    });
+  }
+
+  function finishOptions(mode: CalculationMode | null) {
+    const resolve = optionsResolver.current;
+    optionsResolver.current = undefined;
+    setOptionsOpen(false);
+    resolve?.(mode);
+  }
+
+  async function refreshRecent() {
+    try { setRecentWorkbooks(await localStore.listRecent()); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setStorageError('Recent workbooks could not be loaded. ' + message);
+    }
+  }
+
+  async function clearRecoveryFor(workbookId: string) {
+    const recoveries = await localStore.listRecoveries();
+    if (recoveries.some(item => item.workbookId === workbookId)) {
+      await localStore.clearRecovery(workbookId, workspaceLease.current!.owner);
+    }
+    setRecoveryStatus('');
+  }
+
+  function resetWorkbookUi(document: WorkbookDocument) {
+    setSnapshot(session.capture());
+    setActiveSheetId(document.sheets[0]!.id);
+    setSelections(new Map());
+    setMenu(undefined);
+    setBorderTool(undefined);
+    setBrush(undefined);
+    editing.selectionChanged();
+    editing.clearCut();
+    editing.clearStatus();
+    scheduler.current?.changed(true);
+    requestAnimationFrame(() => worksheet.current?.focus());
+  }
+
+  async function verifyActiveWorkspace(workbookId: string) {
+    const lease = workspaceLease.current!;
+    if (lease.activeId !== workbookId || lease.isLost || !await localStore.renewLease(workbookId, lease.owner)) {
+      setWorkspaceConflict(workbookId);
+      throw new WorkspaceConflictError(workbookId);
+    }
+  }
+
+  async function saveCurrent(): Promise<boolean> {
+    recoveryEpoch.current++;
+    const captured = session.capture();
+    await verifyActiveWorkspace(captured.document.id);
+    const packageBlob = await saveNativePackage(captured.document);
+    const now = Date.now();
+    const handle = activeFile.source === 'native' ? activeFile.fileHandle : undefined;
+    let fileWasWritten = false;
+    let fileWriteWarning = '';
+    let nextContext = activeFile;
+    if (handle) {
+      try {
+        await verifyActiveWorkspace(captured.document.id);
+        const version = await writeNativeFile(handle, packageBlob,
+          activeFile.fileSize === undefined || activeFile.fileLastModified === undefined ? undefined : {
+            size: activeFile.fileSize, lastModified: activeFile.fileLastModified,
+          });
+        fileWasWritten = true;
+        nextContext = { ...activeFile, fileSize: version.size, fileLastModified: version.lastModified };
+      } catch (error) {
+        fileWriteWarning = error instanceof Error ? error.message : String(error);
+      }
+    }
+
+    let localWasWritten = false;
+    try {
+      const record: LocalWorkspaceRecord = {
+        id: captured.document.id,
+        name: activeFile.name,
+        package: packageBlob,
+        createdAt: now,
+        updatedAt: now,
+        lastUsedAt: now,
+        source: activeFile.source === 'xlsx' ? 'xlsx' : 'native',
+        ...(activeFile.sourceFileName && { sourceFileName: activeFile.sourceFileName }),
+        ...(handle && { fileHandle: handle }),
+        ...(nextContext.fileSize !== undefined && { fileSize: nextContext.fileSize }),
+        ...(nextContext.fileLastModified !== undefined && { fileLastModified: nextContext.fileLastModified }),
+      };
+      await localStore.saveWorkspace(record, workspaceLease.current!.owner);
+      localWasWritten = true;
+      await refreshRecent();
+    } catch (error) {
+      if (error instanceof WorkspaceConflictError) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      setStorageError('The local workspace could not be updated. ' + message);
+    }
+
+    if (!fileWasWritten && !localWasWritten) {
+      throw new LocalWorkspaceError(storageError || 'The workbook could not be saved to this browser. Use Export to download a backup.');
+    }
+    if (!session.markSaved(captured)) {
+      throw new LocalWorkspaceError('The save completed for an earlier workbook snapshot. The active workbook was not marked saved.');
+    }
+    setActiveFile(nextContext);
+    if (!session.isDirty) {
+      try { await localStore.clearRecovery(captured.document.id, workspaceLease.current!.owner); }
+      catch (error) {
+        if (!(error instanceof WorkspaceConflictError)) {
+          setStorageError('The recovery copy could not be cleared yet. ' + (error instanceof Error ? error.message : String(error)));
+        } else throw error;
+      }
+    if (!session.isDirty) setRecoveryStatus('');
+    }
+    const dirty = session.isDirty;
+    setFileStatus(fileWriteWarning ?
+      (localWasWritten ? 'Saved to this browser. The linked file was not changed: ' : fileWasWritten ? 'Saved to the linked file. Local storage was unavailable: ' : '') + fileWriteWarning :
+      dirty ? 'Saved snapshot; newer edits remain modified.' : fileWasWritten ? 'Saved ' + handle!.name : 'Saved to this browser.');
+    setBackstageOpen(false);
+    return true;
+  }
+
+  async function saveAsToHandle(handle: WorkspaceFileHandle): Promise<boolean> {
+    recoveryEpoch.current++;
+    const captured = session.capture();
+    await verifyActiveWorkspace(captured.document.id);
+    const packageBlob = await saveNativePackage(captured.document);
+    const version = await writeNativeFile(handle, packageBlob);
+    const name = handle.name.replace(/\.exlt$/iu, '') || handle.name;
+    const context: ActiveFileContext = {
+      name, source: 'native', fileHandle: handle, fileSize: version.size, fileLastModified: version.lastModified,
+      sourceFileName: handle.name,
+    };
+    let localWarning = '';
+    try {
+      await localStore.saveWorkspace({
+        id: captured.document.id, name, package: packageBlob, createdAt: Date.now(), updatedAt: Date.now(),
+        lastUsedAt: Date.now(), source: 'native', sourceFileName: handle.name, fileHandle: handle,
+        fileSize: version.size, fileLastModified: version.lastModified,
+      }, workspaceLease.current!.owner);
+      await refreshRecent();
+    } catch (error) {
+      if (error instanceof WorkspaceConflictError) throw error;
+      localWarning = error instanceof Error ? error.message : String(error);
+      setStorageError('The file was saved, but its local Recent entry could not be updated. ' + localWarning);
+    }
+    if (!session.markSaved(captured)) throw new LocalWorkspaceError('The file was saved, but the active workbook changed.');
+    setActiveFile(context);
+    if (!session.isDirty) {
+      try { await localStore.clearRecovery(captured.document.id, workspaceLease.current!.owner); setRecoveryStatus(''); }
+      catch { /* The file save is already confirmed. */ }
+    }
+    setFileStatus(localWarning ? 'Saved ' + handle.name + '. Local storage could not be updated.' : 'Saved ' + handle.name + '.');
+    setBackstageOpen(false);
+    return true;
+  }
+
+  async function saveAsLocally(name: string): Promise<boolean> {
+    recoveryEpoch.current++;
+    const captured = session.capture();
+    const packageBlob = await saveNativePackage(captured.document);
+    const now = Date.now();
+    const context: ActiveFileContext = { name, source: activeFile.source === 'xlsx' ? 'xlsx' : 'native',
+      ...(activeFile.sourceFileName && { sourceFileName: activeFile.sourceFileName }) };
+    await localStore.saveWorkspace({
+      id: captured.document.id, name, package: packageBlob, createdAt: now, updatedAt: now,
+      lastUsedAt: now, source: context.source === 'xlsx' ? 'xlsx' : 'native',
+      ...(context.sourceFileName && { sourceFileName: context.sourceFileName }),
+    }, workspaceLease.current!.owner);
+    if (!session.markSaved(captured)) throw new LocalWorkspaceError('The save completed for an earlier workbook snapshot.');
+    setActiveFile(context);
+    await refreshRecent();
+    if (!session.isDirty) {
+      try { await localStore.clearRecovery(captured.document.id, workspaceLease.current!.owner); setRecoveryStatus(''); }
+      catch { /* The local snapshot remains saved. */ }
+    }
+    setFileStatus('Saved to this browser as ' + name + '.');
+    setBackstageOpen(false);
+    return true;
+  }
+
+  async function confirmReplacement(): Promise<boolean> {
+    if (!session.isDirty) return true;
+    const choice = await askReplacement();
+    if (choice === 'cancel') {
+      setFileStatus('Operation cancelled.');
+      return false;
+    }
+    if (choice === 'save') return saveCurrent();
+    recoveryEpoch.current++;
+    try { await clearRecoveryFor(session.active.id); }
+    catch (error) {
+      setFileMessage({ title: 'Recovery copy could not be removed', message: error instanceof Error ? error.message : String(error) });
+      return false;
+    }
+    return true;
+  }
+
+  async function adoptOpened(document: WorkbookDocument, record: LocalWorkspaceRecord, saved = true) {
+    const basis = session.capture();
+    if (!await confirmReplacement()) return;
+    const lease = workspaceLease.current!;
+    if (!await lease.switchTo(document.id)) throw new WorkspaceConflictError(document.id);
+    if (!session.tryAdopt(basis, document, saved)) {
+      await lease.switchTo(basis.document.id);
+      throw new LocalWorkspaceError('Workbook changed while opening. Your current workbook was kept; try Open again.');
+    }
+    const active: ActiveFileContext = {
+      name: record.name, source: saved ? (record.source === 'xlsx' ? 'xlsx' : 'native') : 'recovery',
+      ...(record.fileHandle && { fileHandle: record.fileHandle }),
+      ...(record.fileSize !== undefined && { fileSize: record.fileSize }),
+      ...(record.fileLastModified !== undefined && { fileLastModified: record.fileLastModified }),
+      ...(record.sourceFileName && { sourceFileName: record.sourceFileName }),
+    };
+    setActiveFile(active);
+    resetWorkbookUi(document);
+    try {
+      if (saved) await localStore.saveWorkspace(record, lease.owner);
+      await refreshRecent();
+      setStorageError('');
+    } catch (error) {
+      if (error instanceof WorkspaceConflictError) throw error;
+      setStorageError('The workbook opened, but its local Recent entry could not be updated. ' + (error instanceof Error ? error.message : String(error)));
+    }
+    setBackstageOpen(false);
+    setFileStatus((saved ? 'Opened ' : 'Recovered ') + record.name + '.');
+  }
+
+  async function openExternalWorkbook() {
+    const chosen = await pickNativeOpenFile();
+    if (!chosen) { setFileStatus('Open cancelled.'); return; }
+    if (!chosen.file.name.toLowerCase().endsWith('.exlt')) {
+      throw new LocalWorkspaceError('Open an .exlt workbook. XLSX import is handled by the workbook import workflow.');
+    }
+    setFileStatus('Opening ' + chosen.file.name + '…');
+    const document = await loadNativePackage(chosen.file);
+    const version = fileVersion(chosen.file);
+    const record: LocalWorkspaceRecord = {
+      id: document.id,
+      name: chosen.file.name.replace(/\.exlt$/iu, '') || chosen.file.name,
+      package: chosen.file,
+      createdAt: Date.now(), updatedAt: Date.now(), lastUsedAt: Date.now(), source: 'native',
+      sourceFileName: chosen.file.name,
+      ...(chosen.handle && { fileHandle: chosen.handle }),
+      fileSize: version.size, fileLastModified: version.lastModified,
+    };
+    await adoptOpened(document, record);
+  }
+
+  async function openRecentWorkbook(record: LocalWorkspaceRecord) {
+    const latest = await localStore.getWorkspace(record.id);
+    if (!latest) throw new LocalWorkspaceError('This Recent workbook is no longer available in this browser.');
+    const document = await loadNativePackage(latest.package);
+    if (document.id !== latest.id) throw new LocalWorkspaceError('The stored Recent workbook identity is invalid.');
+    await adoptOpened(document, { ...latest, lastUsedAt: Date.now() });
+  }
+
+  async function createBlankWorkbook(keepBackstage = false) {
+    const oldId = session.active.id;
+    if (!await confirmReplacement()) return;
+    const document = newWorkbook(makeId);
+    const lease = workspaceLease.current!;
+    if (!await lease.switchTo(document.id)) throw new WorkspaceConflictError(document.id);
+    const basis = session.capture();
+    if (!session.tryAdopt(basis, document, true)) {
+      await lease.switchTo(oldId);
+      throw new LocalWorkspaceError('Workbook changed while creating a new workbook. Try New again.');
+    }
+    setActiveFile({ name: 'Book1', source: 'untitled' });
+    resetWorkbookUi(document);
+    if (keepBackstage) setBackstageOpen(true); else setBackstageOpen(false);
+    setFileStatus(keepBackstage ? 'Workbook closed.' : 'New blank workbook.');
+  }
+
+  async function exportWorkbook() {
+    const captured = session.capture();
+    const packageBlob = await saveNativePackage(captured.document);
+    const suggestedName = (activeFile.name || 'Book1') + '.exlt';
+    if (hasNativeSavePicker()) {
+      const handle = await pickNativeSaveFile(suggestedName);
+      if (!handle) { setFileStatus('Export cancelled.'); return; }
+      await writeNativeFile(handle, packageBlob);
+      setFileStatus('Exported ' + handle.name + '. The local saved state is unchanged.');
+    } else {
+      downloadNativePackage(packageBlob, suggestedName);
+      setFileStatus('Export download started. This does not change the local saved state.');
+    }
+    setBackstageOpen(false);
+  }
+
+  async function runFileOperation(title: string, action: () => Promise<void>) {
+    if (fileBusyRef.current) return;
+    if (!preferencesReady) { setFileStatus('Local workspace is still starting. Try again in a moment.'); return; }
+    if (workspaceConflict) return;
+    if (root.current?.querySelector('dialog[open]')) return;
+    if (!editing.commit()) return;
+    fileBusyRef.current = true;
+    setFileBusy(true);
+    try { await action(); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFileMessage({ title: error instanceof WorkspaceConflictError ? 'Workbook already open' : title + ' failed', message });
+      setFileStatus(title + ' failed. Your current workbook was kept.');
+    } finally {
+      fileBusyRef.current = false;
+      setFileBusy(false);
+    }
+  }
+
+  async function runFileAction(action: FileAction) {
+    if (action === 'options') {
+      if (root.current?.querySelector('dialog[open]')) return;
+      const mode = await askOptions();
+      if (mode) {
+        scheduler.current?.setMode(mode);
+        setPreferences(current => ({ ...current, nativeCalculation: mode }));
+    setFileStatus('Calculation preference saved.');
+      }
+      return;
+    }
+    await runFileOperation(action === 'saveAs' ? 'Save As' : action[0]!.toUpperCase() + action.slice(1), async () => {
+      switch (action) {
+        case 'new': await createBlankWorkbook(); break;
+        case 'open': await openExternalWorkbook(); break;
+        case 'save': await saveCurrent(); break;
+        case 'saveAs':
+          if (hasNativeSavePicker()) {
+            const handle = await pickNativeSaveFile(activeFile.name + '.exlt');
+            if (!handle) { setFileStatus('Save As cancelled.'); return; }
+            await saveAsToHandle(handle);
+          } else {
+            const name = await askSaveAsName();
+            if (name !== null) await saveAsLocally(name);
+          }
+          break;
+        case 'export': await exportWorkbook(); break;
+        case 'close': await createBlankWorkbook(true); break;
+      }
+    });
+  }
+
+  async function chooseRecovery(choice: 'recover' | 'discard') {
+    const recovery = pendingRecovery;
+    if (!recovery) return;
+    setPendingRecovery(undefined);
+    if (choice === 'discard') {
+      try {
+        await localStore.clearRecovery(recovery.workbookId, workspaceLease.current!.owner);
+        setRecoveryStatus('');
+        const blank = session.active.id;
+        if (!await workspaceLease.current!.switchTo(blank)) throw new WorkspaceConflictError(blank);
+        setFileStatus('Recovery copy discarded.');
+      } catch (error) {
+        setFileMessage({ title: 'Recovery copy could not be removed', message: error instanceof Error ? error.message : String(error) });
+      }
+      return;
+    }
+    try {
+      const document = await loadNativePackage(recovery.package);
+      if (document.id !== recovery.workbookId) throw new LocalWorkspaceError('Recovery workbook identity is invalid.');
+      const basis = session.capture();
+      if (!session.tryAdopt(basis, document, false)) throw new LocalWorkspaceError('The current workbook changed during recovery.');
+      setActiveFile({ name: recovery.name, source: 'recovery' });
+      resetWorkbookUi(document);
+      setFileStatus('Recovered ' + recovery.name + '. Save the workbook to keep these changes.');
+    } catch (error) {
+      setFileMessage({ title: 'Recovery failed', message: error instanceof Error ? error.message : String(error) });
+    }
+  }
 
   function setSelection(next: GridSelection): boolean {
     if (rangePicker) {
@@ -274,6 +858,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   function onView(patch: Partial<SheetView>) {
     if (!editing.commit()) return;
     setView(current => ({ ...current, ...patch }));
+  }
+
+  function setCalculationMode(mode: CalculationMode) {
+    if (!editing.commit()) return;
+    scheduler.current?.setMode(mode);
+    setPreferences(current => ({ ...current, nativeCalculation: mode }));
   }
 
   function goTo(value: string) {
@@ -799,7 +1389,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const { basis, matches } = searchMatches(options);
       rememberSearchValue(options.query);
       return { status: matches.length + ' cell(s) found.',
-        rows: searchResultRows(basis, 'Book1', matches, options) };
+        rows: searchResultRows(basis, activeFile.name, matches, options) };
     } catch (error) { return { status: errorText(error) }; }
   }
 
@@ -855,7 +1445,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const refreshed = session.capture();
       const remaining = findMatches(refreshed.document, searchScope(refreshed, options), options);
       return { status: 'Replaced ' + targets.length + ' cell(s).',
-        ...(listShown && { rows: searchResultRows(refreshed, 'Book1', remaining, options) }),
+        ...(listShown && { rows: searchResultRows(refreshed, activeFile.name, remaining, options) }),
         ...(next && { match: next }) };
     } catch (error) { return { status: errorText(error) }; }
   }
@@ -1247,6 +1837,18 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   return (
     <div className="app-shell" ref={root} onKeyDownCapture={event => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !(event.target instanceof Element && event.target.closest('dialog[open]'))) {
+        const key = event.key.toLowerCase();
+        const action: FileAction | undefined = key === 'n' && !event.shiftKey ? 'new' :
+          key === 'o' && !event.shiftKey ? 'open' : key === 's' && event.shiftKey ? 'saveAs' :
+          key === 's' ? 'save' : key === 'w' && !event.shiftKey ? 'close' : undefined;
+        if (action) {
+          event.preventDefault();
+          event.stopPropagation();
+          void runFileAction(action);
+          return;
+        }
+      }
       if (event.key === 'Escape' && (painter || borderTool) && !(event.target instanceof Element && event.target.closest('dialog, [popover]:popover-open, [role="menu"]'))) {
         event.preventDefault();
         event.stopPropagation();
@@ -1255,7 +1857,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         editing.clearStatus();
       }
     }}>
-      <header className="title-bar">
+      <header className="title-bar" inert={backstageOpen || !!workspaceConflict}>
         <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none"
           stroke="currentColor" strokeWidth="1.4"><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M3 12h14M8 3v14" /></svg></span>
         <div className="quick-access" role="group" aria-label="Quick Access">
@@ -1264,20 +1866,19 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           <button type="button" className="icon-button" aria-label="Redo" title={session.canRedo ? 'Redo' : 'Nothing to redo'}
             disabled={!session.canRedo} onClick={() => editing.moveHistory(false)}><ShellIcon icon="redo" /></button>
         </div>
-        <span className="workbook-title">Book1</span>
+        <span className="workbook-title">{activeFile.name}{session.isDirty ? ' *' : ''}</span>
         <span className="product-title">ExcelLight Web</span>
       </header>
 
-      <Ribbon onAlign={runAlignment} onMerge={runMerge} merged={!!mergeAt(sheet, selection.anchor.row, selection.anchor.column)} borders={{ action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode, onAction: runBorder,
+      <Ribbon inert={backstageOpen || !!workspaceConflict} fileBackstageOpen={backstageOpen} onFileBackstage={() => setBackstageOpen(true)}
+        onAlign={runAlignment} onMerge={runMerge} merged={!!mergeAt(sheet, selection.anchor.row, selection.anchor.column)} borders={{ action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode, onAction: runBorder,
         onStyle: style => { setLineStyle(style); runBorder(borderTool?.mode ?? 'draw'); },
         onColor: color => { setLineColor(color); runBorder(borderTool?.mode ?? 'draw'); },
         onDialog: () => openStructure('format-cells', undefined, 'Border') }} cell={findCell(sheet, selection.anchor)} onNumberFormat={runNumberFormat} onAppearance={runAppearance}
         onAppearanceError={(error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); }}
         onFormatDialog={tab => openStructure('format-cells', undefined, tab)}
         painter={painter ? painter.locked ? 'locked' : 'single' : undefined} onPainter={armPainter} view={view} onView={onView} onEdit={run} onStructure={openStructure}
-        calculationMode={calculation.mode} onCalculationMode={mode => {
-          if (editing.commit()) scheduler.current?.setMode(mode);
-        }} onCalculate={scope => {
+        calculationMode={calculation.mode} onCalculationMode={setCalculationMode} onCalculate={scope => {
           if (editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
         }} onInsertFunction={name => {
           if (editing.commit()) editing.begin(activeTarget, view.formulaBar ? 'formula' : 'inline', '=' + name + '()', true);
@@ -1303,7 +1904,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       onClearFilter={clearFilter} onReapplyFilter={reapplyFilter}
       />
 
-      <main className="workbook" aria-label="Workbook">
+      <main className="workbook" aria-label="Workbook" inert={backstageOpen || !!workspaceConflict}>
         {(view.formulaBar || editing.draft?.surface === 'formula') && <div className="formula-bar">
           <NameBox selection={selection} goTo={goTo} cancel={() => worksheet.current?.focus()} />
           <span className="formula-symbol" aria-hidden="true">ƒx</span>
@@ -1395,12 +1996,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         </nav>
       </main>
 
-      <footer className="status-bar" aria-label="Worksheet status">
-        <span className={editing.status || calculationMessage ? 'edit-status' : 'ready'} role="status">
-          {[editing.status, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
+      <footer className="status-bar" aria-label="Worksheet status" inert={backstageOpen || !!workspaceConflict}>
+        <span className={editing.status || fileStatus || calculationMessage ? 'edit-status' : 'ready'} role="status">
+          {[editing.status, fileStatus, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
             ' · Select a destination or press Enter · Esc cancels', borderTool && borderModes[borderTool.mode] + ' · Esc exits', calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
         </span>
-        {!editing.status && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
+        {!editing.status && !fileStatus && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
         <output className="selection-stats" aria-label="Selection statistics" aria-live="off">
           <span>Sum: {statisticsFormat.format(stats.sum)}</span>
           <span>Average: {stats.average === undefined ? '—' : statisticsFormat.format(stats.average)}</span>
@@ -1417,6 +2018,23 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             onClick={() => { if (editing.commit()) setZoomDialog(true); }}>{view.zoom}%</button>
         </div>
       </footer>
+      <FileBackstage open={backstageOpen} busy={fileBusy || !preferencesReady || !!workspaceConflict}
+        recent={recentWorkbooks} status={fileStatus} recoveryStatus={recoveryStatus} onBack={() => setBackstageOpen(false)}
+        onAction={action => { void runFileAction(action); }}
+        onRecent={record => { void runFileOperation('Open', () => openRecentWorkbook(record)); }}
+        {...(storageError ? { storageError } : {})} />
+      {pendingRecovery && <RecoveryDialog recovery={pendingRecovery} onChoice={choice => { void chooseRecovery(choice); }} />}
+      {replacementPrompt && <UnsavedChangesDialog name={activeFile.name} onChoice={chooseReplacement} />}
+      {optionsOpen && <OptionsDialog preferences={preferences} onApply={mode => finishOptions(mode)} onCancel={() => finishOptions(null)} />}
+      {saveAsOpen && <SaveAsDialog initialName={activeFile.name} onSave={finishSaveAsName} onCancel={() => finishSaveAsName(null)} />}
+      {fileMessage && <FileMessageDialog title={fileMessage.title} message={fileMessage.message} onClose={() => setFileMessage(undefined)} />}
+      {workspaceConflict && <div className="workspace-conflict-cover" role="alertdialog" aria-modal="true" aria-labelledby="workspace-conflict-title">
+        <section>
+          <h2 id="workspace-conflict-title">Workbook open in another tab</h2>
+          <p>This browser-local workbook is being edited in another tab. Editing here is paused to protect its saved and recovery copies.</p>
+          <button type="button" className="file-primary" onClick={() => window.location.reload()}>Reload workbook</button>
+        </section>
+      </div>}
       {editing.manualPaste && <PasteTextDialog mode={editing.manualPaste.mode} error={editing.status}
         onSubmit={editing.submitManualPaste} onClose={editing.closeManualPaste} />}
       {menu && <StructureMenu {...menu} onAction={action => openStructure(action, menu.target)}

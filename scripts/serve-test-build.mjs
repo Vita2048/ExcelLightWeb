@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, sep, extname } from 'node:path';
 
 const root = resolve(process.argv[2] ?? 'dist');
+const port = Number(process.env.PLAYWRIGHT_TEST_PORT ?? 4173);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm', '.png': 'image/png', '.svg': 'image/svg+xml' };
 createServer(async (request, response) => {
   try {
@@ -15,4 +16,4 @@ createServer(async (request, response) => {
     const bytes = await readFile(file);
     response.writeHead(200, { 'Content-Type': types[extname(file)] ?? 'application/octet-stream' }).end(bytes);
   } catch { response.writeHead(404).end('Not found'); }
-}).listen(4173, '127.0.0.1', () => process.stdout.write('Production test server: http://127.0.0.1:4173\n'));
+}).listen(port, '127.0.0.1', () => process.stdout.write(`Production test server: http://127.0.0.1:${port}\n`));

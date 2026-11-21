@@ -128,6 +128,14 @@ Remove-Item Env:S03_INTERCHANGE_OUT
 
 Use `export` in place of `check` with a scratch directory to generate the original samples. The checked-in files are enough for Node and browser verification on other machines. [Adapter decision and budgets](decisions/ADR-003-formula-and-file-adapters.md)
 
+## Native .exlt persistence
+
+Run `npx vitest run tests/parity/native-package.test.ts` for the v1 native package adapter. It checks ZIP structure and size limits, duplicate/traversal rejection, workbook/cache validation, PNG payload integrity, preservation of a live session after rejected parsing, and web-save-desktop equality for DesktopStyles, Showcase and Support-SLA. The desktop comparisons use the existing Release test assemblies; `tests/desktop-interchange/Interchange.csproj` targets .NET 10 and defaults to `C:/Temp/ExcelLight/tests/ExcelLite.Tests/bin/Release/net10.0`. Pass `-p:DesktopBin=<absolute path>` to `dotnet run` when those assemblies are elsewhere. No Python code in a package is executed by these checks.
+
+## Browser file lifecycle and local recovery
+
+Run `npx vitest run tests/unit/local-workspace.test.ts tests/unit/native-files.test.ts` for v1 preference migration, opt-in consent validation, file permission denial, external-file version conflicts and writer aborts. After a production build, run `npm run test:e2e -- tests/e2e/files.spec.ts` in Chromium, Firefox and WebKit. The real browser journeys cover the desktop File backstage geometry and General/Formulas Options, local Save and Recent, native package open, download Export dirty-state behavior, Save/Don't Save/Cancel, recovery after reload, two-tab ownership, IndexedDB quota failure and transactional migration success/failure. The geometry checks pin the desktop 200px navigation rail, 32px Home inset, 520px Options dialog and 140px category rail. IndexedDB stores package payloads as `ArrayBuffer` for WebKit compatibility while the adapter returns `Blob` packages to the native reader. Accessible worksheet cell labels live in a clipped projection; assert `aria-label` instead of visual visibility for those cells. The test server defaults to port 4173; set `PLAYWRIGHT_TEST_PORT` to use another local port when that port is occupied.
+
 ## Test layers
 
 | Layer | What it proves | Examples |
