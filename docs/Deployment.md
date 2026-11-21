@@ -18,7 +18,7 @@ The S09 production browser suite loads the native calculation worker from the bu
 4. In **Actions → Deploy GitHub Pages**, select **Run workflow** on main. The workflow installs with npm ci, typechecks/tests/builds, runs Chromium/Firefox/WebKit tests, uploads dist and deploys through the github-pages environment.
 5. Record the returned hosted URL and source revision in the release handover. Verify a reload at the repository URL, worker/runtime requests, local save/export/reopen and offline-ready behavior. The current build supports worksheet and hosting checks. Product release acceptance belongs to S26.
 
-Deployment is manually triggered to avoid publishing partial sprint work on every push. It grants contents:read globally and pages:write/id-token:write only to the deployment job; main is required for deployment. The github-pages environment can hold GitHub-native review rules if desired. No personal deployment token is needed. Failed checks prevent deployment.
+Deployment is manually triggered to avoid publishing partial sprint work on every push. It grants contents:read globally and pages:write/id-token:write only to the deployment job; main is required for deployment. The github-pages environment can hold GitHub-native review rules if desired. No personal deployment token is needed. Failed checks prevent deployment. The Linux job does not check out the separately maintained C# desktop source or its Release binaries; the two native-package desktop-oracle assertions are reported skipped when those assemblies are absent. That skip is not a desktop parity result; run them locally with `DESKTOP_BIN` set to the desktop test output folder.
 
 ## Runtime packaging before product release
 

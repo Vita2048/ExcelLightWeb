@@ -157,6 +157,11 @@ async function readLocalRecoveryCount(page: Page): Promise<number> {
 test('uses the desktop File backstage and persists the Formulas calculation choice', async ({ page }) => {
   await page.goto(appPath);
   await expect(page.getByRole('grid')).toBeVisible();
+  const quickAccess = page.getByRole('group', { name: 'Quick Access' });
+  await expect(quickAccess.getByRole('button')).toHaveCount(3);
+  await expect(quickAccess.getByRole('button').nth(0)).toHaveAccessibleName('Save');
+  await expect(quickAccess.getByRole('button').nth(1)).toHaveAccessibleName('Undo');
+  await expect(quickAccess.getByRole('button').nth(2)).toHaveAccessibleName('Redo');
   await openFileBackstage(page);
   const backstage = page.getByRole('dialog', { name: 'File Home' });
   await expect(backstage.locator('.file-backstage-nav')).toHaveCSS('width', '200px');
@@ -194,6 +199,40 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await expect(page.locator('input[name="native-calculation"][value="manual"]')).toBeChecked();
 });
 
+test('Quick Access Save names the browser copy and Recent can remove it without touching disk', async ({ page }) => {
+  await disableFileSystemPickers(page);
+  await page.goto(appPath);
+  const quickAccess = page.getByRole('group', { name: 'Quick Access' });
+  const save = quickAccess.getByRole('button', { name: 'Save', exact: true });
+  await expect(save).toBeEnabled();
+  const grid = page.getByRole('grid');
+  await grid.focus();
+  await page.keyboard.type('Quick Access save');
+  await page.keyboard.press('Enter');
+  await save.click();
+  const nameDialog = page.getByRole('dialog', { name: 'Save to this browser' });
+  await expect(nameDialog).toBeVisible();
+  await expect(nameDialog.getByRole('textbox', { name: 'Workbook name' })).toHaveValue('Book1');
+  await nameDialog.getByRole('textbox', { name: 'Workbook name' }).fill('Forecast');
+  await nameDialog.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.workbook-title')).toHaveText('Forecast');
+  await expect(page.getByRole('button', { name: 'Sheet1', exact: true })).toBeVisible();
+  await expect(page.locator('.status-bar [role="status"]')).toContainText('Saved to this browser');
+  await expect.poll(() => readLocalWorkbook(page, 'Forecast')).toBe(true);
+  await openFileBackstage(page);
+  const remove = page.getByRole('button', { name: 'Remove Forecast from this browser' });
+  await expect(remove).toBeDisabled();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.locator('.workbook-title')).toHaveText('Book1');
+  await expect(remove).toBeEnabled();
+  await remove.click();
+  const removal = page.getByRole('dialog', { name: 'Remove Forecast from this browser?' });
+  await expect(removal.getByText(/does not delete an \.exlt file in Downloads/)).toBeVisible();
+  await removal.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Open recent Forecast' })).toHaveCount(0);
+  await expect.poll(() => readLocalWorkbook(page, 'Forecast')).toBe(false);
+});
+
 test('opens a native workbook, saves locally, lists Recent and exports without marking later edits saved', async ({ page }) => {
   await disableFileSystemPickers(page);
   await page.goto(appPath);
@@ -203,7 +242,7 @@ test('opens a native workbook, saves locally, lists Recent and exports without m
   await page.keyboard.type('Saved in browser');
   await page.keyboard.press('Enter');
   await openFileBackstage(page);
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.workbook-title')).toHaveText('Showcase');
   await expect(page.locator('.status-bar [role="status"]')).toContainText('Saved to this browser');
 
@@ -242,8 +281,12 @@ test('flushes an editor before New and honors Save, Don’t Save and Cancel', as
   await expect(page.getByRole('gridcell', { name: 'A1, Draft text' })).toHaveAttribute('aria-label', 'A1, Draft text');
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await page.getByRole('dialog', { name: 'Save changes to Book1?' }).getByRole('button', { name: 'Save', exact: true }).click();
+  const localSave = page.getByRole('dialog', { name: 'Save to this browser' });
+  await expect(localSave).toBeVisible();
+  await localSave.getByRole('textbox', { name: 'Workbook name' }).fill('Draft workbook');
+  await localSave.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.workbook-title')).toHaveText('Book1');
-  await expect.poll(() => readLocalWorkbook(page, 'Book1')).toBe(true);
+  await expect.poll(() => readLocalWorkbook(page, 'Draft workbook')).toBe(true);
 
   await grid.focus();
   await page.keyboard.type('Discard me');
@@ -294,7 +337,7 @@ test('keeps imported-source provenance when a Recent workbook is locally saved',
   await page.keyboard.type('Edited imported source');
   await page.keyboard.press('Enter');
   await openFileBackstage(page);
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => readLocalProvenance(page, 'Showcase')).toEqual({ source: 'xlsx', sourceFileName: 'annual-report.xlsx' });
 });
 
@@ -328,6 +371,12 @@ test('does not open the same Recent workbook in two tabs and releases it through
   const second = await page.context().newPage();
   await second.goto(appPath);
   await openFileBackstage(second);
+  await second.getByRole('button', { name: 'Remove Showcase from this browser' }).click();
+  const removal = second.getByRole('dialog', { name: 'Remove Showcase from this browser?' });
+  await removal.getByRole('button', { name: 'Remove', exact: true }).click();
+  await expect(second.getByRole('dialog', { name: 'Workbook already open' })).toBeVisible();
+  await second.getByRole('dialog', { name: 'Workbook already open' }).getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(second.getByRole('button', { name: 'Open recent Showcase' })).toBeVisible();
   await second.getByRole('button', { name: 'Open recent Showcase' }).click();
   await expect(second.getByRole('dialog', { name: 'Workbook already open' })).toBeVisible();
   await expect(second.locator('.workbook-title')).toHaveText('Book1');
@@ -359,7 +408,7 @@ test('an IndexedDB transaction failure preserves the dirty workbook and its valu
     };
   });
   await openFileBackstage(page);
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Save failed' })).toBeVisible();
   await page.getByRole('dialog', { name: 'Save failed' }).getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.locator('.workbook-title')).toHaveText('Book1 *');

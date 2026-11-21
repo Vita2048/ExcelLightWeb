@@ -276,6 +276,34 @@ export class LocalWorkspaceStore {
     return value === undefined ? undefined : restoreWorkspace(value);
   }
 
+  async removeWorkspace(id: string, now = Date.now()): Promise<void> {
+    const db = await this.#open();
+    const transaction = db.transaction(['locks', 'workspaces', 'recovery'], 'readwrite');
+    const done = transactionDone(transaction);
+    const locks = transaction.objectStore('locks');
+    const lockRequest = locks.get(id);
+    let conflict = false;
+    let requestError: DOMException | null = null;
+    lockRequest.onerror = () => { requestError = lockRequest.error; };
+    lockRequest.onsuccess = () => {
+      const lock = lockRequest.result as WorkspaceLeaseRecord | undefined;
+      if (lock && lock.expiresAt > now) {
+        conflict = true;
+        transaction.abort();
+        return;
+      }
+      transaction.objectStore('workspaces').delete(id);
+      transaction.objectStore('recovery').delete(recoveryKeyPrefix + id);
+      if (lock) locks.delete(id);
+    };
+    try { await done; }
+    catch (error) {
+      if (conflict) throw new WorkspaceConflictError(id);
+      if (requestError) throw requestError;
+      throw error;
+    }
+  }
+
   async listRecoveries(): Promise<readonly RecoveryRecord[]> {
     const db = await this.#open();
     const transaction = db.transaction('recovery', 'readonly');

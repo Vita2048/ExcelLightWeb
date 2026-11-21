@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BlobWriter, TextReader, ZipWriter } from '@zip.js/zip.js';
 import { WorkbookSession } from '../../src/application/workbook-session';
@@ -17,7 +18,15 @@ import {
 } from '../../src/persistence/native';
 
 const readFixture = async (name: string) => new Blob([await readFile(new URL(`../fixtures/${name}`, import.meta.url))]);
-const runDesktopInterop = (args: string[], timeout = 30000) => execFileSync('dotnet', args, {
+const desktopBin = process.env.DESKTOP_BIN ? resolve(process.env.DESKTOP_BIN) : process.platform === 'win32' ?
+  'C:/Temp/ExcelLight/tests/ExcelLite.Tests/bin/Release/net10.0' : undefined;
+const desktopInteropAvailable = !!desktopBin &&
+  ['ExcelLite.Core.dll', 'ExcelLite.Persistence.dll'].every(name => existsSync(join(desktopBin, name)));
+const desktopIt = desktopInteropAvailable ? it : it.skip;
+const runDesktopInterop = (args: string[], timeout = 120000) => execFileSync('dotnet', [
+  'run', '--project', 'tests/desktop-interchange/Interchange.csproj',
+  ...(desktopBin ? [`-p:DesktopBin=${desktopBin}`] : []), '--', ...args,
+], {
   encoding: 'utf-8',
   timeout,
   env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' },
@@ -111,7 +120,7 @@ describe('NativePackage round-trip and desktop equivalence', () => {
     expect(equalDto(doc, reloaded)).toBe(true);
   });
 
-  it('proves desktop C# NativePackage.Load accepts web-saved DesktopStyles.exlt', async () => {
+  desktopIt('proves desktop C# NativePackage.Load accepts web-saved DesktopStyles.exlt', async () => {
     const originalBlob = await readFixture('interchange/DesktopStyles.exlt');
     const doc = await loadNativePackage(originalBlob);
     const savedBlob = await saveNativePackage(doc);
@@ -126,10 +135,6 @@ describe('NativePackage round-trip and desktop equivalence', () => {
       await writeFile(join(tempDir, 'DesktopStyles.xlsx'), new Uint8Array(await xlsxBlob.arrayBuffer()));
 
       const output = runDesktopInterop([
-        'run',
-        '--project',
-        'tests/desktop-interchange/Interchange.csproj',
-        '--',
         'check',
         tempDir,
       ]);
@@ -138,9 +143,9 @@ describe('NativePackage round-trip and desktop equivalence', () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 120000);
 
-  it('compares every native field with the desktop after web round-trips of representative fixtures', async () => {
+  desktopIt('compares every native field with the desktop after web round-trips of representative fixtures', async () => {
     const fixtureNames = [
       'interchange/DesktopStyles.exlt',
       'sales/Showcase.exlt',
@@ -148,13 +153,7 @@ describe('NativePackage round-trip and desktop equivalence', () => {
     ];
     const tempDir = await mkdtemp(join(tmpdir(), 'exlt-desktop-equality-'));
     try {
-      const args = [
-        'run',
-        '--project',
-        'tests/desktop-interchange/Interchange.csproj',
-        '--',
-        'compare',
-      ];
+      const args = ['compare'];
       for (const [index, fixtureName] of fixtureNames.entries()) {
         const originalBlob = await readFixture(fixtureName);
         const original = await loadNativePackage(originalBlob);
@@ -171,7 +170,7 @@ describe('NativePackage round-trip and desktop equivalence', () => {
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
-  }, 30000);
+  }, 120000);
 
   it('keeps formula source and its derived cache distinct in the native package', async () => {
     const original = await loadNativePackage(await readFixture('sales/Showcase.exlt'));

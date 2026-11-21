@@ -101,14 +101,19 @@ export function OptionsDialog({ preferences, onApply, onCancel }: {
   </dialog>;
 }
 
-export function SaveAsDialog({ initialName, onSave, onCancel }: {
+export function SaveAsDialog({ initialName, purpose, onSave, onCancel }: {
   readonly initialName: string;
+  readonly purpose: 'browser-save' | 'local-save-as';
   readonly onSave: (name: string) => void;
   readonly onCancel: () => void;
 }) {
   const dialog = useModalDialog();
   const [name, setName] = useState(initialName);
   const [error, setError] = useState('');
+  const title = purpose === 'browser-save' ? 'Save to this browser' : 'Save As';
+  const description = purpose === 'browser-save' ?
+    'This saves the workbook in this browser, not to a disk folder. Use Export when you want an .exlt file on disk.' :
+    'This saves in this browser under the name shown. It does not write to a disk folder; use Export to download an .exlt file.';
   return <dialog ref={dialog} className="paste-dialog file-modal save-as-dialog" aria-labelledby="saveas-title"
     onCancel={event => { event.preventDefault(); onCancel(); }}>
     <form onSubmit={event => {
@@ -117,15 +122,33 @@ export function SaveAsDialog({ initialName, onSave, onCancel }: {
       if (!clean || clean.length > 120 || /[\\/\0]/u.test(clean)) { setError('Enter a workbook name without path separators.'); return; }
       onSave(clean);
     }}>
-      <DialogTitleBar><h2 id="saveas-title">Save As</h2>
-        <button type="button" className="format-dialog-close" aria-label="Close Save As" onClick={onCancel}>×</button>
+      <DialogTitleBar><h2 id="saveas-title">{title}</h2>
+        <button type="button" className="format-dialog-close" aria-label={'Close ' + title} onClick={onCancel}>×</button>
       </DialogTitleBar>
+      <p className="save-as-explanation">{description}</p>
       <label className="save-as-name">Workbook name
         <input autoFocus value={name} maxLength={120} onChange={event => { setName(event.currentTarget.value); setError(''); }} />
       </label>
-      <p className={error ? 'file-dialog-error' : 'file-dialog-hint'} role="status">{error || 'Saved to this browser on this device.'}</p>
+      <p className={error ? 'file-dialog-error' : 'file-dialog-hint'} role="status">{error || 'Choose the name shown in File → Home → Recent.'}</p>
       <DialogActions onCancel={onCancel} confirmLabel="Save" />
     </form>
+  </dialog>;
+}
+
+export function RemoveWorkspaceDialog({ name, onChoice }: {
+  readonly name: string;
+  readonly onChoice: (remove: boolean) => void;
+}) {
+  const dialog = useModalDialog();
+  return <dialog ref={dialog} className="paste-dialog file-modal remove-workspace-dialog" aria-labelledby="remove-workspace-title"
+    onCancel={event => { event.preventDefault(); onChoice(false); }}>
+    <DialogTitleBar><h2 id="remove-workspace-title">Remove {name} from this browser?</h2></DialogTitleBar>
+    <p>This deletes the browser-local saved copy and its recovery data.</p>
+    <p>It does not delete an .exlt file in Downloads or any file on disk.</p>
+    <div className="dialog-actions">
+      <button type="button" className="file-danger" autoFocus onClick={() => onChoice(true)}>Remove</button>
+      <button type="button" onClick={() => onChoice(false)}>Cancel</button>
+    </div>
   </dialog>;
 }
 

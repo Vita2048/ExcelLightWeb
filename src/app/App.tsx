@@ -34,7 +34,7 @@ import {
 import { downloadNativePackage, fileVersion, hasNativeSavePicker, pickNativeOpenFile, pickNativeSaveFile,
   writeNativeFile } from '../persistence/local';
 import { FileBackstage, type FileAction } from '../features/files/FileBackstage';
-import { FileMessageDialog, OptionsDialog, RecoveryDialog, SaveAsDialog, UnsavedChangesDialog,
+import { FileMessageDialog, OptionsDialog, RecoveryDialog, RemoveWorkspaceDialog, SaveAsDialog, UnsavedChangesDialog,
   type ReplacementChoice } from '../features/files/FileDialogs';
 import {
   changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, parseNameExtent,
@@ -133,8 +133,9 @@ function NameBox({ selection, goTo, cancel }: {
   );
 }
 
-type Icon = 'undo' | 'redo' | 'previous' | 'next';
+type Icon = 'save' | 'undo' | 'redo' | 'previous' | 'next';
 const iconPath: Record<Icon, string> = {
+  save: 'M3 2.5h11.5L18 6v11.5H2V2.5h1Z M5 2.5v5h9v-5 M5 17.5v-6h10v6',
   undo: 'm6 5-4 4 4 4 M2 9h11a4 4 0 0 1 0 8H9',
   redo: 'm14 5 4 4-4 4 M18 9H7a4 4 0 0 0 0 8h4',
   previous: 'm12 5-5 5 5 5',
@@ -167,7 +168,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsResolver = useRef<((mode: CalculationMode | null) => void) | undefined>(undefined);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
+  const [saveNamePurpose, setSaveNamePurpose] = useState<'browser-save' | 'local-save-as'>('local-save-as');
   const saveAsResolver = useRef<((name: string | null) => void) | undefined>(undefined);
+  const [workspaceToRemove, setWorkspaceToRemove] = useState<LocalWorkspaceRecord>();
   const [fileMessage, setFileMessage] = useState<{ title: string; message: string }>();
   const workspaceLease = useRef<WorkspaceLease | undefined>(undefined);
   const workspaceConflictRef = useRef<(id: string) => void>(() => {});
@@ -395,9 +398,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     resolve?.(choice);
   }
 
-  function askSaveAsName(): Promise<string | null> {
+  function askSaveAsName(purpose: 'browser-save' | 'local-save-as' = 'local-save-as'): Promise<string | null> {
     return new Promise(resolve => {
       saveAsResolver.current = resolve;
+      setSaveNamePurpose(purpose);
       setSaveAsOpen(true);
     });
   }
@@ -592,6 +596,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return true;
   }
 
+  async function saveCurrentWithName(): Promise<boolean> {
+    if (activeFile.source !== 'untitled') return saveCurrent();
+    const name = await askSaveAsName('browser-save');
+    return name === null ? false : saveAsLocally(name);
+  }
+
   async function confirmReplacement(): Promise<boolean> {
     if (!session.isDirty) return true;
     const choice = await askReplacement();
@@ -599,7 +609,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       setFileStatus('Operation cancelled.');
       return false;
     }
-    if (choice === 'save') return saveCurrent();
+    if (choice === 'save') return saveCurrentWithName();
     recoveryEpoch.current++;
     try { await clearRecoveryFor(session.active.id); }
     catch (error) {
@@ -720,6 +730,21 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }
   }
 
+  async function decideWorkspaceRemoval(record: LocalWorkspaceRecord, remove: boolean) {
+    setWorkspaceToRemove(undefined);
+    if (!remove) return;
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+    if (record.id === session.active.id) {
+      setFileMessage({ title: 'Close this workbook first', message: 'Close this workbook before removing its browser-local saved copy.' });
+      return;
+    }
+    await runFileOperation('Remove local copy', async () => {
+      await localStore.removeWorkspace(record.id);
+      await refreshRecent();
+      setFileStatus('Removed ' + record.name + ' from this browser. Files on disk were not changed.');
+    });
+  }
+
   async function runFileAction(action: FileAction) {
     if (action === 'options') {
       if (root.current?.querySelector('dialog[open]')) return;
@@ -735,14 +760,16 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       switch (action) {
         case 'new': await createBlankWorkbook(); break;
         case 'open': await openExternalWorkbook(); break;
-        case 'save': await saveCurrent(); break;
+        case 'save':
+          await saveCurrentWithName();
+          break;
         case 'saveAs':
           if (hasNativeSavePicker()) {
             const handle = await pickNativeSaveFile(activeFile.name + '.exlt');
             if (!handle) { setFileStatus('Save As cancelled.'); return; }
             await saveAsToHandle(handle);
           } else {
-            const name = await askSaveAsName();
+            const name = await askSaveAsName('local-save-as');
             if (name !== null) await saveAsLocally(name);
           }
           break;
@@ -1861,6 +1888,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none"
           stroke="currentColor" strokeWidth="1.4"><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M3 12h14M8 3v14" /></svg></span>
         <div className="quick-access" role="group" aria-label="Quick Access">
+          <button type="button" className="icon-button" aria-label="Save" title="Save (Ctrl+S)"
+            disabled={!preferencesReady || fileBusy || !!workspaceConflict} onClick={() => { void runFileAction('save'); }}>
+            <ShellIcon icon="save" />
+          </button>
           <button type="button" className="icon-button" aria-label="Undo" title={session.canUndo ? 'Undo' : 'Nothing to undo'}
             disabled={!session.canUndo} onClick={() => editing.moveHistory(true)}><ShellIcon icon="undo" /></button>
           <button type="button" className="icon-button" aria-label="Redo" title={session.canRedo ? 'Redo' : 'Nothing to redo'}
@@ -2019,14 +2050,18 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         </div>
       </footer>
       <FileBackstage open={backstageOpen} busy={fileBusy || !preferencesReady || !!workspaceConflict}
-        recent={recentWorkbooks} status={fileStatus} recoveryStatus={recoveryStatus} onBack={() => setBackstageOpen(false)}
+        recent={recentWorkbooks} activeWorkspaceId={session.active.id} status={fileStatus} recoveryStatus={recoveryStatus} onBack={() => setBackstageOpen(false)}
         onAction={action => { void runFileAction(action); }}
         onRecent={record => { void runFileOperation('Open', () => openRecentWorkbook(record)); }}
+        onRemoveRecent={record => setWorkspaceToRemove(record)}
         {...(storageError ? { storageError } : {})} />
       {pendingRecovery && <RecoveryDialog recovery={pendingRecovery} onChoice={choice => { void chooseRecovery(choice); }} />}
       {replacementPrompt && <UnsavedChangesDialog name={activeFile.name} onChoice={chooseReplacement} />}
       {optionsOpen && <OptionsDialog preferences={preferences} onApply={mode => finishOptions(mode)} onCancel={() => finishOptions(null)} />}
-      {saveAsOpen && <SaveAsDialog initialName={activeFile.name} onSave={finishSaveAsName} onCancel={() => finishSaveAsName(null)} />}
+      {saveAsOpen && <SaveAsDialog initialName={activeFile.name} purpose={saveNamePurpose}
+        onSave={finishSaveAsName} onCancel={() => finishSaveAsName(null)} />}
+      {workspaceToRemove && <RemoveWorkspaceDialog name={workspaceToRemove.name}
+        onChoice={remove => { void decideWorkspaceRemoval(workspaceToRemove, remove); }} />}
       {fileMessage && <FileMessageDialog title={fileMessage.title} message={fileMessage.message} onClose={() => setFileMessage(undefined)} />}
       {workspaceConflict && <div className="workspace-conflict-cover" role="alertdialog" aria-modal="true" aria-labelledby="workspace-conflict-title">
         <section>

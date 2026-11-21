@@ -17,11 +17,12 @@ button:disabled { cursor: default; opacity: .5; }
   display: grid; place-items: center; width: 24px; height: 24px; color: var(--accent);
   background: #12232e; border-radius: 4px;
 }
-.quick-access { display: flex; gap: 2px; }
+.quick-access { display: flex; gap: 4px; }
 .icon-button {
   width: 29px; height: 28px; display: inline-grid; place-items: center;
   padding: 0; border: 1px solid transparent; border-radius: 4px; background: transparent;
 }
+.quick-access .icon-button { width: 32px; }
 .icon-button:not(:disabled):hover { background: var(--raised); }
 .workbook-title { border-left: 1px solid var(--border); padding-left: 12px; font-weight: 600; }
 .product-title { color: var(--muted); margin-left: auto; font-size: 12px; white-space: nowrap; }
@@ -733,11 +734,14 @@ button:disabled { cursor: default; opacity: .5; }
 .file-current-status, .file-recovery-status { min-height: 1.2em; color: var(--accent); }
 .file-storage-warning { max-width: 700px; padding: 8px 10px; border-left: 2px solid var(--accent); background: var(--panel); }
 .file-recent-list { display: grid; gap: 3px; max-width: 820px; margin: 0; padding: 0; list-style: none; }
-.file-recent-list button {
+.file-recent-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.file-recent-open {
   display: grid; width: 100%; gap: 3px; min-height: 49px; padding: 6px 10px; color: var(--text);
   background: transparent; border: 1px solid transparent; border-radius: 3px; text-align: left;
 }
-.file-recent-list button:hover:not(:disabled), .file-recent-list button:focus-visible { background: var(--panel); border-color: var(--border); }
+.file-recent-open:hover:not(:disabled), .file-recent-open:focus-visible { background: var(--panel); border-color: var(--border); }
+.file-recent-remove { min-height: 32px; padding: 4px 9px; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 3px; white-space: nowrap; }
+.file-recent-remove:hover:not(:disabled) { background: var(--raised); }
 .file-recent-name { font-weight: 600; }
 .file-recent-location { color: var(--muted); font-size: 12px; }
 .file-modal { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 16px; }
@@ -750,6 +754,8 @@ button:disabled { cursor: default; opacity: .5; }
 .file-modal .dialog-actions .file-primary { background: var(--accent); color: #001018; border-color: var(--accent); font-weight: 600; }
 .file-modal .dialog-actions button:hover { background: var(--raised); }
 .file-modal .dialog-actions .file-primary:hover { background: #8cddff; }
+.file-modal .dialog-actions .file-danger { background: #5c2323; color: #fff; border-color: #a64d4d; font-weight: 600; }
+.file-modal .dialog-actions .file-danger:hover { background: #752d2d; }
 .unsaved-dialog { width: min(485px, calc(100vw - 24px)); }
 .unsaved-dialog .dialog-actions { flex-wrap: wrap; }
 .recovery-dialog { width: min(500px, calc(100vw - 24px)); }
@@ -772,9 +778,11 @@ button:disabled { cursor: default; opacity: .5; }
 .python-option-group { opacity: .72; }
 .options-dialog > form > .dialog-actions { flex: none; margin: 0; padding: 11px 16px; background: var(--sheet); border-top: 1px solid var(--border); }
 .save-as-dialog { width: min(440px, calc(100vw - 24px)); }
+.save-as-explanation { color: var(--muted); font-size: 12px; }
 .save-as-name { margin-top: 12px; }
 .save-as-dialog .file-dialog-hint, .save-as-dialog .file-dialog-error { min-height: 1.3em; font-size: 12px; }
 .save-as-dialog .file-dialog-error { color: #ffb4ab; }
+.remove-workspace-dialog { width: min(480px, calc(100vw - 24px)); }
 .file-message-dialog { width: min(520px, calc(100vw - 24px)); }
 .workspace-conflict-cover {
   position: absolute; z-index: 12; inset: 39px 0 0; display: grid; place-items: center;
