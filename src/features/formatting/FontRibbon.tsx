@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { fontSizes, isFontFamily, parseFontSize, underlineOf, underlineOptions, underlinePatch,
   type AppearancePatch, type Underline } from '../../core/formats/appearance';
 import type { CellStyle } from '../../core/workbook';
@@ -10,6 +10,7 @@ function FontInput({ label, value, choices, onCommit }: {
   label: string; value: string; choices: readonly string[]; onCommit: (text: string, focus: boolean) => void;
 }) {
   const [draft, setDraft] = useState(value);
+  useEffect(() => { setDraft(value); }, [value]);
   return <div className="ribbon-font-input"><input role="combobox" aria-expanded="false" aria-label={label} title={label} value={draft} onChange={event => setDraft(event.currentTarget.value)}
     onBlur={() => { if (draft !== value) { setDraft(value); onCommit(draft, false); } }}
     onKeyDown={event => {

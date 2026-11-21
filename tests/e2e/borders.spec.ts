@@ -52,6 +52,7 @@ test('draws edge-only strokes and rectangular grids, erases a physical line and 
     await page.mouse.up();
   };
   const red = [255, 0, 0, 255], dark = [32, 32, 32, 255];
+  await (await menu(page)).getByRole('button', { name: 'Draw Border', exact: true }).click();
   await expect(status).toContainText('Draw Border');
   await grid.hover({ position: { x: 170, y: 53 } });
   await expect(grid).toHaveCSS('cursor', /crosshair/);
