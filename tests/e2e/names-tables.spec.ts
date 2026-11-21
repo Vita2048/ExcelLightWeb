@@ -261,6 +261,10 @@ test('keeps the grid still when Table Design closes and shrinks a table that has
     });
   });
   await go(page, 'D5');
+  await expect(page.getByRole('tab', { name: 'Table Design' })).toHaveCount(0);
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  }));
   const samples = await page.evaluate(() =>
     (window as unknown as { __stopLayoutWatch: () => { ribbon: number; top: number; scroll: number }[] }).__stopLayoutWatch());
   expect(samples.length).toBeGreaterThan(2);
@@ -268,7 +272,6 @@ test('keeps the grid still when Table Design closes and shrinks a table that has
   expect(span(samples.map(sample => sample.ribbon))).toBeLessThan(2);
   expect(span(samples.map(sample => sample.top))).toBeLessThan(2);
   expect(span(samples.map(sample => sample.scroll))).toBe(0);
-  await expect(page.getByRole('tab', { name: 'Table Design' })).toHaveCount(0);
 
   await go(page, 'A1');
   await page.getByRole('checkbox', { name: 'Total Row' }).check();

@@ -176,13 +176,15 @@ test('aligns stacked fixed-decimal glyphs at the top, bottom, and across the row
       return spans.map(({ top, bottom }) => ({ top: top / ratio, bottom: bottom / ratio }));
     });
   });
-  await expect.poll(async () => (await inkRows()).map(spans => spans.length)).toEqual([5, 5, 5]);
+await expect.poll(async () => {
   const [top, bottom, distributed] = await inkRows();
-  expect(top![0]!.top).toBeLessThanOrEqual(5);
-  expect(bottom!.at(-1)!.bottom).toBeGreaterThanOrEqual(178);
-  expect(distributed![0]!.top).toBeGreaterThan(top![0]!.top + 5);
-  expect(distributed!.at(-1)!.bottom - distributed![0]!.top).toBeGreaterThan(135);
-});
+  if (top!.length !== 5 || bottom!.length !== 5 || distributed!.length !== 5) return false;
+
+  return top![0]!.top <= 5 &&
+    bottom!.at(-1)!.bottom >= 178 &&
+    distributed![0]!.top > top![0]!.top + 5 &&
+    distributed!.at(-1)!.bottom - distributed![0]!.top > 135;
+}).toBe(true);
 
 test('shows desktop ribbon artwork, keyboard flyouts, and the Insert and Delete radio dialogs', async ({ page }) => {
   await page.goto(path);
