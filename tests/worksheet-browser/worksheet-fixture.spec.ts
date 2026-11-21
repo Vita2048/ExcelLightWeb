@@ -83,26 +83,29 @@ test('draws and erases on a frozen cell at zoom after scrolling both axes', asyn
   await commands.getByText('Line Style', { exact: true }).click();
   await commands.getByRole('button', { name: 'Thick', exact: true }).click();
   const box = (await grid.boundingBox())!;
-  // The row-1 bottom edge stays at 78 CSS pixels after both scroll offsets change.
-  await page.mouse.click(box.x + 108, box.y + 77);
-  await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 0, 0, 255]]);
+  // The frozen divider covers row 1's bottom edge, so draw on its visible top edge instead.
+  await page.mouse.click(box.x + 108, box.y + 39);
+  await expect.poll(() => pixels(page, [[108, 39]])).toEqual([[255, 0, 0, 255]]);
   await open();
   await commands.getByRole('button', { name: 'Erase Border', exact: true }).click();
-  await page.mouse.click(box.x + 108, box.y + 77);
-  await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 255, 255, 255]]);
+  await page.mouse.click(box.x + 108, box.y + 39);
+  await expect.poll(() => pixels(page, [[108, 39]])).toEqual([[255, 255, 255, 255]]);
   await grid.press('Control+z');
-  await expect.poll(() => pixels(page, [[108, 76]])).toEqual([[255, 0, 0, 255]]);
+  await expect.poll(() => pixels(page, [[108, 39]])).toEqual([[255, 0, 0, 255]]);
 });
 
 test('projects one merged fill through the four frozen panes and hides the internal gridlines', async ({ page }) => {
   await page.goto(path + '?frozen&merged');
   const grid = page.getByRole('grid', { name: 'Inputs' });
   const anchor = page.getByRole('gridcell', { name: 'A1, Anchor', exact: true });
-  await expect(anchor).toHaveAttribute('aria-rowspan', '2');
-  await expect(anchor).toHaveAttribute('aria-colspan', '2');
+  await expect(anchor).toHaveAttribute('aria-rowspan', '3');
+  await expect(anchor).toHaveAttribute('aria-colspan', '3');
   await grid.evaluate(node => node.scrollTo({ left: 12, top: 7 }));
   await expect.poll(() => grid.evaluate(node => [node.scrollLeft, node.scrollTop])).toEqual([12, 7]);
   const ink = [21, 96, 130, 255];
-  await expect.poll(() => pixels(page, [[120, 35], [160, 35], [120, 60], [160, 60], [139, 36], [120, 51], [260, 60]]))
-    .toEqual([ink, ink, ink, ink, ink, ink, [32, 32, 32, 255]]);
+  const divider = [160, 160, 160, 255];
+  await expect.poll(() => pixels(page, [
+    [120, 35], [160, 35], [120, 60], [160, 60],
+    [139, 36], [120, 51], [223, 60], [120, 70], [360, 60],
+  ])).toEqual([ink, ink, ink, ink, divider, divider, ink, ink, [32, 32, 32, 255]]);
 });

@@ -12,7 +12,7 @@ const frozenPanes = query.has('frozen') ? { rows: 1, columns: 1 } : base.frozenP
 const fixture: WorkbookDocument = { ...fresh, sheets: [
   { ...base, name: 'Inputs', frozenPanes, rows: [{ index: 4, size: 38 }, { index: 5, hidden: true }],
     columns: [{ index: 3, size: 112 }],
-    ...(merged && { merges: [{ row: 1, column: 1, rows: 2, columns: 2 }] }),
+    ...(merged && { merges: [{ row: 1, column: 1, rows: 3, columns: 3 }] }),
     cells: merged ? [{ id: 'merge', row: 1, column: 1, content: { kind: 'text', value: 'Anchor' }, style: { fillRgb: '156082' } }] : [
       { id: 'first', row: 1, column: 1, content: { kind: 'number', value: 8 }, style: { fillRgb: 'FFFFFF' } },
       { id: 'second', row: 2, column: 2, content: { kind: 'formula', source: '=A1*2' }, cache: { kind: 'number', value: 16 } },
