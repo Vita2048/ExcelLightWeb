@@ -43,7 +43,7 @@ test('draws edge-only strokes and rectangular grids, erases a physical line and 
   await gridlinesOff(page);
   await thickRed(page);
   const grid = page.getByRole('grid');
-  const status = page.getByRole('status').first();
+  const status = page.locator('.status-bar [role="status"]');
   const box = (await grid.boundingBox())!;
   const drag = async (x: number, y: number, toX: number, toY: number) => {
     await page.mouse.move(box.x + x, box.y + y);
