@@ -634,3 +634,68 @@ button:disabled { cursor: default; opacity: .5; }
   .filter-button, .filter-dropdown, .filter-values, .sort-grid select { border-color: CanvasText; }
   .filter-actions button[type='submit'] { background: Highlight; color: HighlightText; border-color: Highlight; }
 }
+
+/* Find and Replace follows SearchDialog.cs: Find/Replace tabs, Options, the result table and equal footer buttons. */
+.find-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; }
+.find-dialog > form, .find-dialog > .format-dialog-heading { flex: none; }
+.find-dialog .find-pane { display: grid; gap: 10px; min-width: 0; overflow: auto; }
+.find-tabs { display: flex; gap: 2px; margin: 0 0 12px; border-bottom: 1px solid var(--border); }
+.find-tabs button { background: transparent; border: 1px solid transparent; border-bottom: 0; border-radius: 6px 6px 0 0; padding: 5px 22px; }
+.find-tabs button[aria-selected='true'] { background: var(--raised); border-color: var(--border); font-weight: 600; }
+.find-field { display: grid; grid-template-columns: 95px minmax(0, 1fr); align-items: center; gap: 10px; }
+.find-field > label { display: block; }
+.find-combo { position: relative; display: flex; min-width: 0; }
+.find-combo input { flex: 1; min-width: 0; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px 0 0 4px; padding: 5px 8px; color: inherit; }
+.find-combo-button { flex: none; width: 34px; border-radius: 0 4px 4px 0 !important; padding: 5px 0 !important; }
+.find-history { position: absolute; top: calc(100% + 2px); left: 0; right: 0; z-index: 6; margin: 0; padding: 2px; list-style: none;
+  max-height: 220px; overflow: auto; background: var(--raised); border: 1px solid var(--border); border-radius: 4px; }
+.find-history button { width: 100%; text-align: left; background: transparent; border: 0; border-radius: 3px; padding: 5px 8px; }
+.find-history button:hover { background: var(--top-field); }
+.find-history-empty { padding: 6px 8px; color: var(--muted); }
+/* SearchDialog.cs places Within/Match case, Search/Match entire, then Look in on its own row. */
+.find-options { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: 8px 18px; }
+.find-options .find-field { grid-template-columns: 95px auto; }
+.find-option-within { grid-area: 1 / 1; }
+.find-option-case { grid-area: 1 / 2; }
+.find-option-order { grid-area: 2 / 1; }
+.find-option-whole { grid-area: 2 / 2; }
+.find-option-look { grid-area: 3 / 1; }
+.find-options select { background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; color: inherit; min-height: 28px; padding: 2px 4px; }
+.paste-dialog .find-check { display: flex; align-items: center; gap: 6px; }
+.find-options-narrow { grid-template-columns: minmax(0, 1fr); }
+.find-options-narrow .find-option-within { grid-area: 1 / 1; }
+.find-options-narrow .find-option-order { grid-area: 2 / 1; }
+.find-options-narrow .find-option-case { grid-area: 3 / 1; }
+.find-options-narrow .find-option-whole { grid-area: 4 / 1; }
+.find-options-narrow .find-option-look { grid-area: 5 / 1; }
+.find-status-row { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.find-status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.find-options-toggle { flex: none; }
+.find-result-table { max-height: 180px; overflow: auto; border: 1px solid var(--border); }
+.find-result-table table { border-collapse: collapse; table-layout: fixed; }
+.find-result-table th, .find-result-table td { padding: 3px 6px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12.5px; }
+.find-result-table th { position: sticky; top: 0; background: var(--sheet); font-weight: 600; border-right: 1px solid var(--border); }
+.find-result-table tbody tr { cursor: default; }
+.find-result-table tbody tr[aria-selected='true'] { background: var(--grid-selection); outline: 1px solid var(--accent); }
+.find-result-table tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.find-resize { position: absolute; right: 0; top: 0; bottom: 0; width: 8px; cursor: col-resize; }
+.find-resize:focus-visible { outline: 1px solid var(--accent); }
+.find-actions { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 2px; }
+.find-actions-group { display: flex; gap: 8px; flex-wrap: wrap; }
+.find-dialog .find-actions button { min-width: 88px; }
+.find-dialog .find-primary, .zoom-dialog .dialog-actions button[type='submit'] {
+  background: var(--accent); border-color: var(--accent); color: #00131f; font-weight: 600;
+}
+
+.zoom-dialog { width: min(320px, calc(100vw - 24px)); }
+.zoom-heading { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.zoom-presets { display: grid; gap: 4px; }
+.paste-dialog .zoom-check { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.zoom-custom { display: flex; align-items: center; gap: 8px; min-height: 32px; }
+.zoom-custom input[type='number'] { width: 96px; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; color: inherit; padding: 4px 6px; }
+.zoom-error { margin: 6px 0; min-height: 1em; color: #ffb4b4; }
+.zoom-controls .zoom-value {
+  font-size: 13px; min-width: 48px; padding: 2px 6px; background: transparent; border: 1px solid transparent;
+  border-radius: 4px; color: var(--text); text-align: right; font-variant-numeric: tabular-nums;
+}
+.zoom-controls .zoom-value:hover { background: var(--raised); border-color: var(--border); }

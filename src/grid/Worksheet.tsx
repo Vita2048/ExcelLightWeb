@@ -26,7 +26,7 @@ import {
 export interface WorksheetHandle {
   focus(): void;
   goTo(point: Coordinate): boolean;
-  reveal(point: Coordinate): void;
+  reveal(point: Coordinate, focus?: boolean): void;
   zoomToSelection(): number;
   moveAfterEdit(point: Coordinate, key: AfterEditKey, reverse: boolean): void;
 }
@@ -153,9 +153,9 @@ export function Worksheet(props: WorksheetProps) {
       focus();
       return true;
     },
-    reveal(point) {
+    reveal(point, keepFocus = true) {
       reveal(point);
-      focus();
+      if (keepFocus) focus();
     },
     moveAfterEdit(point, key, reverse) {
       const next = navigate(sheet, rows, columns, point, key, false, reverse, 1) ?? point;

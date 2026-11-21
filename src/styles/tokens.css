@@ -14,6 +14,7 @@
   --border: #505050;
   --grid-header: #262626;
   --gridline: #383838;
+  --freeze-line: #a0a0a0;
   --grid-selection: rgb(96 205 255 / 15%);
   font-family: 'Segoe UI Variable', 'Segoe UI', 'Inter', system-ui, sans-serif;
   font-size: 14px;

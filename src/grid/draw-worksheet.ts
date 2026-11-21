@@ -293,7 +293,18 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
   for (const rowGroup of rowGroups) for (const columnGroup of columnGroups) pane(rowGroup.tracks, columnGroup.tracks,
     { left: columnGroup.start, top: rowGroup.start, right: columnGroup.end, bottom: rowGroup.end });
 
-  if (!headings) return;
+  // Desktop DrawFrozenDividers paints a 2px divider over content and headings at each frozen edge.
+  function drawFrozenDividers() {
+    const thickness = Math.max(1, 2 * scale);
+    context.fillStyle = forced ? 'CanvasText' : token('--freeze-line');
+    if (frame.frozenRows > 0 && splitY > top) context.fillRect(0, splitY - thickness, width, thickness);
+    if (frame.frozenColumns > 0 && splitX > left) context.fillRect(splitX - thickness, 0, thickness, height);
+  }
+
+  if (!headings) {
+    drawFrozenDividers();
+    return;
+  }
   context.fillStyle = headerColor;
   context.fillRect(0, 0, width, top);
   context.fillRect(0, top, left, height - top);
@@ -337,6 +348,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
   context.lineTo(left * 0.8, top * 0.75);
   context.lineTo(left * 0.8, top * 0.3);
   context.fill();
+  drawFrozenDividers();
 }
 
 function lastTrack(tracks: readonly Track[], index: number): Track | undefined {

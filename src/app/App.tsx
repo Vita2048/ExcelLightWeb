@@ -15,6 +15,13 @@ import {
   columnValues, currentRegion, filterRange, filteredRows, headerLabel, localeTextOrder, looksLikeHeader, rangeLabel,
   recordSummary, setFilter, sortData, sortKeyFor, type FilterValue,
 } from '../application/data-commands';
+import {
+  emptySearchHistory, findMatches, matchLabel, rememberSearch, replaceMatches, searchResultRows,
+  type SearchHistory, type SearchLook, type SearchMatch, type SearchOptions,
+} from '../application/search-commands';
+import { freezeFromCaret, setFreeze } from '../application/view-commands';
+import { FindReplaceDialog, type SearchOutcome } from '../features/search/FindReplaceDialog';
+import { ZoomDialog } from '../features/view/ZoomDialog';
 import { columnLetters } from '../core/formula-references';
 import { FilterDropdown } from '../features/data/FilterDropdown';
 import { SortDialog, SortOptionsDialog, SortWarningDialog, type SortDraft, type SortExtent } from '../features/data/SortDialog';
@@ -153,6 +160,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     basis: WorkbookSnapshot; column: number; header: string; textColumn: boolean; values: readonly FilterValue[];
     selected: readonly string[]; hasColumnFilter: boolean; anchor: { x: number; y: number };
   }>();
+  const [searchDialog, setSearchDialog] = useState<{ replace: boolean; sheetId: string }>();
+  const [searchHistory, setSearchHistory] = useState<SearchHistory>(emptySearchHistory);
+  const [searchLook, setSearchLook] = useState<SearchLook>('values');
+  const [zoomDialog, setZoomDialog] = useState(false);
   const textOrder = useMemo(() => localeTextOrder(locale), [locale]);
   const usedNumberCodes = useMemo(() => [...new Set(formatDraft?.basis.document.sheets.flatMap(item =>
     item.cells.flatMap(cell => cell.style?.numberFormat ?? [])))], [formatDraft]);
@@ -738,6 +749,147 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     requestAnimationFrame(focusGrid);
   }
 
+  function errorText(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
+  function rememberSearchValue(value: string, replacement = false) {
+    setSearchHistory(current => replacement ?
+      { ...current, replace: rememberSearch(current.replace, value, true) } :
+      { ...current, find: rememberSearch(current.find, value) });
+  }
+
+  function openSearch(replace: boolean) {
+    if (!editing.commit()) return;
+    if (root.current?.querySelector('dialog[open]')) return;
+    setSearchDialog({ replace, sheetId: sheet.id });
+  }
+
+  const searchRequest = useRef<(replace: boolean) => void>(() => {});
+  searchRequest.current = openSearch;
+  useEffect(() => {
+    function keydown(event: globalThis.KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || (key !== 'f' && key !== 'h')) return;
+      event.preventDefault();
+      searchRequest.current(key === 'h');
+    }
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, []);
+
+  function searchScope(basis: WorkbookSnapshot, options: SearchOptions): readonly string[] {
+    return options.within === 'workbook' ? basis.document.sheets.map(item => item.id) :
+      [searchDialog?.sheetId ?? sheet.id];
+  }
+
+  function searchMatches(options: SearchOptions) {
+    const basis = session.capture();
+    return { basis, matches: findMatches(basis.document, searchScope(basis, options), options) };
+  }
+
+  function showSearchMatch(match: SearchMatch) {
+    setSelections(current => new Map(current).set(match.sheetId, singleSelection({ row: match.row, column: match.column })));
+    if (match.sheetId !== activeSheetId) setActiveSheetId(match.sheetId);
+    requestAnimationFrame(() => worksheet.current?.reveal({ row: match.row, column: match.column }, false));
+  }
+
+  function runFindAll(options: SearchOptions): SearchOutcome {
+    try {
+      const { basis, matches } = searchMatches(options);
+      rememberSearchValue(options.query);
+      return { status: matches.length + ' cell(s) found.',
+        rows: searchResultRows(basis, 'Book1', matches, options) };
+    } catch (error) { return { status: errorText(error) }; }
+  }
+
+  function runFindNext(options: SearchOptions, current: SearchMatch | undefined): SearchOutcome {
+    try {
+      const { basis, matches } = searchMatches(options);
+      rememberSearchValue(options.query);
+      if (!matches.length) return { status: 'No matches.' };
+      let next: SearchMatch | undefined;
+      const index = current ? matches.findIndex(match => match.sheetId === current.sheetId &&
+        match.row === current.row && match.column === current.column) : -1;
+      if (index >= 0) next = matches[(index + 1) % matches.length];
+      else {
+        const anchor = selection.anchor;
+        next = matches.find(match => match.sheetId === sheet.id && (options.order === 'columns' ?
+          match.column > anchor.column || match.column === anchor.column && match.row > anchor.row :
+          match.row > anchor.row || match.row === anchor.row && match.column > anchor.column)) ?? matches[0];
+      }
+      if (next) showSearchMatch(next);
+      return { status: matches.length + ' match(es). ' + (next ? matchLabel(basis.document, next, options.within) : ''),
+        ...(next && { match: next }) };
+    } catch (error) { return { status: errorText(error) }; }
+  }
+
+  function runReplace(options: SearchOptions, replacement: string, target: 'all' | 'one',
+    selected: SearchMatch | undefined, current: SearchMatch | undefined, listShown: boolean): SearchOutcome {
+    try {
+      const { basis, matches } = searchMatches(options);
+      rememberSearchValue(options.query);
+      rememberSearchValue(replacement, true);
+      const targets = target === 'all' ? matches : listShown && selected ? [selected] :
+        listShown && current ? [current] :
+        matches.filter(match => match.sheetId === sheet.id && match.row === selection.anchor.row &&
+          match.column === selection.anchor.column);
+      if (!targets.length) return { status: matches.length === 0 ? 'No matches.' : 'Find a matching cell first.' };
+      requireDocument(session.isCurrent(basis), 'Workbook changed. Find again.');
+      const outcome = session.execute(replaceMatches(basis, targets, options, replacement));
+      if (outcome.changed) {
+        editing.selectionChanged();
+        editing.clearCut();
+        scheduler.current?.changed(true);
+      }
+      let next: SearchMatch | undefined;
+      if (target === 'one') {
+        const index = matches.findIndex(match => match.sheetId === targets[0]!.sheetId &&
+          match.row === targets[0]!.row && match.column === targets[0]!.column);
+        // Replacing the last match does not wrap, matching the desktop Search dialog.
+        if (index >= 0 && index + 1 < matches.length) {
+          next = matches[index + 1];
+          if (next) showSearchMatch(next);
+        }
+      }
+      const refreshed = session.capture();
+      const remaining = findMatches(refreshed.document, searchScope(refreshed, options), options);
+      return { status: 'Replaced ' + targets.length + ' cell(s).',
+        ...(listShown && { rows: searchResultRows(refreshed, 'Book1', remaining, options) }),
+        ...(next && { match: next }) };
+    } catch (error) { return { status: errorText(error) }; }
+  }
+
+  function applyZoom(zoom: number | 'fit') {
+    setZoomDialog(false);
+    if (zoom === 'fit') {
+      const fitted = worksheet.current?.zoomToSelection();
+      if (fitted !== undefined) onView({ zoom: fitted });
+    } else onView({ zoom });
+    requestAnimationFrame(focusGrid);
+  }
+
+  function runFreeze(mode: 'panes' | 'topRow' | 'firstColumn' | 'none') {
+    if (!editing.commit()) return;
+    const sheetId = sheet.id;
+    try {
+      const panes = mode === 'panes' ? freezeFromCaret(selection.anchor) :
+        mode === 'topRow' ? { rows: 1, columns: 0 } :
+        mode === 'firstColumn' ? { rows: 0, columns: 1 } : { rows: 0, columns: 0 };
+      if (sheet.frozenPanes.rows === panes.rows && sheet.frozenPanes.columns === panes.columns) {
+        editing.report('Pane boundaries are unchanged.');
+        requestAnimationFrame(focusGrid);
+        return;
+      }
+      const basis = session.capture();
+      applyStructure(basis, setFreeze(basis, sheetId, panes));
+      editing.report(panes.rows === 0 && panes.columns === 0 ? 'Unfroze panes.' :
+        mode === 'topRow' ? 'Froze the top row.' :
+        mode === 'firstColumn' ? 'Froze the first column.' : 'Froze panes.');
+    } catch (error) { editing.reject(error); }
+    requestAnimationFrame(focusGrid);
+  }
+
   const tableFilter = !!sheet.filter && tables.some(table => ownsTableFilter(sheet.filter, table));
   const filterCommands = {
     active: tableFilter ? !!sheet.filter && !!activeTable && ownsTableFilter(sheet.filter, activeTable) :
@@ -1134,12 +1286,17 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         const zoom = worksheet.current?.zoomToSelection();
         if (zoom !== undefined) onView({ zoom });
         worksheet.current?.focus();
-      }}
+      }} onZoomDialog={() => {
+        if (!editing.commit()) return;
+        setZoomDialog(true);
+      }} frozen={sheet.frozenPanes.rows > 0 || sheet.frozenPanes.columns > 0} onFreeze={runFreeze}
       activeTable={activeTable}
       onTableRename={handleTableRename}
       onTableResize={() => { if (activeTable) openEditDialog(activeTable); }}
       onTableChangeDesign={handleTableChangeDesign}
       onTableClick={() => openCreateDialog(true)}
+      onFind={() => openSearch(false)}
+      onReplace={() => openSearch(true)}
       onNameManagerClick={() => { if (editing.commit()) setNameManagerOpen(true); }}
       onDefineNameClick={() => openCreateDialog(false)}
       filter={filterCommands} onSort={requestSort} onToggleFilter={toggleFilter}
@@ -1256,7 +1413,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             aria-valuetext={view.zoom + '%'} onChange={event => onView({ zoom: event.currentTarget.valueAsNumber })} />
           <button type="button" className="icon-button" aria-label="Zoom in" disabled={view.zoom >= 400}
             onClick={() => onView({ zoom: clamp(view.zoom + 10, 10, 400) })}>+</button>
-          <span className="zoom-value">{view.zoom}%</span>
+          <button type="button" className="zoom-value" aria-label={'Zoom percentage, ' + view.zoom + '%'} title="Zoom"
+            onClick={() => { if (editing.commit()) setZoomDialog(true); }}>{view.zoom}%</button>
         </div>
       </footer>
       {editing.manualPaste && <PasteTextDialog mode={editing.manualPaste.mode} error={editing.status}
@@ -1324,6 +1482,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onSubmit={finishSortOptions} onCancel={cancelSortOptions} />}
       {sortWarning && <SortWarningDialog selection={sortWarning.selection} region={sortWarning.region}
         onChoose={expand => sortWarning.resume(expand)} onCancel={() => sortWarning.resume(null)} />}
+      {searchDialog && <FindReplaceDialog replace={searchDialog.replace} history={searchHistory}
+        initialLookIn={searchLook} onLookIn={setSearchLook}
+        onFindAll={runFindAll} onFindNext={runFindNext} onReplace={runReplace} onSelect={showSearchMatch}
+        onClose={() => { setSearchDialog(undefined); requestAnimationFrame(focusGrid); }} />}
+      {zoomDialog && <ZoomDialog current={view.zoom} onApply={applyZoom}
+        onCancel={() => { setZoomDialog(false); requestAnimationFrame(focusGrid); }} />}
       {filterMenu && <FilterDropdown anchor={filterMenu.anchor} header={filterMenu.header}
         textColumn={filterMenu.textColumn} values={filterMenu.values} selected={filterMenu.selected}
         hasColumnFilter={filterMenu.hasColumnFilter} onApply={applyFilter} onClearColumn={clearFilterColumn}

@@ -34,6 +34,9 @@ interface RibbonProps {
   readonly view: SheetView;
   readonly onView: (patch: Partial<SheetView>) => void;
   readonly onZoomToSelection: () => void;
+  readonly onZoomDialog: () => void;
+  readonly frozen: boolean;
+  readonly onFreeze: (mode: 'panes' | 'topRow' | 'firstColumn' | 'none') => void;
   readonly onEdit: (action: EditAction) => void;
   readonly cell: CellDocument | undefined;
   readonly borders: BorderRibbonProps;
@@ -60,6 +63,8 @@ interface RibbonProps {
   readonly onToggleFilter: () => void;
   readonly onClearFilter: () => void;
   readonly onReapplyFilter: () => void;
+  readonly onFind: () => void;
+  readonly onReplace: () => void;
 }
 
 const unavailable: Record<'File', string> = {
@@ -89,10 +94,10 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
   </div>;
 }
 
-export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelection, onEdit, onStructure, calculationMode,
+export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
   activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
-  filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter }: RibbonProps) {
+  filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
   const [knownTables, setKnownTables] = useState<ReadonlySet<string>>(() => new Set());
@@ -183,12 +188,24 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
                 onChange={event => onView({ gridlines: event.currentTarget.checked })} /> Gridlines</label>
               <label><input type="checkbox" checked={view.headings}
                 onChange={event => onView({ headings: event.currentTarget.checked })} /> Headings</label>
+              <label><input type="checkbox" checked={view.showFormulas}
+                onChange={event => onView({ showFormulas: event.currentTarget.checked })} /> Show Formulas</label>
               </div>
             </fieldset>
             <fieldset>
               <legend>Zoom</legend>
+              <button type="button" className="ribbon-command ribbon-large" onClick={onZoomDialog}><RibbonGlyph name="Zoom" size={30} />Zoom...</button>
               <button type="button" className="ribbon-command ribbon-large" onClick={() => onView({ zoom: 100 })}><RibbonGlyph name="100%" size={30} />100%</button>
               <button type="button" className="ribbon-command ribbon-large" onClick={onZoomToSelection}><RibbonGlyph name="Zoom to Selection" size={30} />Zoom to Selection</button>
+            </fieldset>
+            <fieldset>
+              <legend>Window</legend>
+              <RibbonFlyout label="Freeze Panes" icon="Freeze Panes" large items={[
+                frozen ? { label: 'Unfreeze Panes', icon: 'Freeze Panes', select: () => onFreeze('none') } :
+                  { label: 'Freeze Panes', icon: 'Freeze Panes', select: () => onFreeze('panes') },
+                { label: 'Freeze Top Row', icon: 'Freeze Panes', select: () => onFreeze('topRow') },
+                { label: 'Freeze First Column', icon: 'Freeze Panes', select: () => onFreeze('firstColumn') },
+              ]} />
             </fieldset>
           </> : name === 'Home' ? <>
             <fieldset className="clipboard-ribbon">
@@ -232,6 +249,10 @@ export function Ribbon({ onAlign, onMerge, merged, view, onView, onZoomToSelecti
               </div>
               <SortFilterHomeMenu filter={filter} onSort={onSort} onToggleFilter={onToggleFilter}
                 onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} />
+              <RibbonFlyout label="Find & Select" caption={<>Find &amp;<br />Select</>} icon="Find & Select" large items={[
+                { label: 'Find...', icon: 'Find...', select: onFind },
+                { label: 'Replace...', icon: 'Replace...', select: onReplace },
+              ]} />
             </fieldset>
           </> : name === 'Formulas' ? <>
             <fieldset>
