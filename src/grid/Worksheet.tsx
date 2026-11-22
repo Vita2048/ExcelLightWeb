@@ -89,6 +89,7 @@ interface BorderDrag {
 
 interface ReferenceDrag {
   readonly update: (area: Area) => void;
+  readonly finish?: () => void;
   readonly cancel: () => void;
 }
 
@@ -429,6 +430,7 @@ export function Worksheet(props: WorksheetProps) {
       active.y = event.clientY;
       cancelAnimationFrame(frame.current);
       moveDrag();
+      active.reference?.finish?.();
     } else active.reference?.cancel();
     drag.current = null;
     cancelAnimationFrame(frame.current);

@@ -150,7 +150,7 @@ it('round trips the showcase workbook content, caches, styles, dimensions and fr
 it('exporting does not mark the workbook saved or clear its dirty state', async () => {
   const session = new WorkbookSession(newWorkbook(makeId), { makeId });
   const basis = session.capture();
-  session.execute(pasteText(basis, { sheetId: session.active.sheets[0]!.id, row: 1, column: 1, rows: 1, columns: 1 }, 'Draft', 'all'));
+  session.execute(pasteText(basis, { sheetId: session.active.sheets[0]!.id, row: 1, column: 1, rows: 1, columns: 1 }, 'Draft', 'all', 'en-US', makeId));
   expect(session.isDirty).toBe(true);
   const savedBefore = session.savedIdentity;
   const undoBefore = session.undoCount;

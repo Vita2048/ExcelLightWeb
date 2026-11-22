@@ -4,6 +4,7 @@ import { documentLimits, emptySheet, type AxisDimension, type CellDocument, type
   type IdFactory, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { ordinalNameKey, requireDocument } from '../core/workbook-validation';
 import { lastColumn, lastRow, ownsTableFilter, tableDesign, tablesOnSheet } from '../core/workbook-names';
+import { rewritePythonContent } from '../python/references';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { StructureCommand } from './workbook-session';
 
@@ -62,7 +63,12 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
       requireDocument(before >= 0, 'The destination worksheet no longer exists.');
       const copy = rewriteCells(target, source => rewriteSheetReferences(source, target.name, name));
       next = { ...copy, id: active, name, cells: copy.cells.map(cell => {
-        const content = cell.content.kind === 'python' ? { ...cell.content, blockId: makeId() } : cell.content;
+        let content = cell.content;
+        if (content.kind === 'python') {
+          const blockId = makeId();
+          content = { kind: 'python', blockId, source: content.source,
+            ...(content.block && { block: { ...content.block, id: blockId } }) };
+        }
         return { ...cell, id: makeId(), content };
       }) };
       const used = new Set(names.map(entry => ordinalNameKey(entry.name)));
@@ -83,6 +89,10 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
 }
 
 function rewriteCell(cell: CellDocument, rewrite: (source: string) => string): CellDocument {
+  if (cell.content.kind === 'python') {
+    const content = rewritePythonContent(cell.content, rewrite);
+    return content === cell.content ? cell : { ...cell, content };
+  }
   if (cell.content.kind !== 'formula') return cell;
   const source = rewrite(cell.content.source);
   if (source === cell.content.source) return cell;

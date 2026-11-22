@@ -9,6 +9,7 @@ import {
 import {
   requireDocument, validateCellValue, validateId, validateTarget, validateWorkbook,
 } from '../core/workbook-validation';
+import { removeOrphanedPythonSpillCells } from '../core/python-spills';
 import {
   workbookProtocolVersion, type NativeCalculationRequest, type NativeCalculationReply,
   type SnapshotBasis, type WorkerBasis, type WorkbookSnapshot,
@@ -174,6 +175,7 @@ export class WorkbookSession {
       default:
         throw new DocumentError('Unsupported workbook command.');
     }
+    candidate = removeOrphanedPythonSpillCells(candidate);
     if (candidate === this.active) return { changed: false, revision: this.revision, delta: emptyDelta };
     validateWorkbook(candidate);
     const delta = diffWorkbook(this.active, candidate);
@@ -309,6 +311,8 @@ export class WorkbookSession {
       validateCellValue(content);
       if (edit.cellId !== undefined) validateId(edit.cellId);
       const prior = findReferencedCell(document, target);
+      requireDocument(!prior?.spillOwner || equalDto(content, prior.content),
+        `Generated cell is read-only; edit its Python anchor instead.`);
       const style = edit.preserveStyle === false ? edit.style : prior?.style;
       const sameContent = equalDto(content, prior?.content);
       const external = edit.requiresExternalCalculation || sameContent && prior?.requiresExternalCalculation;

@@ -20,9 +20,9 @@ The S09 production browser suite loads the native calculation worker from the bu
 
 Deployment is manually triggered to avoid publishing partial sprint work on every push. It grants contents:read globally and pages:write/id-token:write only to the deployment job; main is required for deployment. The github-pages environment can hold GitHub-native review rules if desired. No personal deployment token is needed. Failed checks prevent deployment. The Linux job does not check out the separately maintained C# desktop source or its Release binaries; the two native-package desktop-oracle assertions are reported skipped when those assemblies are absent. That skip is not a desktop parity result; run them locally with `DESKTOP_BIN` set to the desktop test output folder.
 
-## Runtime packaging before product release
+## Runtime packaging
 
-S02 records the pinned Pyodide release and package closure in [the probe lock](../src/python/runtime-lock.json). Its acquisition script verifies SHA-256 and serves the assets in a dedicated test build. S24 will add license notices, production asset staging and CI download steps before the Pages build.
+S02 records the pinned Pyodide release and package closure in [the runtime lock](../src/python/runtime-lock.json). `npm run build` verifies and stages its 20 same-origin assets under `public/runtime/pyodide/<version>/` before producing `dist/`; the runtime is not committed. CI and Pages call this build through `npm run check`, so they download a missing/changed asset and verify its SHA-256 before deployment. Browser workbook data stays local; only the public, version-pinned runtime is hosted. S24 still owns dependency notices and browser-cache/recovery behavior.
 
 Check total site/runtime sizes and individual assets against current [Pages limits](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits). Browser asset requests naturally go to the host; application workbook data does not. User Python can make requests, so local computation is not a promise that arbitrary user scripts cannot use the network.
 

@@ -46,8 +46,8 @@ interface ManualPaste {
 const clipboardType = 'application/x-excellight-cells';
 
 export function useWorksheetEditing(
-  session: WorkbookSession, changed: (compound: boolean) => void, separator: ',' | ';', locale: string, focusGrid: () => void,
-  focusEditor: (surface: EditSurface) => void,
+  session: WorkbookSession, changed: (compound: boolean) => void, separator: ',' | ';', locale: string,
+  makeId: () => string, focusGrid: () => void, focusEditor: (surface: EditSurface) => void,
 ) {
   const liveDraft = useRef<Draft | null>(null);
   const composing = useRef(false);
@@ -147,7 +147,7 @@ export function useWorksheetEditing(
         'The cell changed while you were editing it.');
         const outcome = session.execute({ kind: 'set-cells', label: 'Edit cell', edits: [{
           target: current.target, content: parseEntry(actual?.style?.numberFormat === '@' ? current.text :
-            presentFormula(current.text, separator, ','), actual?.style, locale),
+            presentFormula(current.text, separator, ','), actual?.style, locale, { makeId, existing: actual?.content }),
         }] });
         if (outcome.changed) changed(false);
       }
@@ -182,7 +182,8 @@ export function useWorksheetEditing(
   }
 
   function paste(basis: WorkbookSnapshot, range: EditRange, mode: PasteMode, rich: LocalClipboard | null, text?: string) {
-    const operation = rich ? pasteBlock(basis, range, rich.block, mode) : pasteText(basis, range, text ?? '', mode, locale);
+    const operation = rich ? pasteBlock(basis, range, rich.block, mode, makeId) :
+      pasteText(basis, range, text ?? '', mode, locale, makeId);
     const outcome = session.execute(operation);
     if (rich?.block.cut && localClipboard.current === rich) localClipboard.current = null;
     if (outcome.changed) changed(outcome.delta.kind !== 'cells' || outcome.delta.changes.length > 1);
@@ -266,7 +267,7 @@ export function useWorksheetEditing(
       } else if (action.kind === 'clear') {
         if (session.execute(clear(basis, ranges, action.mode)).changed) changed(true);
       } else if (action.kind === 'fill') {
-        if (session.execute(fill(basis, onlyRange(ranges), action.direction)).changed) changed(true);
+        if (session.execute(fill(basis, onlyRange(ranges), action.direction, makeId)).changed) changed(true);
       } else if (action.kind === 'autosum') {
         const result = autoSum(basis, onlyRange(ranges), action.aggregate);
         if (session.execute(result.command).changed) changed(false);

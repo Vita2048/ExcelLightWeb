@@ -22,7 +22,7 @@ function workbook(document?: WorkbookDocument) {
     const { document: _document, kind: _kind, ...basis } = session.beginNativeCalculation('test');
     session.tryCommitNativeCalculation({ ...basis, kind: 'native-calculated', updates: calculateNative(session.active).updates });
   }
-  return { session, range, at, find, set, calculate };
+  return { session, range, at, find, set, calculate, makeId: () => 'cell-' + ++n };
 }
 const text = (value: string) => ({ kind: 'text', value }) as const;
 const number = (value: number) => ({ kind: 'number', value }) as const;
@@ -31,7 +31,7 @@ const blank = { kind: 'blank' } as const;
 const style = { bold: true, fillRgb: 'FFEE00' };
 
 it('keeps a pending cut valid through a cache-only commit and rejects it after an authored edit and undo', () => {
-  const { session, range, at, set, calculate, find } = workbook();
+  const { session, range, at, set, calculate, find, makeId } = workbook();
   set({ target: at(1, 1), content: formula('=2+3') });
   const basis = session.capture();
   const cut = captureClipboard(basis, range(1, 1), true);
@@ -39,12 +39,12 @@ it('keeps a pending cut valid through a cache-only commit and rejects it after a
   expect(session.isCurrent(basis)).toBe(false);
   expect(session.isCurrentAuthored(basis)).toBe(true);
   expect(find(1, 1)?.cache).toEqual(number(5));
-  expect(() => pasteBlock(session.capture(), range(2, 1), cut, 'all')).not.toThrow();
+  expect(() => pasteBlock(session.capture(), range(2, 1), cut, 'all', makeId)).not.toThrow();
   set({ target: at(1, 2), content: number(7) });
   expect(session.undo()).toBe(true);
   expect(session.sourceFingerprint).toBe(basis.sourceFingerprint);
   expect(session.isCurrentAuthored(basis)).toBe(false);
-  expect(() => pasteBlock(session.capture(), range(2, 1), cut, 'all')).toThrow(/Cut source changed/);
+  expect(() => pasteBlock(session.capture(), range(2, 1), cut, 'all', makeId)).toThrow(/Cut source changed/);
 });
 
 describe('S06 typed entry and TSV', () => {
@@ -56,13 +56,13 @@ describe('S06 typed entry and TSV', () => {
     expect(parseEntry(' 007 ', { numberFormat: '@' })).toEqual(text(' 007 '));
     expect(parseEntry('=1+2')).toEqual(formula('=1+2'));
     expect(parseEntry('=PY()', { numberFormat: '@' })).toEqual(text('=PY()'));
-    expect(() => parseEntry('=Py()')).toThrow(/Python authoring/);
+    expect(() => parseEntry('=Py()')).toThrow(/identity/);
   });
 
   it('preserves blank, empty text, leading zeros, quotes and multiline fields through TSV', () => {
-    const { session: s, range, find } = workbook();
+    const { session: s, range, find, makeId } = workbook();
     const tsv = '\t""\t"001"\r\n1\t"a\tb"\t"line\n""two"""';
-    s.execute(pasteText(s.capture(), range(1, 1), tsv + '\r\n', 'all'));
+    s.execute(pasteText(s.capture(), range(1, 1), tsv + '\r\n', 'all', 'en-US', makeId));
     expect(find(1, 1)).toBeUndefined();
     expect(find(1, 2)?.content).toEqual(text(''));
     expect(find(1, 3)?.content).toEqual(text('001'));
@@ -74,24 +74,24 @@ describe('S06 typed entry and TSV', () => {
   });
 
   it('rejects ragged, malformed, out-of-bounds, oversized and invalid-last-cell batches atomically', () => {
-    const { session: s, range } = workbook();
+    const { session: s, range, makeId } = workbook();
     const before = s.capture();
     for (const [target, value] of [
       [range(1, 1), '1\t2\n3'], [range(1, 1), '"bad'], [range(1, 1), '"x"junk'],
       [range(10000, 100), '1\t2'], [range(1, 1), '1\t='], [range(1, 1), 'x'.repeat(4 * 1024 * 1024 + 1)],
       [range(1, 1, 2, 2), '1\t2'],
     ] as const) {
-      expect(() => s.execute(pasteText(before, target, value, 'all'))).toThrow();
+      expect(() => s.execute(pasteText(before, target, value, 'all', 'en-US', makeId))).toThrow();
       expect(s.capture()).toBe(before);
       expect(s.undoCount).toBe(0);
     }
   });
 
   it('keeps formula-looking external text inert in Values and skips nonformulas in Formulas', () => {
-    const { session: s, range, find } = workbook();
-    s.execute(pasteText(s.capture(), range(1, 1), '=1+2\t"001"', 'values'));
+    const { session: s, range, find, makeId } = workbook();
+    s.execute(pasteText(s.capture(), range(1, 1), '=1+2\t"001"', 'values', 'en-US', makeId));
     expect(find(1, 1)?.content).toEqual(text('=1+2'));
-    s.execute(pasteText(s.capture(), range(1, 1), '=4\t"=5"', 'formulas'));
+    s.execute(pasteText(s.capture(), range(1, 1), '=4\t"=5"', 'formulas', 'en-US', makeId));
     expect(find(1, 1)?.content).toEqual(formula('=4'));
     expect(find(1, 2)?.content).toEqual(text('001'));
   });
@@ -108,7 +108,7 @@ describe('S06 clipboard transactions and references', () => {
   });
 
   it('copies snapshot styles with new identity and supports values and formulas separately', () => {
-    const { session: s, range, at, find, set, calculate } = workbook();
+    const { session: s, range, at, find, set, calculate, makeId } = workbook();
     set({ target: at(1, 1), content: number(2) },
       { target: at(2, 1), content: formula('=A1+$A$1'), style, preserveStyle: false },
       { target: at(2, 2), content: text('kept text') });
@@ -116,24 +116,24 @@ describe('S06 clipboard transactions and references', () => {
     const frozen = captureClipboard(s.capture(), range(2, 1, 1, 2), false);
     const single = captureClipboard(s.capture(), range(2, 1), false);
     const sourceId = find(2, 1)?.id;
-    s.execute(pasteBlock(s.capture(), range(3, 2), frozen, 'all'));
+    s.execute(pasteBlock(s.capture(), range(3, 2), frozen, 'all', makeId));
     const copy = find(3, 2)!;
     expect(copy).toMatchObject({ content: formula('=B2+$A$1'), style });
     expect(copy.id).not.toBe(sourceId);
     set({ target: at(4, 1), content: text('prior'), style: { italic: true }, preserveStyle: false });
-    s.execute(pasteBlock(s.capture(), range(4, 1), single, 'values'));
+    s.execute(pasteBlock(s.capture(), range(4, 1), single, 'values', makeId));
     expect(find(4, 1)).toMatchObject({ content: number(4), style: { italic: true } });
-    s.execute(pasteBlock(s.capture(), range(4, 1), frozen, 'formulas'));
+    s.execute(pasteBlock(s.capture(), range(4, 1), frozen, 'formulas', makeId));
     expect(find(4, 1)).toMatchObject({ content: formula('=A3+$A$1'), style: { italic: true } });
     expect(find(4, 2)).toBeUndefined();
     set({ target: at(4, 2), content: formula('=1/0') });
     calculate();
     const invalid = captureClipboard(s.capture(), range(4, 2), false);
-    expect(() => pasteBlock(s.capture(), range(5, 1), invalid, 'values')).toThrow(/valid scalar/);
+    expect(() => pasteBlock(s.capture(), range(5, 1), invalid, 'values', makeId)).toThrow(/valid scalar/);
   });
 
   it('moves overlapping cells and dependent absolute references in one undo and evaluates partial range unions', () => {
-    const { session: s, range, at, find, set, calculate } = workbook();
+    const { session: s, range, at, find, set, calculate, makeId } = workbook();
     set(...[1, 2, 3].map((n, i) => ({ target: at(10, i + 1), content: number(n) })),
       { target: at(11, 1), content: formula('=A10+$B$10') },
       { target: at(11, 2), content: formula('=SUM(A10:C10)') });
@@ -141,7 +141,7 @@ describe('S06 clipboard transactions and references', () => {
     const before = s.capture();
     const cut = captureClipboard(before, range(10, 1, 1, 2), true);
     expect(find(10, 1)?.content).toEqual(number(1));
-    s.execute(pasteBlock(s.capture(), range(10, 2), cut, 'all'));
+    s.execute(pasteBlock(s.capture(), range(10, 2), cut, 'all', makeId));
     expect(find(10, 1)).toBeUndefined();
     expect(find(10, 2)?.id).toBe(cut.cells[0]?.id);
     expect(find(10, 3)?.id).toBe(cut.cells[1]?.id);
@@ -156,33 +156,33 @@ describe('S06 clipboard transactions and references', () => {
   });
 
   it('transfers cross-sheet relationships and name identities and rejects stale or non-All cuts', () => {
-    const { session: s, range, at, find, set, calculate } = workbook();
+    const { session: s, range, at, find, set, calculate, makeId } = workbook();
     set({ target: at(1, 1), content: number(3) }, { target: at(2, 1), content: formula('=A1*2') },
       { target: at(2, 2, 'other'), content: formula('=Inputs!A2') });
     s.execute({ kind: 'set-cells', edits: [], names: [{ id: 'name', name: 'MovedCell', area: range(2, 1) }] });
     const cut = captureClipboard(s.capture(), range(2, 1), true);
-    expect(() => pasteBlock(s.capture(), range(1, 1, 1, 1, 'other'), cut, 'values')).toThrow(/not All/);
-    s.execute(pasteBlock(s.capture(), range(1, 1, 1, 1, 'other'), cut, 'all'));
+    expect(() => pasteBlock(s.capture(), range(1, 1, 1, 1, 'other'), cut, 'values', makeId)).toThrow(/not All/);
+    s.execute(pasteBlock(s.capture(), range(1, 1, 1, 1, 'other'), cut, 'all', makeId));
     calculate();
     expect(find(1, 1, 'other')).toMatchObject({ id: cut.cells[0]?.id, content: formula("='Inputs'!A1*2"), cache: number(6) });
     expect(find(2, 2, 'other')?.content).toEqual(formula("='O''Brien'!A1"));
     expect(s.active.names[0]).toMatchObject({ id: 'name', area: { sheetId: 'other', row: 1 } });
-    expect(() => pasteBlock(s.capture(), range(3, 1), cut, 'all')).toThrow(/Cut source changed/);
+    expect(() => pasteBlock(s.capture(), range(3, 1), cut, 'all', makeId)).toThrow(/Cut source changed/);
   });
 
   it('copies a whole merge and rejects partial overwrite without modifying the earlier merge', () => {
-    const { session: s, range, at, set, find } = workbook();
+    const { session: s, range, at, set, find, makeId } = workbook();
     set({ target: at(1, 1), content: number(8) });
     s.execute({ kind: 'set-cells', edits: [], merges: [{ sheetId: 'input', ranges: [{ row: 1, column: 1, rows: 1, columns: 2 }] }] });
     const merged = captureClipboard(s.capture(), range(1, 2), false);
     expect(merged.range).toEqual(range(1, 1, 1, 2));
-    s.execute(pasteBlock(s.capture(), range(2, 1), merged, 'all'));
+    s.execute(pasteBlock(s.capture(), range(2, 1), merged, 'all', makeId));
     expect(find(2, 1)?.content).toEqual(number(8));
     expect(s.active.sheets[0]?.merges).toHaveLength(2);
     const before = s.capture();
-    expect(() => pasteBlock(before, range(2, 2), merged, 'all')).toThrow(/complete merged area/);
+    expect(() => pasteBlock(before, range(2, 2), merged, 'all', makeId)).toThrow(/complete merged area/);
     expect(s.capture()).toBe(before);
-    expect(() => fill(before, range(1, 1, 2, 2), 'down')).toThrow(/Unmerge/);
+    expect(() => fill(before, range(1, 1, 2, 2), 'down', makeId)).toThrow(/Unmerge/);
   });
 });
 
@@ -193,13 +193,13 @@ describe('S06 Fill, Clear and AutoSum', () => {
     ['right', 2, 1, 2, 3, '=F3+$B$2+E$4+$D5'],
     ['left', 2, 3, 2, 1, '=B3+$B$2+A$4+$D5'],
   ] as const)('fills %s from the correct edge with one undo and exact redo', (direction, sr, sc, tr, tc, expected) => {
-    const { session: s, range, at, find, set } = workbook();
+    const { session: s, range, at, find, set, makeId } = workbook();
     const vertical = direction === 'up' || direction === 'down';
     set({ target: at(sr, sc), content: formula('=D3+$B$2+C$4+$D5'), style, preserveStyle: false },
       { target: at(sr + +!vertical, sc + +vertical), content: blank, style, preserveStyle: false },
       { target: at(tr + +!vertical, tc + +vertical), content: number(9) });
     const before = s.capture();
-    s.execute(fill(before, range(2, 1, 3, 3), direction));
+    s.execute(fill(before, range(2, 1, 3, 3), direction, makeId));
     expect(find(tr, tc)).toMatchObject({ content: formula(expected), style });
     expect(find(tr + +!vertical, tc + +vertical)).toMatchObject({ content: blank, style });
     expect(s.undoCount).toBe(2);
@@ -209,10 +209,10 @@ describe('S06 Fill, Clear and AutoSum', () => {
   });
 
   it('evaluates filled formulas and AutoSum variants and recalculates after undo without adding history', () => {
-    const { session: s, range, at, find, set, calculate } = workbook();
+    const { session: s, range, at, find, set, calculate, makeId } = workbook();
     set({ target: at(1, 1), content: number(4) }, { target: at(2, 1), content: number(6) },
       { target: at(1, 2), content: formula('=A1*2') });
-    s.execute(fill(s.capture(), range(1, 2, 2), 'down'));
+    s.execute(fill(s.capture(), range(1, 2, 2), 'down', makeId));
     calculate();
     expect(find(2, 2)?.cache).toEqual(number(12));
     for (const [aggregate, value] of [['SUM', 20], ['AVERAGE', 10], ['COUNT', 2], ['MIN', 8], ['MAX', 12]] as const) {

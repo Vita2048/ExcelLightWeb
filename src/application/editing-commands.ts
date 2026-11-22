@@ -1,9 +1,10 @@
-import { cellKey, documentLimits as limits, findCell, ownDto, worksheetViewport,
-  type CellContent, type CellDocument, type CellExtent, type CellReference, type CellStyle, type Coordinate, type SheetDocument,
+import { cellKey, defaultPythonSource, documentLimits as limits, findCell, ownDto, worksheetViewport,
+  type CellContent, type CellDocument, type CellExtent, type CellReference, type CellStyle, type Coordinate, type PythonBlock, type SheetDocument,
 } from '../core/workbook';
 import { parseTemporalEntry, temporalEntry } from '../core/formats/temporal';
 import { requireDocument } from '../core/workbook-validation';
 import { copyReferences, formulaAddress, intersection, moveReferences, type ReferenceBox, type ReferenceMove } from '../core/formula-references';
+import { transformPythonBlock } from '../python/references';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { CellEdit, SetCellsCommand } from './workbook-session';
 
@@ -24,10 +25,27 @@ export const clipboardTextLimit = 4 * 1024 * 1024;
 const blank = Object.freeze({ kind: 'blank' } as const);
 const numberPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu;
 
-export function parseEntry(text: string, style?: CellStyle, locale?: string): CellContent {
+export function isPythonEntry(text: string): boolean {
+  return /^=PY(?:\(\))?$/iu.test(text.trim());
+}
+
+function pythonContent(makeId: () => string): CellContent {
+  const block: PythonBlock = { id: makeId(), source: defaultPythonSource, bindings: [], lastValue: null,
+    hasResult: false, inputFingerprint: null, runtimeFingerprint: null, status: 'never', error: null,
+    lastTable: null, spillActive: false, lastFigure: null, placements: [] };
+  return { kind: 'python', blockId: block.id, source: block.source, block };
+}
+
+/** Parse typed text. Python entry needs identity creation; an existing anchor keeps its block. */
+export function parseEntry(text: string, style?: CellStyle, locale?: string,
+  options?: { readonly makeId: () => string; readonly existing?: CellContent | undefined }): CellContent {
   if (text === '') return blank;
   if (style?.numberFormat === '@') return { kind: 'text', value: text };
-  requireDocument(!/^=PY(?:\(\))?$/iu.test(text.trim()), 'Python authoring is unavailable.');
+  if (isPythonEntry(text)) {
+    if (options?.existing?.kind === 'python') return options.existing;
+    requireDocument(options?.makeId, 'Python entry needs a workbook identity factory.');
+    return pythonContent(options.makeId);
+  }
   if (text.startsWith('=')) return { kind: 'formula', source: text };
   const trimmed = text.trim();
   if (numberPattern.test(trimmed) && Number.isFinite(Number(trimmed))) return { kind: 'number', value: Number(trimmed) };
@@ -98,7 +116,8 @@ export function captureClipboard(basis: WorkbookSnapshot, selection: EditRange, 
   for (let row = range.row; row < range.row + range.rows; row++) {
     for (let column = range.column; column < range.column + range.columns; column++) {
       const cell = findCell(sheet, { row, column });
-      requireDocument(cell?.content.kind !== 'python', 'Python clipboard operations are unavailable.');
+      requireDocument(!cell?.spillOwner && !(cell?.content.kind === 'python' && cell.content.block?.spillActive),
+        'Copy or move the complete Python spill.');
       cells.push(cell ?? null);
     }
   }
@@ -179,7 +198,8 @@ function destination(basis: WorkbookSnapshot, target: EditRange, rows: number, c
   return { sheet, range, scalarInMerge };
 }
 
-export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: string, mode: PasteMode, locale?: string): SetCellsCommand {
+export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: string, mode: PasteMode, locale: string,
+  makeId: () => string): SetCellsCommand {
   const fields = parseTsv(text);
   const { sheet, range } = destination(basis, target, fields.length, fields[0]!.length);
   const edits: CellEdit[] = [];
@@ -188,32 +208,51 @@ export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: stri
     if (mode === 'formulas' && !formula) return;
     const at = point(range.sheetId, range.row + y, range.column + x);
     const content: CellContent = field.quoted || mode === 'values' && formula ? { kind: 'text', value: field.text } :
-      parseEntry(field.text, mode === 'formulas' ? undefined : findCell(sheet, at)?.style, locale);
+      parseEntry(field.text, mode === 'formulas' ? undefined : findCell(sheet, at)?.style, locale, { makeId });
     edits.push({ target: at, content, resetCache: true });
   }));
   return command('Paste text', edits);
 }
 
 function valueOf(cell: CellDocument | null): CellContent {
+  if (cell?.content.kind === 'python') {
+    const value = cell.content.block?.lastValue;
+    if (!value) return blank;
+    requireDocument(value.kind !== 'error', 'Paste Values requires a valid Python result.');
+    if (value.kind === 'number') return { kind: 'number', value: value.value };
+    if (value.kind === 'boolean') return { kind: 'boolean', value: value.value };
+    return { kind: 'text', value: value.value };
+  }
   if (cell?.content.kind !== 'formula') return cell?.content ?? blank;
   requireDocument(cell.cache && cell.cache.kind !== 'error', 'Paste Values requires a valid scalar formula result.');
   return cell.cache;
 }
 
+interface Transfer {
+  readonly rewrite: (source: string) => string;
+  readonly rewritePython: (block: PythonBlock) => PythonBlock;
+  readonly cut: boolean;
+}
+
 function transferredCell(original: CellDocument | null, target: CellReference, mode: PasteMode,
-  rewrite: (source: string) => string, cut: boolean): CellEdit | undefined {
+  transfer: Transfer): CellEdit | undefined {
   if (mode === 'formulas' && original?.content.kind !== 'formula') return;
   let content = mode === 'values' ? valueOf(original) : original?.content ?? blank;
-  if (content.kind === 'formula') content = { kind: 'formula', source: rewrite(content.source) };
+  if (content.kind === 'formula') content = { kind: 'formula', source: transfer.rewrite(content.source) };
+  if (content.kind === 'python') {
+    const block = transfer.rewritePython(content.block ?? { id: content.blockId, source: content.source, bindings: [] });
+    content = { kind: 'python', blockId: block.id, source: block.source, block };
+  }
   return {
     target, content, preserveStyle: mode !== 'all', resetCache: true,
     ...(mode === 'all' && original?.style && { style: original.style }),
-    ...(cut && original && { cellId: original.id }),
+    ...(transfer.cut && original && { cellId: original.id }),
     ...(content.kind === 'formula' && original?.requiresExternalCalculation && { requiresExternalCalculation: true }),
   };
 }
 
-export function pasteBlock(basis: WorkbookSnapshot, target: EditRange, block: ClipboardBlock, mode: PasteMode): SetCellsCommand {
+export function pasteBlock(basis: WorkbookSnapshot, target: EditRange, block: ClipboardBlock, mode: PasteMode,
+  makeId: () => string): SetCellsCommand {
   requireDocument(basis.sessionId === block.sessionId, 'The internal clipboard belongs to another workbook session.');
   requireDocument(!block.cut || mode === 'all' && block.authoredRevision === basis.authoredRevision,
     'Cut source changed or paste mode is not All. Cut the selection again.');
@@ -223,6 +262,17 @@ export function pasteBlock(basis: WorkbookSnapshot, target: EditRange, block: Cl
   const dr = range.row - block.range.row, dc = range.column - block.range.column;
   if (block.cut && sourceSheet === sheet && dr === 0 && dc === 0) return command('Move cells', []);
   const move: ReferenceMove = { sourceSheet: sourceSheet.name, destinationSheet: sheet.name, from, dr, dc };
+  const transfer: Transfer = {
+    cut: block.cut,
+    rewrite: source => block.cut ? moveReferences(source, sourceSheet.name, sheet.name, move) : copyReferences(source, dr, dc),
+    rewritePython: prior => {
+      if (block.cut) return transformPythonBlock(prior, reference =>
+        moveReferences(reference, sourceSheet.name, sheet.name, move));
+      const id = makeId();
+      const translated = transformPythonBlock(prior, reference => copyReferences(reference, dr, dc));
+      return { ...translated, id, status: 'never', placements: [] };
+    },
+  };
   const edits = new Map<string, CellEdit>();
   const add = (edit: CellEdit) => edits.set(edit.target.sheetId + ':' + cellKey(edit.target), edit);
 
@@ -233,8 +283,7 @@ export function pasteBlock(basis: WorkbookSnapshot, target: EditRange, block: Cl
   }
   block.cells.forEach((original, index) => {
     const at = point(sheet.id, range.row + Math.floor(index / range.columns), range.column + index % range.columns);
-    const edit = transferredCell(original, at, mode, source =>
-      block.cut ? moveReferences(source, sourceSheet.name, sheet.name, move) : copyReferences(source, dr, dc), block.cut);
+    const edit = transferredCell(original, at, mode, transfer);
     if (edit) add(edit);
   });
 
@@ -275,7 +324,7 @@ export function pasteBlock(basis: WorkbookSnapshot, target: EditRange, block: Cl
   };
 }
 
-export function fill(basis: WorkbookSnapshot, range: EditRange, direction: FillDirection): SetCellsCommand {
+export function fill(basis: WorkbookSnapshot, range: EditRange, direction: FillDirection, makeId: () => string): SetCellsCommand {
   const sheet = checkedSheet(basis, range);
   requireDocument(!sheet.merges.some(merge => intersection(box(merge), box(range))), 'Unmerge cells before filling this range.');
   const vertical = direction === 'down' || direction === 'up';
@@ -289,9 +338,14 @@ export function fill(basis: WorkbookSnapshot, range: EditRange, direction: FillD
     for (let i = 0; i < (vertical ? range.columns : range.rows); i++) {
       const row = edgeRow + (vertical ? 0 : i), column = edgeColumn + (vertical ? i : 0);
       const original = findCell(sheet, { row, column });
-      requireDocument(original?.content.kind !== 'python', 'Python fill is unavailable.');
+      requireDocument(!original?.spillOwner && !(original?.content.kind === 'python' && original.content.block?.spillActive),
+        'Fill the complete Python spill.');
       const at = point(sheet.id, row + dr, column + dc);
-      edits.push(transferredCell(original ?? null, at, 'all', source => copyReferences(source, dr, dc), false)!);
+      edits.push(transferredCell(original ?? null, at, 'all', {
+        cut: false, rewrite: source => copyReferences(source, dr, dc),
+        rewritePython: prior => ({ ...transformPythonBlock(prior, reference => copyReferences(reference, dr, dc)),
+          id: makeId(), status: 'never', placements: [] }),
+      })!);
     }
   }
   return command('Fill ' + direction, edits);

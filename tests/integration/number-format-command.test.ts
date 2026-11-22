@@ -11,7 +11,7 @@ function fixture() {
   const target = (row: number, column = 1) => ({ sheetId: session.active.sheets[0]!.id, row, column });
   const cell = (row: number, column = 1) => findCell(session.active.sheets[0]!, { row, column });
   const range: EditRange = { ...target(1), rows: 2, columns: 1 };
-  return { session, range, target, cell };
+  return { session, range, target, cell, makeId };
 }
 
 it('changes only the selected style field, keeps the current formula cache, and undoes overlapping edits in one step', () => {
@@ -43,7 +43,7 @@ it('changes only the selected style field, keeps the current formula cache, and 
 });
 
 it('rejects invalid formats atomically and can preformat empty cells for dates and text', () => {
-  const { session, range, target, cell } = fixture();
+  const { session, range, target, cell, makeId } = fixture();
   const initial = session.active;
   expect(() => applyNumberFormat(session.capture(), [range], { code: '0.0"' })).toThrow(/valid Excel/);
   expect(session.active).toBe(initial);
@@ -54,7 +54,7 @@ it('rejects invalid formats atomically and can preformat empty cells for dates a
   session.execute({ kind: 'set-cells', edits: [{ target: target(1), content: { kind: 'number', value: serial } }] });
   expect(editorEntryText(cell(1))).toBe('10.01.1900 2:57:46.6665696');
   expect(clipboardText(captureClipboard(session.capture(), { ...range, rows: 1 }, false))).toBe(String(serial));
-  session.execute(pasteText(session.capture(), { ...range, row: 2, rows: 1 }, '29.02.1900 12:00:00', 'all'));
+  session.execute(pasteText(session.capture(), { ...range, row: 2, rows: 1 }, '29.02.1900 12:00:00', 'all', 'en-US', makeId));
   expect(cell(2)?.content).toEqual({ kind: 'number', value: 60.5 });
   expect(parseEntry('60.5', { numberFormat: date })).toEqual({ kind: 'number', value: 60.5 });
   expect(parseEntry('29.02.1900', { numberFormat: '@' })).toEqual({ kind: 'text', value: '29.02.1900' });

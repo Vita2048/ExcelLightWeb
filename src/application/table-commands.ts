@@ -5,6 +5,7 @@ import { cellKey, findCell, type CellContent, type CellDocument, type IdFactory,
 import { lastColumn, lastRow, ownsTableFilter, tableDesign, tableInputExtent } from '../core/workbook-names';
 import { ordinalNameKey, overlaps, requireDocument, validateExtent } from '../core/workbook-validation';
 import { editAxis } from './structure-commands';
+import { renamePythonContent } from '../python/references';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { StructureCommand } from './workbook-session';
 
@@ -54,10 +55,19 @@ function replaceSheet(document: WorkbookDocument, next: SheetDocument): Workbook
   return { ...document, sheets: document.sheets.map(sheet => sheet.id === next.id ? next : sheet) };
 }
 
+function renamePython(document: WorkbookDocument, oldName: string, newName: string): WorkbookDocument {
+  return { ...document, sheets: document.sheets.map(sheet => {
+    const cells = sheet.cells.map(cell => cell.content.kind === 'python' ?
+      { ...cell, content: renamePythonContent(cell.content, oldName, newName) } : cell);
+    return cells.some((cell, index) => cell !== sheet.cells[index]) ? { ...sheet, cells } : sheet;
+  }) };
+}
+
 function put(document: WorkbookDocument, entry: WorkbookName): WorkbookDocument {
   const prior = document.names.find(name => name.id === entry.id);
   requireDocument(!prior || !!prior.isTable === !!entry.isTable, 'A definition cannot change kind.');
-  return { ...document, names: prior ? document.names.map(name => name === prior ? entry : name) : [...document.names, entry] };
+  const result = { ...document, names: prior ? document.names.map(name => name === prior ? entry : name) : [...document.names, entry] };
+  return prior && prior.name !== entry.name ? renamePython(result, prior.name, entry.name) : result;
 }
 
 function tableById(document: WorkbookDocument, id: string): WorkbookName {
@@ -161,7 +171,8 @@ export function deleteName(basis: WorkbookSnapshot, id: string): StructureComman
   const entry = basis.document.names.find(name => name.id === id);
   requireDocument(entry && !entry.isTable, 'Select the entire table on the worksheet and press Delete to remove it.');
   return { kind: 'structure', label: 'Delete workbook name',
-    document: { ...basis.document, names: basis.document.names.filter(name => name !== entry) } };
+    document: renamePython({ ...basis.document, names: basis.document.names.filter(name => name !== entry) },
+      entry.name, '#REF!') };
 }
 
 export function createTable(basis: WorkbookSnapshot, entry: WorkbookName, hasHeaders: boolean, makeId: IdFactory): StructureCommand {

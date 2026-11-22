@@ -4,6 +4,7 @@ import { cellKey, findCell, worksheetViewport, type CellDocument, type CellExten
   type SheetFilter, type WorkbookDocument } from '../core/workbook';
 import { extentContains, lastColumn, lastRow, tableDesign, tableInputExtent } from '../core/workbook-names';
 import { overlaps, requireDocument, validateExtent } from '../core/workbook-validation';
+import { rewritePythonContent } from '../python/references';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { StructureCommand } from './workbook-session';
 
@@ -115,8 +116,9 @@ export function sortData(basis: WorkbookSnapshot, range: CellExtent & { readonly
   validateExtent(range);
   const sheet = sheetById(basis.document, range.sheetId);
   requireDocument(sheet, 'The worksheet no longer exists.');
-  requireDocument(!sheet.cells.some(cell => extentContains(range, cell) && cell.content.kind === 'python'),
-    'Sorting Python cells needs Python source rewriting, which is not available yet.');
+  requireDocument(!sheet.cells.some(cell => extentContains(range, cell) &&
+    (cell.spillOwner || cell.content.kind === 'python' && cell.content.block?.spillActive)),
+  'Cannot sort a Python spill. Sort the DataFrame in its source or insert a values copy first.');
   requireDocument(keyColumn >= range.column && keyColumn <= lastColumn(range),
     'The sort key must be a column inside the selection.');
   let work = extentOf(range);
@@ -158,9 +160,11 @@ export function sortData(basis: WorkbookSnapshot, range: CellExtent & { readonly
     for (let column = work.column; column <= lastColumn(work); column++) {
       const cell = block.get(cellKey({ row: source, column }));
       if (!cell) continue;
-      const content = cell.content.kind === 'formula' && destination !== source
-        ? { kind: 'formula' as const, source: copyReferences(cell.content.source, destination - source, 0) }
-        : cell.content;
+      const content = destination === source ? cell.content : cell.content.kind === 'formula' ?
+        { kind: 'formula' as const, source: copyReferences(cell.content.source, destination - source, 0) } :
+        cell.content.kind === 'python' ?
+          rewritePythonContent(cell.content, reference => copyReferences(reference, destination - source, 0)) :
+        cell.content;
       placed.push(destination === source && content === cell.content ? cell : { ...cell, row: destination, content });
     }
   }

@@ -33,9 +33,9 @@ Use one slice as one sprint. S01 freezes the observable baseline; S02/S03 retire
 | [S17](sprints/S17.md) | Native .exlt persistence | S03, S16 |
 | [S18](sprints/S18.md) | Browser file lifecycle and local recovery | S17 |
 | [S19](sprints/S19.md) | XLSX exchange and loss reports | S03, S18 |
-| [S20](sprints/S20.md) | Monaco Python authoring and references | S02, S19 |
-| [S21](sprints/S21.md) | Python execution, tables and spills | S20 |
-| [S22](sprints/S22.md) | Mixed native/Python recalculation | S09, S21 |
+| [S20](sprints/S20.md) | Python authoring, references and manual execution/results | S02, S19 |
+| [S21](sprints/S21.md) | Folded into S20 by user-approved scope expansion | S20 |
+| [S22](sprints/S22.md) | Mixed native/Python recalculation | S09, S20 |
 | [S23](sprints/S23.md) | Figures, placements and redraw | S22 |
 | [S24](sprints/S24.md) | Offline packaging and hardening | S23 |
 | [S25](sprints/S25.md) | Cross-browser parity and performance | S24 |
@@ -46,7 +46,7 @@ Use one slice as one sprint. S01 freezes the observable baseline; S02/S03 retire
 - S01–S03: baseline and evidence that browser Python, formulas and file adapters are viable. Failed feasibility blocks dependent implementation and triggers a documented architecture decision.
 - S04–S16: spreadsheet model and complete native editing/calculation/formatting/data/view workflows.
 - S17–S19: desktop native-file interoperability, browser save/recovery and reviewed XLSX exchange.
-- S20–S23: source authoring, Python results, mixed recalculation and linked figures.
+- S20–S23: source authoring and manual Python results, mixed recalculation and linked figures.
 - S24–S26: offline packaging, all-feature acceptance and actual GitHub Pages release.
 
 ## Shared Definition of Done
@@ -74,7 +74,7 @@ ExcelLightWeb/
     sprints/S01..S26.md  # one implementation specification per sprint
     handovers/           # sprint results, including initial scaffold report
     templates/           # simple handover template
-  public/runtime/        # versioned, verified Pyodide assets added in S24
+  public/runtime/        # ignored, versioned Pyodide assets staged by the S20 production build
   scripts/               # build/test/runtime acquisition helpers
   src/
     app/                 # composition root and shell

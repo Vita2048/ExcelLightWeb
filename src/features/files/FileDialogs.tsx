@@ -91,10 +91,10 @@ export function OptionsDialog({ preferences, onApply, onCancel }: {
             </fieldset>
             <fieldset className="option-group python-option-group" disabled>
               <legend>Python Calculation</legend>
-              <label><input type="radio" checked={preferences.pythonAutomaticConsent} readOnly name="python-calculation" /> Automatic</label>
-              <label><input type="radio" checked={!preferences.pythonAutomaticConsent} readOnly name="python-calculation" /> Manual</label>
+              <label><input type="radio" checked={false} readOnly name="python-calculation" /> Automatic</label>
+              <label><input type="radio" checked={true} readOnly name="python-calculation" /> Manual</label>
             </fieldset>
-            <p>Python calculation is not available yet. Automatic execution stays off until you explicitly choose it after Python is available.</p>
+            <p>Python runs only when you choose Run. Automatic calculation is not active in this sprint; any saved Automatic consent is retained without scheduling Python.</p>
           </>}
         </section>
       </div>

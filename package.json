@@ -12,10 +12,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:python-execution": "playwright test --config playwright.python-execution.config.ts",
     "test:adapter-probe": "vite build --config vite.adapter-probe.config.ts && playwright test --config playwright.adapter-probe.config.ts",
     "prepare:python-probe": "node scripts/prepare-python-probe.mjs",
+    "prepare:python-runtime": "node scripts/prepare-python-probe.mjs",
     "test:python-probe": "vite build --config vite.python-probe.config.ts && playwright test --config playwright.python-probe.config.ts",
-    "build": "npm run typecheck && vite build",
+    "build": "npm run prepare:python-runtime && npm run typecheck && vite build",
     "preview": "vite preview --host 127.0.0.1",
     "check": "npm run typecheck && npm test && npm run build",
     "test:worksheet": "vite build --config vite.worksheet.config.ts && playwright test --config playwright.worksheet.config.ts"
@@ -23,6 +25,7 @@
   "dependencies": {
     "@xmldom/xmldom": "0.9.12",
     "@zip.js/zip.js": "2.25.0",
+    "monaco-editor": "0.57.0",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

@@ -18,7 +18,7 @@ function setup(names: WorkbookName[] = []) {
   const sheet = () => session.active.sheets[0]!;
   const cell = (row: number, column: number) => findCell(sheet(), { row, column });
   const propose = (mode: MergeMode, target = range) => proposeMerge(session.capture(), target, mode, makeId);
-  return { session, set, sheet, cell, propose };
+  return { session, set, sheet, cell, propose, makeId };
 }
 
 it('moves the first populated value to a stable anchor and combines all edited formatting with one undo', () => {
@@ -50,7 +50,7 @@ it('moves the first populated value to a stable anchor and combines all edited f
 });
 
 it('merges across independently, replaces intersecting merges after expanding, and copies and shifts merged areas', () => {
-  const { session, set, cell, sheet, propose } = setup();
+  const { session, set, cell, sheet, propose, makeId } = setup();
   set({ target: at(2, 3), content: { kind: 'text', value: 'first row' } },
     { target: at(3, 3), content: { kind: 'text', value: 'next row' } });
   expect(propose('across').discards).toBe(false);
@@ -59,9 +59,9 @@ it('merges across independently, replaces intersecting merges after expanding, a
   expect(mergeState(sheet(), extent)).toBeUndefined();
   expect(cell(3, 2)?.content).toEqual({ kind: 'text', value: 'next row' });
   const clipboard = captureClipboard(session.capture(), range, false);
-  session.execute(pasteBlock(session.capture(), { ...range, row: 6 }, clipboard, 'all'));
+  session.execute(pasteBlock(session.capture(), { ...range, row: 6 }, clipboard, 'all', makeId));
   expect(sheet().merges).toContainEqual({ ...extent, row: 7, rows: 1 });
-  expect(() => fill(session.capture(), range, 'down')).toThrow(/Unmerge/);
+  expect(() => fill(session.capture(), range, 'down', makeId)).toThrow(/Unmerge/);
   expect(() => editAxis(session.capture(), 'sheet', { axis: 'row', start: 2, count: 1, delete: false, lane: [3, 3] })).toThrow(/Unmerge/);
   session.execute(editAxis(session.capture(), 'sheet', { axis: 'row', start: 2, count: 1, delete: false }));
   expect(sheet().merges).toContainEqual({ ...extent, row: 8, rows: 1 });

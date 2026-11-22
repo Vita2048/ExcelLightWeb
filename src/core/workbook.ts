@@ -4,6 +4,8 @@ export const documentLimits = Object.freeze({
   names: 1000, pythonSourceBytes: 1024 * 1024,
 });
 export const worksheetViewport = Object.freeze({ rows: 1000, columns: 26, address: 'A1:Z1000' });
+/** Source given to a new =PY anchor, matching the desktop's working starter script. */
+export const defaultPythonSource = '42\n';
 
 export type DocumentId = string;
 export type IdFactory = () => DocumentId;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type FormEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { EditRange } from '../application/editing-commands';
 import { applyNumberFormat, type NumberFormatChange } from '../application/number-format-command';
 import { changeAlignment, mergeState, proposeMerge, type AlignmentAction, type AlignmentPatch, type MergeMode } from '../application/alignment-commands';
@@ -56,6 +56,13 @@ import { PasteTextDialog } from '../features/editing/PasteTextDialog';
 import { localeArgumentSeparator } from '../features/formulas/formula-presentation';
 import { useWorksheetEditing, type AfterEditKey, type EditAction, type EditSurface } from '../features/editing/useWorksheetEditing';
 import { Worksheet, type WorksheetHandle } from '../grid/Worksheet';
+import { PythonPanel } from '../features/python/PythonPanel';
+import { pythonAnchorAt, type PythonAnchorTarget } from '../features/python/python-editor-model';
+import { usePythonEditor } from '../features/python/usePythonEditor';
+import { usePythonExecution } from '../features/python/usePythonExecution';
+import { PythonTrustDialog } from '../features/python/PythonTrustDialog';
+import { pythonInsertCommand, pythonResultText } from '../python/python-results';
+import { buildPythonInputs } from '../python/python-inputs';
 import { StructureDialog, StructureMenu, type DialogAction, type StructureAction, type StructureInput } from '../features/structure/StructureControls';
 import { fitDimensions } from '../grid/autofit';
 import { address, clamp, gridMetrics } from '../grid/grid-geometry';
@@ -251,8 +258,48 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }, [selected, sheet, sheetFiltered]);
   const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
+  const python = usePythonEditor({ session, changed: compound => scheduler.current?.changed(compound) });
+  const pythonExecution = usePythonExecution(session, () => {
+    setSnapshot(session.capture());
+    scheduler.current?.changed(true);
+  });
+  const [pythonOpen, setPythonOpen] = useState(false);
+  const [pythonTrustPrompt, setPythonTrustPrompt] = useState<{ target: PythonAnchorTarget }>();
+  const trustedPythonSession = useRef<string | undefined>(undefined);
+  const [pythonHiddenFor, setPythonHiddenFor] = useState<string>();
+  const [pythonWidth, setPythonWidth] = useState(380);
+  const [pythonPick, setPythonPick] = useState<{ readonly sheetId: string; readonly area: Area }>();
+  const pythonResize = useRef<{ readonly id: number; readonly startX: number; readonly startWidth: number } | undefined>(undefined);
+  const pythonTarget = useMemo(() => pythonAnchorAt(snapshot, sheet.id, selection.anchor),
+    [snapshot, sheet.id, selection.anchor.row, selection.anchor.column]);
+  const pythonTargetKey = pythonTarget ? pythonTarget.sheetId + ':' + pythonTarget.cellId : undefined;
+  const pythonPanelTarget = python.context ? pythonAnchorAt(snapshot, python.context.sheetId, python.context) : undefined;
+  const pythonPanelCell = pythonPanelTarget && snapshot.document.sheets.find(item => item.id === pythonPanelTarget.sheetId)?.cells
+    .find(cell => cell.id === pythonPanelTarget.cellId);
+  const pythonBlock = pythonPanelCell?.content.kind === 'python' ? pythonPanelCell.content.block : undefined;
+  const pythonInputFresh = useMemo(() => {
+    if (!pythonPanelTarget || !pythonPanelCell || pythonPanelCell.content.kind !== 'python' || !pythonBlock?.hasResult ||
+        !pythonBlock.inputFingerprint || pythonBlock.status !== 'succeeded') return false;
+    try {
+      return buildPythonInputs(snapshot, { sheetId: pythonPanelTarget.sheetId, row: pythonPanelTarget.row,
+        column: pythonPanelTarget.column, blockId: pythonPanelTarget.blockId, source: pythonPanelCell.content.source },
+      calculation.stale).fingerprint === pythonBlock.inputFingerprint;
+    } catch { return false; }
+  }, [snapshot, pythonPanelTarget?.sheetId, pythonPanelTarget?.cellId, pythonPanelTarget?.blockId,
+    pythonBlock, pythonPanelCell, calculation.stale]);
+  const pythonExecutionState = pythonExecution.state;
+  const pythonResultExecution = pythonPanelTarget && pythonExecutionState?.key === pythonPanelTarget.sheetId + ':' + pythonPanelTarget.cellId
+    ? pythonExecutionState : undefined;
+  useEffect(() => {
+    if (pythonTargetKey && pythonTargetKey === pythonHiddenFor) return;
+    if (pythonHiddenFor) setPythonHiddenFor(undefined);
+    // A cross-sheet xl pick keeps the original anchor even though another sheet is active.
+    if (python.context && python.wantsReference() && python.context.sheetId !== sheet.id) return;
+    python.sync(pythonTarget);
+    if (pythonTarget) setPythonOpen(true);
+  }, [pythonTarget, pythonTargetKey, pythonHiddenFor, python.sync, python.context, python.wantsReference]);
   const focusGrid = () => worksheet.current?.focus();
-  const editing = useWorksheetEditing(session, compound => scheduler.current?.changed(compound), separator, locale, focusGrid, surface => {
+  const editing = useWorksheetEditing(session, compound => scheduler.current?.changed(compound), separator, locale, makeId, focusGrid, surface => {
     root.current?.querySelector<HTMLTextAreaElement>('[data-cell-editor="' + surface + '"]')?.focus({ preventScroll: true });
   });
 
@@ -795,7 +842,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!preferencesReady) { setFileStatus('Local workspace is still starting. Try again in a moment.'); return; }
     if (workspaceConflict) return;
     if (root.current?.querySelector('dialog[open]')) return;
-    if (!editing.commit()) return;
+    if (!python.barrier() || !editing.commit()) return;
     fileBusyRef.current = true;
     setFileBusy(true);
     try { await action(); }
@@ -888,6 +935,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function setSelection(next: GridSelection): boolean {
+    if (!rangePicker && !python.barrier()) return false;
     if (rangePicker) {
       setSelections(current => new Map(current).set(sheet.id, next));
       const selArea = selectionAreas(next)[0];
@@ -923,6 +971,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function chooseSheet(nextSheetId: DocumentId) {
+    if (python.wantsReference()) {
+      setActiveSheetId(nextSheetId);
+      return;
+    }
+    if (!python.barrier()) return;
     const caret = editorSelection();
     if (caret && editing.pickSlot(caret)) {
       if (nextSheetId !== sheet.id) {
@@ -1784,7 +1837,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function openStructure(action: StructureAction, target: StructureTarget = { id: sheet.id, ranges: ranges() }, tab: FormatTab = 'Number') {
     setMenu(undefined);
-    if (!editing.commit()) return;
+    if (!python.barrier() || !editing.commit()) return;
     editing.selectionChanged();
     const basis = session.capture();
     if (action === 'format-cells') {
@@ -1835,8 +1888,114 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function run(action: EditAction, event?: DataTransfer) {
+    if (!python.barrier()) return;
     setBrush(undefined);
     void editing.run(action, ranges(), event).then(target => { if (target) worksheet.current?.goTo(target); });
+  }
+
+  function moveHistory(undo: boolean) {
+    if (!python.barrier()) return;
+    editing.moveHistory(undo);
+  }
+
+  function requestPythonRun() {
+    if (!python.barrier()) return;
+    const context = python.context;
+    const target = context && pythonAnchorAt(session.capture(), context.sheetId, context);
+    if (!target) return;
+    if (trustedPythonSession.current === target.sessionId) {
+      void pythonExecution.run(target, calculation.stale);
+    } else setPythonTrustPrompt({ target });
+  }
+
+  function confirmPythonRun(trustSession: boolean) {
+    const target = pythonTrustPrompt?.target;
+    setPythonTrustPrompt(undefined);
+    if (!target || target.sessionId !== session.sessionId) return;
+    if (trustSession) trustedPythonSession.current = target.sessionId;
+    void pythonExecution.run(target, calculation.stale);
+  }
+
+  async function copyPythonResult() {
+    if (!pythonBlock?.hasResult) return;
+    const text = pythonResultText(pythonBlock);
+    if (text === undefined) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setFileStatus('Python result copied to the clipboard.');
+    } catch {
+      const fallback = document.createElement('textarea');
+      fallback.value = text;
+      fallback.setAttribute('aria-hidden', 'true');
+      fallback.style.position = 'fixed';
+      fallback.style.opacity = '0';
+      document.body.append(fallback);
+      fallback.select();
+      const copied = document.execCommand('copy');
+      fallback.remove();
+      setFileStatus(copied ? 'Python result copied to the clipboard.' : 'Clipboard access is unavailable in this browser context.');
+    }
+  }
+
+  function insertPythonValues() {
+    if (!python.barrier()) return;
+    const context = python.context;
+    const current = context && pythonAnchorAt(session.capture(), context.sheetId, context);
+    const cell = current && session.active.sheets.find(item => item.id === current.sheetId)?.cells.find(item => item.id === current.cellId);
+    const block = cell?.content.kind === 'python' ? cell.content.block : undefined;
+    if (!current || !block?.hasResult) return;
+    try {
+      const command = pythonInsertCommand(session.active, { sheetId: current.sheetId, row: current.row, column: current.column }, block, makeId);
+      if (!python.leave()) return;
+      session.execute(command);
+      setSnapshot(session.capture());
+      scheduler.current?.changed(true);
+      setPythonOpen(false);
+      setPythonPick(undefined);
+    } catch (error) { setFileStatus(error instanceof Error ? error.message : 'Python values could not be inserted.'); }
+  }
+
+  function hidePython() {
+    if (!python.leave()) return;
+    setPythonHiddenFor(pythonTargetKey);
+    setPythonOpen(false);
+    setPythonPick(undefined);
+    requestAnimationFrame(focusGrid);
+  }
+
+  function togglePython() {
+    if (pythonOpen) hidePython();
+    else {
+      setPythonHiddenFor(undefined);
+      setPythonOpen(true);
+    }
+  }
+
+  function beginPythonResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pythonResize.current = { id: event.pointerId, startX: event.clientX, startWidth: pythonWidth };
+  }
+
+  function movePythonResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const active = pythonResize.current;
+    if (!active || active.id !== event.pointerId) return;
+    setPythonWidth(clamp(active.startWidth - (event.clientX - active.startX), 280, 720));
+  }
+
+  function endPythonResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (pythonResize.current?.id === event.pointerId) pythonResize.current = undefined;
+  }
+
+  function resizePythonKeys(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 48 : 16;
+    if (event.key === 'ArrowLeft') setPythonWidth(width => clamp(width + step, 280, 720));
+    else if (event.key === 'ArrowRight') setPythonWidth(width => clamp(width - step, 280, 720));
+    else if (event.key === 'Home') setPythonWidth(280);
+    else if (event.key === 'End') setPythonWidth(720);
+    else return;
+    event.preventDefault();
   }
 
   function clipboardEvent(event: ClipboardEvent<HTMLDivElement>, kind: 'copy' | 'cut' | 'paste') {
@@ -1845,6 +2004,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   function beginInline(text?: string) {
+    if (!python.barrier()) return;
     setBrush(undefined);
     setBorderTool(undefined);
     editing.begin(activeTarget, 'inline', text);
@@ -1878,7 +2038,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     } else if (control && key === '1') {
       handle = () => openStructure('format-cells');
     } else if (control && (key === 'z' || key === 'y')) {
-      handle = () => editing.moveHistory(key === 'z' && !event.shiftKey);
+      handle = () => moveHistory(key === 'z' && !event.shiftKey);
     } else if (control && (key === 'd' || key === 'r')) {
       handle = () => run({ kind: 'fill', direction: key === 'd' ? 'down' : 'right' });
     } else if (control && event.shiftKey && key === 'v') {
@@ -1972,9 +2132,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             <ShellIcon icon="save" />
           </button>
           <button type="button" className="icon-button" aria-label="Undo" title={session.canUndo ? 'Undo' : 'Nothing to undo'}
-            disabled={!session.canUndo} onClick={() => editing.moveHistory(true)}><ShellIcon icon="undo" /></button>
+            disabled={!session.canUndo} onClick={() => moveHistory(true)}><ShellIcon icon="undo" /></button>
           <button type="button" className="icon-button" aria-label="Redo" title={session.canRedo ? 'Redo' : 'Nothing to redo'}
-            disabled={!session.canRedo} onClick={() => editing.moveHistory(false)}><ShellIcon icon="redo" /></button>
+            disabled={!session.canRedo} onClick={() => moveHistory(false)}><ShellIcon icon="redo" /></button>
         </div>
         <span className="workbook-title">{activeFile.name}{session.isDirty ? ' *' : ''}</span>
         <span className="product-title">ExcelLight Web</span>
@@ -1988,8 +2148,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onAppearanceError={(error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); }}
         onFormatDialog={tab => openStructure('format-cells', undefined, tab)}
         painter={painter ? painter.locked ? 'locked' : 'single' : undefined} onPainter={armPainter} view={view} onView={onView} onEdit={run} onStructure={openStructure}
-        calculationMode={calculation.mode} onCalculationMode={setCalculationMode} onCalculate={scope => {
-          if (editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
+        calculationMode={calculation.mode} onCalculationMode={setCalculationMode} pythonOpen={pythonOpen}
+        onPython={togglePython} onCalculate={scope => {
+          if (python.barrier() && editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
         }} onInsertFunction={name => {
           if (editing.commit()) editing.begin(activeTarget, view.formulaBar ? 'formula' : 'inline', '=' + name + '()', true);
         }} onZoomToSelection={() => {
@@ -2020,46 +2181,80 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           <span className="formula-symbol" aria-hidden="true">ƒx</span>
           <CellEditor {...editorProps('formula')} />
         </div>}
-        <Worksheet key={sheet.id} ref={handle => {
-          worksheet.current = handle;
-          if (handle && requestedFocus.current) {
-            handle.focus();
-            requestedFocus.current = false;
-          }
-        }} sheet={sheet} selection={selection} onSelection={setSelection} onAdjacentSheet={chooseAdjacent}
-          paintActive={!!painter} onPaint={paint}
-          borderTool={borderTool?.mode} borderPen={borderPen(lineStyle, lineColor)} onBeginBorder={beginBorderStroke}
-          onExitBorder={() => setBorderTool(undefined)}
-          referenceArea={editing.draft?.pick?.sheetId === sheet.id ? editing.draft.pick.area : undefined}
-          onReferencePick={() => {
-            const caret = editorSelection();
-            return caret && editing.beginReferencePick(caret, sheet);
-          }}
-          onEdit={beginInline} onShortcut={shortcut} onClipboard={clipboardEvent}
-          onStructureMenu={openGridMenu}
-          onHeaderFit={(axis, index) => openStructure(`fit-${axis}`, targetHeader(axis, index))}
-          onHeaderResize={(axis, index) => {
-            if (!editing.commit()) return;
-            const captured = session.capture();
-            const indexes = indexesFor(targetHeader(axis, index), axis);
-            return size => {
-              try {
-                const basis = currentAuthoredBasis(captured);
-                applyStructure(basis, changeDimensions(basis, sheet.id, axis, indexes.map(index => ({ index, size }))));
+        <div className="worksheet-row">
+          <Worksheet key={sheet.id} ref={handle => {
+            worksheet.current = handle;
+            if (handle && requestedFocus.current) {
+              handle.focus();
+              requestedFocus.current = false;
+            }
+          }} sheet={sheet} selection={selection} onSelection={setSelection} onAdjacentSheet={chooseAdjacent}
+            paintActive={!!painter} onPaint={paint}
+            borderTool={borderTool?.mode} borderPen={borderPen(lineStyle, lineColor)} onBeginBorder={beginBorderStroke}
+            onExitBorder={() => setBorderTool(undefined)}
+            referenceArea={pythonPick?.sheetId === sheet.id ? pythonPick.area :
+              editing.draft?.pick?.sheetId === sheet.id ? editing.draft.pick.area : undefined}
+            onReferencePick={() => {
+              if (python.wantsReference()) {
+                let area: Area | undefined;
+                return {
+                  update: next => { area = next; setPythonPick({ sheetId: sheet.id, area: next }); },
+                  finish: () => {
+                    if (area && python.insertReference(sheet, area)) {
+                      const anchor = python.context;
+                      if (anchor && anchor.sheetId !== sheet.id) {
+                        setActiveSheetId(anchor.sheetId);
+                        setSelections(current => new Map(current).set(anchor.sheetId,
+                          singleSelection({ row: anchor.row, column: anchor.column })));
+                      }
+                    }
+                    setPythonPick(undefined);
+                  },
+                  cancel: () => setPythonPick(undefined),
+                };
               }
-              catch (error) { editing.reject(error); }
-            };
-          }}
-          editor={editing.draft?.surface === 'inline' ? { at: editing.draft.target, input: <CellEditor {...editorProps('inline')} /> } : undefined}
-          zoom={view.zoom} headings={view.headings} gridlines={view.gridlines} showFormulas={view.showFormulas}
-          staleCells={calculation.stale} separator={separator}
-          tables={tables}
-          rangePicking={rangePicker !== undefined}
-          onRangePickFinish={accept => rangePicker?.onDone(accept ? rangePicker.initial : null)}
-          onResizeTable={handleTableResize}
-          onTotalFunction={handleTotalFunction}
-          onFilter={openFilter}
-        />
+              const caret = editorSelection();
+              return caret && editing.beginReferencePick(caret, sheet);
+            }}
+            onEdit={beginInline} onShortcut={shortcut} onClipboard={clipboardEvent}
+            onStructureMenu={openGridMenu}
+            onHeaderFit={(axis, index) => openStructure(`fit-${axis}`, targetHeader(axis, index))}
+            onHeaderResize={(axis, index) => {
+              if (!python.barrier() || !editing.commit()) return;
+              const captured = session.capture();
+              const indexes = indexesFor(targetHeader(axis, index), axis);
+              return size => {
+                try {
+                  const basis = currentAuthoredBasis(captured);
+                  applyStructure(basis, changeDimensions(basis, sheet.id, axis, indexes.map(index => ({ index, size }))));
+                }
+                catch (error) { editing.reject(error); }
+              };
+            }}
+            editor={editing.draft?.surface === 'inline' ? { at: editing.draft.target, input: <CellEditor {...editorProps('inline')} /> } : undefined}
+            zoom={view.zoom} headings={view.headings} gridlines={view.gridlines} showFormulas={view.showFormulas}
+            staleCells={calculation.stale} separator={separator}
+            tables={tables}
+            rangePicking={rangePicker !== undefined}
+            onRangePickFinish={accept => rangePicker?.onDone(accept ? rangePicker.initial : null)}
+            onResizeTable={handleTableResize}
+            onTotalFunction={handleTotalFunction}
+            onFilter={openFilter}
+          />
+          {pythonOpen && <>
+            <div className="python-divider" role="separator" aria-label="Resize Python workspace"
+              aria-orientation="vertical" aria-valuemin={280} aria-valuemax={720} aria-valuenow={pythonWidth}
+              tabIndex={0} onPointerDown={beginPythonResize} onPointerMove={movePythonResize}
+              onPointerUp={endPythonResize} onPointerCancel={endPythonResize} onKeyDown={resizePythonKeys} />
+            <PythonPanel width={pythonWidth} context={python.context} insertRequest={python.insertRequest}
+              status={python.status} pythonInputFresh={pythonInputFresh} {...(pythonBlock && { block: pythonBlock })}
+              {...(pythonExecutionState && { execution: pythonExecutionState })}
+              {...(pythonResultExecution && { resultExecution: pythonResultExecution })}
+              onDraft={python.receiveDraft} onPickable={python.setPickable}
+              onHide={hidePython} onRun={requestPythonRun} onStop={pythonExecution.stop}
+              onCopy={() => { void copyPythonResult(); }} onInsertValues={insertPythonValues} />
+          </>}
+        </div>
         <nav className="sheet-strip" aria-label="Worksheets">
           <div className="sheet-navigation">
             <button type="button" className="icon-button" aria-label="Previous sheet" disabled={sheetIndex === 0}
@@ -2141,6 +2336,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onSave={finishSaveAsName} onCancel={() => finishSaveAsName(null)} />}
       {workspaceToRemove && <RemoveWorkspaceDialog name={workspaceToRemove.name}
         onChoice={remove => { void decideWorkspaceRemoval(workspaceToRemove, remove); }} />}
+      {pythonTrustPrompt && <PythonTrustDialog onRunOnce={() => confirmPythonRun(false)}
+        onTrustSession={() => confirmPythonRun(true)} onCancel={() => setPythonTrustPrompt(undefined)} />}
       {fileMessage && <FileMessageDialog title={fileMessage.title} message={fileMessage.message} onClose={() => setFileMessage(undefined)} />}
       {xlsxReport && <XlsxReportDialog title={xlsxReport.title} issues={xlsxReport.issues}
         onChoice={finishXlsxReport} />}

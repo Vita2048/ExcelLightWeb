@@ -132,7 +132,7 @@ describe('workbook names and tables', () => {
     expect(session.active.sheets[0]?.filter).toBeUndefined();
     expect(value(session, 1, 1)?.kind).not.toBe('text');
     const hidden = session.capture();
-    session.execute(pasteText(hidden, { sheetId, row: 1, column: 1, rows: 1, columns: 1 }, 'Changed', 'values'));
+    session.execute(pasteText(hidden, { sheetId, row: 1, column: 1, rows: 1, columns: 1 }, 'Changed', 'values', 'en-US', makeId));
     expect(() => changeTableDesign(session.capture(), id, { headerRow: true }, makeId)).toThrow(/changed worksheet values/);
     expect(session.active.names[0]?.area.row).toBe(2);
     expect(value(session, 1, 1)).toEqual({ kind: 'text', value: 'Changed' });

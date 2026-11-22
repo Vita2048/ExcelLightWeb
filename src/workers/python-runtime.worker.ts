@@ -1,0 +1,52 @@
+import adapter from '../python/runtime-adapter.py?raw';
+import lock from '../python/runtime-lock.json';
+import { pythonRuntimeProtocolVersion, type PythonRuntimeReply, type PythonRuntimeRequest } from '../python/runtime-protocol';
+
+type Pyodide = {
+  loadPackage(packages: string[]): Promise<unknown>;
+  runPython(source: string): unknown;
+  globals: { set(name: string, value: string): void; delete(name: string): void };
+};
+type Loader = { loadPyodide(options: { indexURL: string }): Promise<Pyodide> };
+
+let runtime: Pyodide | undefined;
+const runtimeFingerprint = `pyodide-${lock.version}-python-${lock.python}-numpy-${lock.packages.numpy}` +
+  `-pandas-${lock.packages.pandas}-matplotlib-${lock.packages.matplotlib}`;
+
+function send(reply: PythonRuntimeReply) {
+  self.postMessage(reply);
+}
+
+self.addEventListener('message', async (event: MessageEvent<PythonRuntimeRequest>) => {
+  const request = event.data;
+  if (!request || request.protocolVersion !== pythonRuntimeProtocolVersion || typeof request.requestId !== 'string') return;
+  try {
+    if (request.kind === 'init') {
+      const index = new URL(request.runtimeUrl);
+      if (index.origin !== self.location.origin) throw new Error('Python runtime must be loaded from this application origin.');
+      if (!index.pathname.endsWith('/')) index.pathname += '/';
+      const loaderUrl = new URL('pyodide.mjs', index).href;
+      const { loadPyodide } = await import(/* @vite-ignore */ loaderUrl) as Loader;
+      runtime = await loadPyodide({ indexURL: index.href });
+      await runtime.loadPackage(['numpy', 'pandas', 'matplotlib']);
+      runtime.runPython(adapter);
+      send({ kind: 'ready', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId, runtimeFingerprint });
+      return;
+    }
+
+    if (!runtime) throw new Error('Python runtime is not initialized.');
+    runtime.globals.set('_excellite_source', request.source);
+    runtime.globals.set('_excellite_input', JSON.stringify(request.input));
+    try {
+      const json = runtime.runPython('run(_excellite_source, _excellite_input)') as string;
+      const output = JSON.parse(json);
+      send({ kind: 'result', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId, output });
+    } finally {
+      runtime.globals.delete('_excellite_source');
+      runtime.globals.delete('_excellite_input');
+    }
+  } catch (error) {
+    send({ kind: 'error', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId,
+      message: error instanceof Error ? error.message : String(error) });
+  }
+});

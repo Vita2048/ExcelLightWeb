@@ -185,7 +185,8 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await expect(options.getByLabel('Office Theme')).toBeDisabled();
   await options.getByRole('tab', { name: 'Formulas' }).click();
   await expect(options.locator('.python-option-group input[name="python-calculation"]').first()).toBeDisabled();
-  await expect(options.getByText(/Python calculation is not available yet/)).toBeVisible();
+  await expect(options.getByText(/Python runs only when you choose Run/u)).toBeVisible();
+  await expect(options.getByText(/Automatic calculation is not active in this sprint/u)).toBeVisible();
   await expect(options.locator('input[name="native-calculation"][value="automatic"]')).toBeChecked();
   await options.locator('input[name="native-calculation"][value="manual"]').check();
   await options.getByRole('button', { name: 'OK' }).click();

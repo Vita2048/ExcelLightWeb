@@ -16,3 +16,4 @@ playwright-report/
 .DS_Store
 public/runtime/pyodide/
 tests/python-browser/public/runtime/
+.tmp-s20-trace

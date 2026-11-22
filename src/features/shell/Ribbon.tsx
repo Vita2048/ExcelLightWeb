@@ -52,6 +52,8 @@ interface RibbonProps {
   readonly onStructure: (action: StructureAction) => void;
   readonly calculationMode: CalculationMode;
   readonly onCalculationMode: (mode: CalculationMode) => void;
+  readonly pythonOpen: boolean;
+  readonly onPython: () => void;
   readonly onCalculate: (scope: 'sheet' | 'workbook') => void;
   readonly onInsertFunction: (name: NativeFunction) => void;
   readonly activeTable?: WorkbookName | undefined;
@@ -94,7 +96,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 }
 
 export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
-  onCalculationMode, onCalculate, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
+  onCalculationMode, onCalculate, pythonOpen, onPython, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
   activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
@@ -285,6 +287,7 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
               <legend>Formula Auditing</legend>
               <button type="button" className="ribbon-command" aria-pressed={view.showFormulas}
                 onClick={() => onView({ showFormulas: !view.showFormulas })}><RibbonGlyph name="Insert Function" />Show Formulas</button>
+              <label><input type="checkbox" checked={pythonOpen} onChange={onPython} /> Python</label>
             </fieldset>
             <fieldset>
               <legend>Calculation</legend>
