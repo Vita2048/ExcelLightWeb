@@ -17,6 +17,8 @@ npm run test:e2e
 
 `npm run check` combines typecheck, unit/integration tests and production build. E2E is separate because browsers must be installed. CI runs both and installs the three browser engines. The Pages workflow repeats them before uploading the exact tested dist directory. The E2E server serves real static files at `/` and `/ExcelLightWeb/`, with no missing-asset SPA fallback. This catches relative asset-path errors hidden by a development server.
 
+Playwright defaults to two workers so local runs and the GitHub-hosted two-core runner use the same bounded concurrency. Set `PLAYWRIGHT_WORKERS` to override this for a machine with different capacity. The server port defaults to 4173; set `PLAYWRIGHT_TEST_PORT` if that port is occupied.
+
 The production browser suite verifies hosting paths, dark rendering, worksheet input, virtualization and accessibility. S01 adds fixture integrity, snapshot and expectation loading checks. Vite's manual preview server is for local development.
 
 ## Workbook model and session

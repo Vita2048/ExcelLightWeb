@@ -192,7 +192,12 @@ test('paints the chosen gradient, cancels the Fill draft and replaces the effect
 test('Format Painter tiles a locked source across sheets, applies once in single mode, and cancels with Escape', async ({ page }) => {
   await page.goto(path);
   const grid = page.getByRole('grid');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'New sheet' }).click();
+  const destinationSheet = page.getByRole('button', { name: 'Sheet2', exact: true });
+  await expect(destinationSheet).toBeVisible();
+  await destinationSheet.click();
+  await expect(destinationSheet).toHaveAttribute('aria-current', 'true');
   await enter(page, 'C3', '=1+2');
   await enter(page, 'D3', 'keep');
   await page.getByRole('button', { name: 'Sheet1', exact: true }).click();

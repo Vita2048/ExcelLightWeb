@@ -4,7 +4,7 @@ S01 captured the [command inventory](source-baseline/Command-Inventory.md), [des
 
 References below are filenames under the source src/ExcelLite.*, tests or docs tree. Locate them from C:/Temp/ExcelLight. Treat current source and assertions as authority when high-level documentation differs. Columns for evidence/status must be updated by each sprint.
 
-S18 behavior and GUI implementation are present, but the sprint remains blocked until the production browser verification gate completes cleanly; see the [S18 handover](handovers/S18.md).
+S18 is complete. Its final production gate passed with Chromium, Firefox and WebKit; the two skips are the expected non-Chromium skips for the Chromium-only native clipboard test. See the [S18 handover](handovers/S18.md) for commands, counts and resolved test issues.
 
 | ID | Required existing behavior | Source / oracle | Sprint | Status / evidence |
 | --- | --- | --- | --- | --- |

@@ -8,6 +8,7 @@ export const workspaceRecentLimit = 10;
 const recoveryLimit = 32;
 const leaseDurationMs = 20_000;
 const leaseOwnerKey = 'excellight-workspace-lease-owner';
+const suspendedLeaseOwnerKey = 'excellight-workspace-lease-suspended-owner';
 const leaseChannelName = 'excellight-workspace-leases';
 
 export interface PersistedView {
@@ -469,11 +470,16 @@ export class WorkspaceLease {
 
   constructor(private readonly store: LocalWorkspaceStore, private readonly onLost: (workbookId: string) => void) {
     let owner: string = crypto.randomUUID();
+    let resumedOwner = false;
     try {
-      owner = sessionStorage.getItem(leaseOwnerKey) || owner;
+      const savedOwner = sessionStorage.getItem(leaseOwnerKey);
+      owner = savedOwner || owner;
+      resumedOwner = !!savedOwner && sessionStorage.getItem(suspendedLeaseOwnerKey) === savedOwner;
+      sessionStorage.removeItem(suspendedLeaseOwnerKey);
       sessionStorage.setItem(leaseOwnerKey, owner);
     } catch { /* Storage may be disabled; retain a per-page owner. */ }
     this.owner = owner;
+    this.#ownerChecked = resumedOwner;
     this.#openChannel();
   }
 
@@ -498,12 +504,16 @@ export class WorkspaceLease {
   async suspend(): Promise<void> {
     this.#suspended = true;
     this.#lastActiveId = this.#activeId;
+    try { sessionStorage.setItem(suspendedLeaseOwnerKey, this.owner); }
+    catch { /* Lease release still protects the workbook when session storage is unavailable. */ }
     this.#channel?.close();
     this.#channel = undefined;
     await this.release();
   }
 
   async resume(): Promise<void> {
+    try { sessionStorage.removeItem(suspendedLeaseOwnerKey); }
+    catch { /* Keep the in-memory lease owner when session storage is unavailable. */ }
     this.#openChannel();
     this.#suspended = false;
     const id = this.#lastActiveId;

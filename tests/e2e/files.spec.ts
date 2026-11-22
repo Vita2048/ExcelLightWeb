@@ -409,6 +409,9 @@ test('an IndexedDB transaction failure preserves the dirty workbook and its valu
   });
   await openFileBackstage(page);
   await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
+  const firstSave = page.getByRole('dialog', { name: 'Save to this browser' });
+  await expect(firstSave).toBeVisible();
+  await firstSave.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Save failed' })).toBeVisible();
   await page.getByRole('dialog', { name: 'Save failed' }).getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.locator('.workbook-title')).toHaveText('Book1 *');

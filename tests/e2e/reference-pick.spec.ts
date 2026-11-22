@@ -55,6 +55,8 @@ test('inline picking can add a cross-sheet reference with the formula bar hidden
   await rename.press('Enter');
   const sourceSheet = page.getByRole('button', { name: 'Sheet1', exact: true });
   const otherSheet = page.getByRole('button', { name: "O'Brien", exact: true });
+  await otherSheet.click();
+  await enter(page, 'A1', '7');
   await sourceSheet.click();
   await go(page, 'C3');
   await page.getByRole('tab', { name: 'View' }).click();
@@ -86,9 +88,9 @@ test('inline picking can add a cross-sheet reference with the formula bar hidden
   await expect(editor).toBeFocused();
   const remoteAgain = await point(page, 1, 1);
   await page.mouse.click(remoteAgain.x, remoteAgain.y);
+  await expect(editor).toHaveValue("='O''Brien'!A1");
   await editor.press('Enter');
   await expect(sourceSheet).toHaveAttribute('aria-current', 'true');
-  await expect(page.getByRole('gridcell', { name: 'C3, 7', exact: true })).toBeAttached();
   await expect(page.getByRole('gridcell', { name: 'C3, 7', exact: true })).toBeAttached();
   await expect(editor).toHaveCount(0);
 });
