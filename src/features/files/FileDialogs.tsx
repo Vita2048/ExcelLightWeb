@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { LocalWorkspacePreferences, RecoveryRecord } from '../../persistence/local';
+import type { ExchangeIssue } from '../../persistence/xlsx';
 import { DialogActions } from '../dialogs/DialogActions';
 import { DialogTitleBar } from '../dialogs/DialogTitleBar';
 
@@ -13,6 +14,7 @@ function useModalDialog() {
 }
 
 export type ReplacementChoice = 'save' | 'discard' | 'cancel';
+export type ReportChoice = 'continue' | 'cancel';
 
 export function UnsavedChangesDialog({ name, onChoice }: {
   readonly name: string;
@@ -148,6 +150,28 @@ export function RemoveWorkspaceDialog({ name, onChoice }: {
     <div className="dialog-actions">
       <button type="button" className="file-danger" autoFocus onClick={() => onChoice(true)}>Remove</button>
       <button type="button" onClick={() => onChoice(false)}>Cancel</button>
+    </div>
+  </dialog>;
+}
+
+export function XlsxReportDialog({ title, issues, onChoice }: {
+  readonly title: string;
+  readonly issues: readonly ExchangeIssue[];
+  readonly onChoice: (choice: ReportChoice) => void;
+}) {
+  const dialog = useModalDialog();
+  return <dialog ref={dialog} className="paste-dialog file-modal xlsx-report-dialog" aria-labelledby="xlsx-report-title"
+    onCancel={event => { event.preventDefault(); onChoice('cancel'); }}>
+    <DialogTitleBar><h2 id="xlsx-report-title">{title}</h2></DialogTitleBar>
+    <p>Review the unsupported content below. Continue keeps everything ExcelLight supports; Cancel leaves your current workbook unchanged.</p>
+    <ul className="xlsx-report-list">
+      {issues.map(issue => <li key={issue.code}>
+        <strong>{issue.code}</strong><span>{issue.detail}</span>
+      </li>)}
+    </ul>
+    <div className="dialog-actions">
+      <button type="button" className="file-primary" autoFocus onClick={() => onChoice('continue')}>Continue</button>
+      <button type="button" onClick={() => onChoice('cancel')}>Cancel</button>
     </div>
   </dialog>;
 }

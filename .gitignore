@@ -8,6 +8,7 @@ tests/desktop-formats/obj/
 tests/desktop-appearance/obj/
 tests/desktop-borders/obj/
 tests/desktop-alignment/obj/
+tests/desktop-xlsx/obj/
 playwright-report/
 .env*
 !.env.example

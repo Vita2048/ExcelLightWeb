@@ -138,6 +138,21 @@ Run `npx vitest run tests/parity/native-package.test.ts` for the v1 native packa
 
 Run `npx vitest run tests/unit/local-workspace.test.ts tests/unit/native-files.test.ts` for v1 preference migration, opt-in consent validation, file permission denial, external-file version conflicts and writer aborts. After a production build, run `npm run test:e2e -- tests/e2e/files.spec.ts` in Chromium, Firefox and WebKit. The real browser journeys cover the C# Quick Access order (Save, Undo, Redo) and Save action, first-Save browser naming, Recent removal without disk deletion, desktop File backstage geometry and General/Formulas Options, local Save and Recent, native package open, download Export dirty-state behavior, Save/Don't Save/Cancel, recovery after reload, two-tab ownership including removal protection, IndexedDB quota failure and transactional migration success/failure. The geometry checks pin the desktop 200px navigation rail, 32px Home inset, 520px Options dialog and 140px category rail. IndexedDB stores package payloads as `ArrayBuffer` for WebKit compatibility while the adapter returns `Blob` packages to the native reader. Accessible worksheet cell labels live in a clipped projection; assert `aria-label` instead of visual visibility for those cells. The test server defaults to port 4173; set `PLAYWRIGHT_TEST_PORT` to use another local port when that port is occupied.
 
+## XLSX exchange
+
+Run `npx vitest run tests/unit/xlsx-styles.test.ts tests/integration/xlsx-import.test.ts tests/integration/xlsx-export.test.ts` for the style/property matrix, scalar and cache types, shared strings, shared formulas, merges/dimensions/freeze, unsupported formula freshness, omissions, 1904 offsets, bounds/macro/encryption/DTD rejection, reviewed export reports, no invented zero and dirty-state preservation. After a production build, run `npm run test:e2e -- tests/e2e/xlsx-files.spec.ts`; the real Chromium, Firefox and WebKit journeys open the sales fixture through File → Open with the download fallback, cancel and continue the import report, verify sheet names and imported cells, edit a cell, then run the reviewed Export and check the downloaded name and retained dirty state.
+
+The desktop XLSX oracle reimports web-exported files with the Release ClosedXML adapter. Generate exports with `S19_XLSX_OUT`, run Vitest, then the .NET project; set `DesktopBin` when the Release binaries are elsewhere, as with the other desktop oracles. It checks sheet names, a formula source and cache, a number format, date serial 60, alignment, gradients, borders and freeze. It does not check row/column dimensions: the desktop's current ClosedXML reader returns the default width for the width attribute its own exporter writes, while the TypeScript import/export roundtrip covers dimensions.
+
+```powershell
+$env:S19_XLSX_OUT='node_modules/.cache/s19-xlsx'
+npx vitest run tests/integration/xlsx-export.test.ts
+dotnet run --project tests/desktop-xlsx/DesktopXlsx.csproj -- node_modules/.cache/s19-xlsx
+Remove-Item Env:S19_XLSX_OUT
+```
+
+The oracle requires the external desktop Release assemblies and is not part of `npm run check` or GitHub CI. A skip or an unavailable assembly is not interoperability evidence.
+
 ## Test layers
 
 | Layer | What it proves | Examples |

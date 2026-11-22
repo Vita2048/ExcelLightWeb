@@ -9,3 +9,6 @@ export {
   pickNativeOpenFile, pickNativeSaveFile, writeNativeFile,
   type ExternalFileVersion, type OpenedNativeFile,
 } from './native-files';
+export {
+  downloadXlsxFile, hasXlsxSavePicker, pickXlsxSaveFile, sameFileEntry,
+} from './xlsx-files';

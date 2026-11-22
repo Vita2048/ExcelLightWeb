@@ -784,6 +784,11 @@ button:disabled { cursor: default; opacity: .5; }
 .save-as-dialog .file-dialog-error { color: #ffb4ab; }
 .remove-workspace-dialog { width: min(480px, calc(100vw - 24px)); }
 .file-message-dialog { width: min(520px, calc(100vw - 24px)); }
+.xlsx-report-dialog { width: min(620px, calc(100vw - 24px)); }
+.xlsx-report-list { display: grid; gap: 8px; max-height: min(46vh, 300px); margin: 0; padding: 10px 12px; overflow: auto; list-style: none; background: var(--sheet); border: 1px solid var(--border); border-radius: 4px; }
+.xlsx-report-list li { display: grid; gap: 2px; font-size: 12px; line-height: 1.4; }
+.xlsx-report-list strong { color: var(--muted); font-family: Consolas, 'Courier New', monospace; font-weight: 600; }
+.xlsx-report-list span { overflow-wrap: anywhere; }
 .workspace-conflict-cover {
   position: absolute; z-index: 12; inset: 39px 0 0; display: grid; place-items: center;
   padding: 20px; background: color-mix(in srgb, var(--canvas) 88%, transparent);

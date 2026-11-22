@@ -31,11 +31,13 @@ import {
   defaultWorkspacePreferences, LocalWorkspaceError, LocalWorkspaceStore, WorkspaceConflictError, WorkspaceLease,
   type LocalWorkspacePreferences, type LocalWorkspaceRecord, type RecoveryRecord, type WorkspaceFileHandle,
 } from '../persistence/local';
-import { downloadNativePackage, fileVersion, hasNativeSavePicker, pickNativeOpenFile, pickNativeSaveFile,
-  writeNativeFile } from '../persistence/local';
+import { downloadNativePackage, downloadXlsxFile, fileVersion, hasNativeSavePicker, hasXlsxSavePicker,
+  pickNativeOpenFile, pickNativeSaveFile, pickXlsxSaveFile, sameFileEntry, writeNativeFile,
+  type OpenedNativeFile } from '../persistence/local';
+import { importXlsx, inspectXlsxExport, writeXlsx, type ExchangeIssue } from '../persistence/xlsx';
 import { FileBackstage, type FileAction } from '../features/files/FileBackstage';
 import { FileMessageDialog, OptionsDialog, RecoveryDialog, RemoveWorkspaceDialog, SaveAsDialog, UnsavedChangesDialog,
-  type ReplacementChoice } from '../features/files/FileDialogs';
+  XlsxReportDialog, type ReplacementChoice, type ReportChoice } from '../features/files/FileDialogs';
 import {
   changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, parseNameExtent,
   refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
@@ -84,8 +86,12 @@ const dialogActions: ReadonlySet<StructureAction> = new Set(['insert-cells', 'de
 interface ActiveFileContext {
   readonly name: string;
   readonly source: 'untitled' | 'native' | 'xlsx' | 'recovery';
+  /** Imported XLSX provenance survives a native Save As for this session, so Export stays XLSX. */
+  readonly importedXlsx?: boolean;
   readonly sourceFileName?: string;
   readonly fileHandle?: WorkspaceFileHandle;
+  /** Imported XLSX file identity only; XLSX Export refuses to write over this file. */
+  readonly sourceFileHandle?: WorkspaceFileHandle;
   readonly fileSize?: number;
   readonly fileLastModified?: number;
 }
@@ -172,6 +178,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const saveAsResolver = useRef<((name: string | null) => void) | undefined>(undefined);
   const [workspaceToRemove, setWorkspaceToRemove] = useState<LocalWorkspaceRecord>();
   const [fileMessage, setFileMessage] = useState<{ title: string; message: string }>();
+  const [xlsxReport, setXlsxReport] = useState<{ title: string; issues: readonly ExchangeIssue[] }>();
+  const xlsxReportResolver = useRef<((choice: ReportChoice) => void) | undefined>(undefined);
   const workspaceLease = useRef<WorkspaceLease | undefined>(undefined);
   const workspaceConflictRef = useRef<(id: string) => void>(() => {});
   workspaceConflictRef.current = id => {
@@ -427,6 +435,20 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     resolve?.(mode);
   }
 
+  function askXlsxReport(title: string, issues: readonly ExchangeIssue[]): Promise<ReportChoice> {
+    return new Promise(resolve => {
+      xlsxReportResolver.current = resolve;
+      setXlsxReport({ title, issues });
+    });
+  }
+
+  function finishXlsxReport(choice: ReportChoice) {
+    const resolve = xlsxReportResolver.current;
+    xlsxReportResolver.current = undefined;
+    setXlsxReport(undefined);
+    resolve?.(choice);
+  }
+
   async function refreshRecent() {
     try { setRecentWorkbooks(await localStore.listRecent()); }
     catch (error) {
@@ -546,6 +568,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     const name = handle.name.replace(/\.exlt$/iu, '') || handle.name;
     const context: ActiveFileContext = {
       name, source: 'native', fileHandle: handle, fileSize: version.size, fileLastModified: version.lastModified,
+      ...(activeFile.importedXlsx && { importedXlsx: true }),
+      ...(activeFile.sourceFileHandle && { sourceFileHandle: activeFile.sourceFileHandle }),
       sourceFileName: handle.name,
     };
     let localWarning = '';
@@ -578,6 +602,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     const packageBlob = await saveNativePackage(captured.document);
     const now = Date.now();
     const context: ActiveFileContext = { name, source: activeFile.source === 'xlsx' ? 'xlsx' : 'native',
+      ...(activeFile.importedXlsx && { importedXlsx: true }),
+      ...(activeFile.sourceFileHandle && { sourceFileHandle: activeFile.sourceFileHandle }),
       ...(activeFile.sourceFileName && { sourceFileName: activeFile.sourceFileName }) };
     await localStore.saveWorkspace({
       id: captured.document.id, name, package: packageBlob, createdAt: now, updatedAt: now,
@@ -619,7 +645,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return true;
   }
 
-  async function adoptOpened(document: WorkbookDocument, record: LocalWorkspaceRecord, saved = true) {
+  async function adoptOpened(document: WorkbookDocument, record: LocalWorkspaceRecord, saved = true,
+    sourceFileHandle?: WorkspaceFileHandle) {
     const basis = session.capture();
     if (!await confirmReplacement()) return;
     const lease = workspaceLease.current!;
@@ -630,7 +657,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }
     const active: ActiveFileContext = {
       name: record.name, source: saved ? (record.source === 'xlsx' ? 'xlsx' : 'native') : 'recovery',
+      ...(record.source === 'xlsx' && saved ? { importedXlsx: true } : {}),
       ...(record.fileHandle && { fileHandle: record.fileHandle }),
+      ...(sourceFileHandle && { sourceFileHandle }),
       ...(record.fileSize !== undefined && { fileSize: record.fileSize }),
       ...(record.fileLastModified !== undefined && { fileLastModified: record.fileLastModified }),
       ...(record.sourceFileName && { sourceFileName: record.sourceFileName }),
@@ -652,8 +681,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   async function openExternalWorkbook() {
     const chosen = await pickNativeOpenFile();
     if (!chosen) { setFileStatus('Open cancelled.'); return; }
-    if (!chosen.file.name.toLowerCase().endsWith('.exlt')) {
-      throw new LocalWorkspaceError('Open an .exlt workbook. XLSX import is handled by the workbook import workflow.');
+    const fileName = chosen.file.name.toLowerCase();
+    if (fileName.endsWith('.xlsx')) return openXlsxWorkbook(chosen);
+    if (!fileName.endsWith('.exlt')) {
+      throw new LocalWorkspaceError('Open an .exlt or .xlsx workbook.');
     }
     setFileStatus('Opening ' + chosen.file.name + '…');
     const document = await loadNativePackage(chosen.file);
@@ -668,6 +699,28 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       fileSize: version.size, fileLastModified: version.lastModified,
     };
     await adoptOpened(document, record);
+  }
+
+  async function openXlsxWorkbook(chosen: OpenedNativeFile) {
+    setFileStatus('Opening ' + chosen.file.name + '…');
+    const { document, report } = await importXlsx(chosen.file);
+    if (report.issues.length > 0) {
+      const choice = await askXlsxReport('XLSX import report', report.issues);
+      if (choice === 'cancel') {
+        setFileStatus('XLSX import cancelled. Your current workbook was kept.');
+        return;
+      }
+    }
+    const version = fileVersion(chosen.file);
+    const name = chosen.file.name.replace(/\.xlsx$/iu, '') || chosen.file.name;
+    const packageBlob = await saveNativePackage(document);
+    const record: LocalWorkspaceRecord = {
+      id: document.id, name, package: packageBlob, createdAt: Date.now(), updatedAt: Date.now(),
+      lastUsedAt: Date.now(), source: 'xlsx', sourceFileName: chosen.file.name,
+      fileSize: version.size, fileLastModified: version.lastModified,
+    };
+    await adoptOpened(document, record, true, chosen.handle);
+    setFileStatus('Opened ' + chosen.file.name + '. This workbook is stored in this browser; Export writes a separate .xlsx copy.');
   }
 
   async function openRecentWorkbook(record: LocalWorkspaceRecord) {
@@ -696,6 +749,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   async function exportWorkbook() {
+    if (activeFile.importedXlsx || activeFile.source === 'xlsx') return exportXlsxWorkbook();
     const captured = session.capture();
     const packageBlob = await saveNativePackage(captured.document);
     const suggestedName = (activeFile.name || 'Book1') + '.exlt';
@@ -707,6 +761,31 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     } else {
       downloadNativePackage(packageBlob, suggestedName);
       setFileStatus('Export download started. This does not change the local saved state.');
+    }
+    setBackstageOpen(false);
+  }
+
+  async function exportXlsxWorkbook() {
+    const captured = session.capture();
+    const report = inspectXlsxExport(captured.document);
+    const choice = await askXlsxReport('XLSX export report', report.issues);
+    if (choice === 'cancel') {
+      setFileStatus('Export cancelled. Your workbook is unchanged.');
+      return;
+    }
+    const { blob } = await writeXlsx(captured.document);
+    const suggestedName = (activeFile.name || 'Book1') + '.xlsx';
+    if (hasXlsxSavePicker()) {
+      const handle = await pickXlsxSaveFile(suggestedName);
+      if (!handle) { setFileStatus('Export cancelled.'); return; }
+      if (activeFile.sourceFileHandle && await sameFileEntry(handle, activeFile.sourceFileHandle)) {
+        throw new LocalWorkspaceError('Choose a separate XLSX export destination; the imported source cannot be overwritten.');
+      }
+      await writeNativeFile(handle, blob);
+      setFileStatus('Exported ' + handle.name + '. The local saved state is unchanged.');
+    } else {
+      downloadXlsxFile(blob, suggestedName);
+      setFileStatus('XLSX export download started. This does not change the local saved state.');
     }
     setBackstageOpen(false);
   }
@@ -2063,6 +2142,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       {workspaceToRemove && <RemoveWorkspaceDialog name={workspaceToRemove.name}
         onChoice={remove => { void decideWorkspaceRemoval(workspaceToRemove, remove); }} />}
       {fileMessage && <FileMessageDialog title={fileMessage.title} message={fileMessage.message} onClose={() => setFileMessage(undefined)} />}
+      {xlsxReport && <XlsxReportDialog title={xlsxReport.title} issues={xlsxReport.issues}
+        onChoice={finishXlsxReport} />}
       {workspaceConflict && <div className="workspace-conflict-cover" role="alertdialog" aria-modal="true" aria-labelledby="workspace-conflict-title">
         <section>
           <h2 id="workspace-conflict-title">Workbook open in another tab</h2>

@@ -1,18 +1,32 @@
 import { LocalWorkspaceError, type WorkspaceFileHandle } from './workspace-store';
 
-const nativeType = {
+interface PickerType {
+  readonly description: string;
+  readonly accept: Readonly<Record<string, readonly string[]>>;
+}
+
+const nativeType: PickerType = {
   description: 'Excel-Lite workbook',
   accept: { 'application/zip': ['.exlt'] },
 };
+const openTypes: readonly PickerType[] = [
+  {
+    description: 'Excel workbook',
+    accept: {
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+      'application/zip': ['.exlt'],
+    },
+  },
+];
 
 interface PickerWindow extends Window {
   showOpenFilePicker?: (options?: {
     readonly multiple?: boolean;
-    readonly types?: readonly [{ readonly description: string; readonly accept: { readonly [mime: string]: readonly string[] } }];
+    readonly types?: readonly PickerType[];
   }) => Promise<readonly WorkspaceFileHandle[]>;
   showSaveFilePicker?: (options?: {
     readonly suggestedName?: string;
-    readonly types?: readonly [{ readonly description: string; readonly accept: { readonly [mime: string]: readonly string[] } }];
+    readonly types?: readonly PickerType[];
   }) => Promise<WorkspaceFileHandle>;
 }
 
@@ -42,8 +56,8 @@ function pickWithInput(): Promise<OpenedNativeFile | null> {
   return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.exlt,application/zip';
-    input.setAttribute('aria-label', 'Open Excel-Lite workbook');
+    input.accept = '.exlt,.xlsx,application/zip,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    input.setAttribute('aria-label', 'Open workbook');
     Object.assign(input.style, { position: 'fixed', left: '-10000px', top: '0', width: '1px', height: '1px' });
     document.body.append(input);
     let settled = false;
@@ -72,7 +86,7 @@ export async function pickNativeOpenFile(): Promise<OpenedNativeFile | null> {
   const picker = (window as PickerWindow).showOpenFilePicker;
   if (!picker) return pickWithInput();
   try {
-    const [handle] = await picker.call(window, { multiple: false, types: [nativeType] });
+    const [handle] = await picker.call(window, { multiple: false, types: openTypes });
     if (!handle) return null;
     return { file: await handle.getFile(), handle };
   } catch (error) {
