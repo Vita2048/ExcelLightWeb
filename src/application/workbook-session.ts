@@ -204,6 +204,22 @@ export class WorkbookSession {
     return true;
   }
 
+  /** Atomically accepts a detached calculation generation, retaining history only for authored output changes. */
+  tryCommitGeneration(basis: SnapshotBasis, document: WorkbookDocument, label: string): boolean {
+    if (!this.isCurrent(basis)) return false;
+    requireDocument(typeof label === 'string' && label.length <= 256, 'Invalid command label.');
+    const candidate = removeOrphanedPythonSpillCells(ownDto(document));
+    requireDocument(candidate?.id === this.active.id, 'Calculation generation cannot replace workbook identity.');
+    validateWorkbook(candidate);
+    if (equalDto(candidate, this.active)) return true;
+    if (!sameAuthoredWorkbook(this.active, candidate)) {
+      this.execute({ kind: 'structure', document: candidate, label });
+      return true;
+    }
+    this.#advance(candidate, this.sourceFingerprint, this.#dirty, false);
+    return true;
+  }
+
   undo(): boolean { return this.#moveHistory(this.#undo, this.#redo, true); }
   redo(): boolean { return this.#moveHistory(this.#redo, this.#undo, false); }
 

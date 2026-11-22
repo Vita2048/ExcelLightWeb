@@ -37,7 +37,8 @@ export interface NativeCalculationReply extends WorkerBasis {
   readonly updates: readonly CacheUpdate[];
 }
 
-export type NativeCalculationScope = 'automatic' | 'observe' | 'workbook' | { readonly sheetId: string };
+export type NativeCalculationScope = 'automatic' | 'observe' | 'workbook' | { readonly sheetId: string } |
+  { readonly targets: readonly string[] };
 
 export interface NativeWorkerRequest extends NativeCalculationRequest {
   readonly scope: NativeCalculationScope;

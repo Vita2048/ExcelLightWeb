@@ -132,7 +132,7 @@ test('runs local Python only on consent, rejects occupied spills and inserts a s
 
   await replacePythonSource(page, 'while True: pass');
   await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await expect(page.locator('.python-run-controls [role="status"]')).toHaveText('Python run timed out.', { timeout: 60_000 });
+  await expect(page.locator('.python-run-controls [role="status"]')).toHaveText('Python run timed out.', { timeout: 180_000 });
   await expect(result.getByRole('table')).toContainText('8');
 
   await replacePythonSource(page, 'xl("B1:B2")');

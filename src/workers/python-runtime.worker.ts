@@ -1,5 +1,5 @@
 import adapter from '../python/runtime-adapter.py?raw';
-import lock from '../python/runtime-lock.json';
+import { pythonRuntimeFingerprint } from '../python/runtime-fingerprint';
 import { pythonRuntimeProtocolVersion, type PythonRuntimeReply, type PythonRuntimeRequest } from '../python/runtime-protocol';
 
 type Pyodide = {
@@ -10,9 +10,6 @@ type Pyodide = {
 type Loader = { loadPyodide(options: { indexURL: string }): Promise<Pyodide> };
 
 let runtime: Pyodide | undefined;
-const runtimeFingerprint = `pyodide-${lock.version}-python-${lock.python}-numpy-${lock.packages.numpy}` +
-  `-pandas-${lock.packages.pandas}-matplotlib-${lock.packages.matplotlib}`;
-
 function send(reply: PythonRuntimeReply) {
   self.postMessage(reply);
 }
@@ -30,7 +27,8 @@ self.addEventListener('message', async (event: MessageEvent<PythonRuntimeRequest
       runtime = await loadPyodide({ indexURL: index.href });
       await runtime.loadPackage(['numpy', 'pandas', 'matplotlib']);
       runtime.runPython(adapter);
-      send({ kind: 'ready', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId, runtimeFingerprint });
+      send({ kind: 'ready', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId,
+        runtimeFingerprint: pythonRuntimeFingerprint });
       return;
     }
 

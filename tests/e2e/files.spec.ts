@@ -32,6 +32,32 @@ async function openShowcase(page: Page) {
   await expect(page.locator('.workbook-title')).toHaveText('Showcase');
 }
 
+async function setActiveWorkspaceLeaseExpired(page: Page): Promise<number> {
+  return page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open('excellight-workspace', 2);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const transaction = db.transaction('locks', 'readwrite');
+    const done = new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = transaction.onerror = () => reject(transaction.error);
+    });
+    const locks = transaction.objectStore('locks');
+    const request = locks.getAll();
+    let count = 0;
+    request.onsuccess = () => {
+      const current = request.result as { id: string; owner: string; expiresAt: number }[];
+      count = current.length;
+      for (const lock of current) locks.put({ ...lock, expiresAt: Date.now() - 1 });
+    };
+    await done;
+    db.close();
+    return count;
+  });
+}
+
 async function seedVersionOneDatabase(page: Page, settings: Record<string, unknown>) {
   await page.evaluate(async oldSettings => {
     const name = 'excellight-workspace';
@@ -184,11 +210,11 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await expect(options.getByLabel('Office Theme')).toHaveValue('dark');
   await expect(options.getByLabel('Office Theme')).toBeDisabled();
   await options.getByRole('tab', { name: 'Formulas' }).click();
-  await expect(options.locator('.python-option-group input[name="python-calculation"]').first()).toBeDisabled();
-  await expect(options.getByText(/Python runs only when you choose Run/u)).toBeVisible();
-  await expect(options.getByText(/Automatic calculation is not active in this sprint/u)).toBeVisible();
+  await expect(options.locator('.python-option-group input[name="python-calculation"]').first()).toBeEnabled();
+  await expect(options.getByText(/Automatic is a local preference for this browser/u)).toBeVisible();
   await expect(options.locator('input[name="native-calculation"][value="automatic"]')).toBeChecked();
   await options.locator('input[name="native-calculation"][value="manual"]').check();
+  await options.locator('input[name="python-calculation"][value="automatic"]').check();
   await options.getByRole('button', { name: 'OK' }).click();
   await expect(options).not.toBeVisible();
   await expect.poll(() => readLocalCalculationMode(page)).toBe('manual');
@@ -198,6 +224,7 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await page.getByRole('dialog', { name: 'Excel-Lite Options' }).getByRole('tab', { name: 'Formulas' }).click();
   await expect(page.locator('input[name="native-calculation"][value="manual"]')).toBeChecked();
+  await expect(page.locator('input[name="python-calculation"][value="automatic"]')).toBeChecked();
 });
 
 test('Quick Access Save names the browser copy and Recent can remove it without touching disk', async ({ page }) => {
@@ -389,6 +416,15 @@ test('does not open the same Recent workbook in two tabs and releases it through
   await second.bringToFront();
   await second.getByRole('button', { name: 'Open recent Showcase' }).click();
   await expect(second.locator('.workbook-title')).toHaveText('Showcase');
+});
+
+test('reclaims an expired workspace lease when returning to a single app tab', async ({ page }) => {
+  await page.goto(appPath);
+  await page.getByRole('grid').waitFor();
+  await expect.poll(() => setActiveWorkspaceLeaseExpired(page)).toBe(1);
+  await page.waitForTimeout(5_500);
+  await expect(page.getByRole('dialog', { name: 'Workbook open in another tab' })).toHaveCount(0);
+  await expect(page.getByRole('grid')).toBeVisible();
 });
 
 test('an IndexedDB transaction failure preserves the dirty workbook and its values', async ({ page }) => {

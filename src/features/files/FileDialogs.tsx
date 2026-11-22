@@ -53,15 +53,16 @@ export function RecoveryDialog({ recovery, onChoice }: {
 
 export function OptionsDialog({ preferences, onApply, onCancel }: {
   readonly preferences: LocalWorkspacePreferences;
-  readonly onApply: (mode: CalculationMode) => void;
+  readonly onApply: (options: { readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean }) => void;
   readonly onCancel: () => void;
 }) {
   const dialog = useModalDialog();
   const [category, setCategory] = useState<'general' | 'formulas'>('general');
   const [mode, setMode] = useState<CalculationMode>(preferences.nativeCalculation);
+  const [pythonAutomatic, setPythonAutomatic] = useState(preferences.pythonAutomaticConsent);
   return <dialog ref={dialog} className="paste-dialog file-modal options-dialog" aria-labelledby="options-title"
     onCancel={event => { event.preventDefault(); onCancel(); }}>
-    <form onSubmit={event => { event.preventDefault(); onApply(mode); }}>
+    <form onSubmit={event => { event.preventDefault(); onApply({ nativeCalculation: mode, pythonAutomaticConsent: pythonAutomatic }); }}>
       <DialogTitleBar><h2 id="options-title">Excel-Lite Options</h2>
         <button type="button" className="format-dialog-close" aria-label="Close Excel-Lite Options" onClick={onCancel}>×</button>
       </DialogTitleBar>
@@ -89,12 +90,14 @@ export function OptionsDialog({ preferences, onApply, onCancel }: {
               <label><input type="radio" name="native-calculation" value="manual"
                 checked={mode === 'manual'} onChange={() => setMode('manual')} /> Manual</label>
             </fieldset>
-            <fieldset className="option-group python-option-group" disabled>
+            <fieldset className="option-group python-option-group">
               <legend>Python Calculation</legend>
-              <label><input type="radio" checked={false} readOnly name="python-calculation" /> Automatic</label>
-              <label><input type="radio" checked={true} readOnly name="python-calculation" /> Manual</label>
+              <label><input type="radio" value="automatic" checked={pythonAutomatic} name="python-calculation"
+                onChange={() => setPythonAutomatic(true)} /> Automatic</label>
+              <label><input type="radio" value="manual" checked={!pythonAutomatic} name="python-calculation"
+                onChange={() => setPythonAutomatic(false)} /> Manual</label>
             </fieldset>
-            <p>Python runs only when you choose Run. Automatic calculation is not active in this sprint; any saved Automatic consent is retained without scheduling Python.</p>
+            <p>Automatic is a local preference for this browser. With it enabled, Python scripts run after relevant edits and when you open or import a workbook. Scripts run locally and can access the network if their code requests it. Choose Manual to run code only when you select Run.</p>
           </>}
         </section>
       </div>

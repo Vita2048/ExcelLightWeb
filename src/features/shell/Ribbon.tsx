@@ -287,7 +287,6 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
               <legend>Formula Auditing</legend>
               <button type="button" className="ribbon-command" aria-pressed={view.showFormulas}
                 onClick={() => onView({ showFormulas: !view.showFormulas })}><RibbonGlyph name="Insert Function" />Show Formulas</button>
-              <label><input type="checkbox" checked={pythonOpen} onChange={onPython} /> Python</label>
             </fieldset>
             <fieldset>
               <legend>Calculation</legend>
@@ -298,6 +297,11 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
                 <button type="button" className="ribbon-command" onClick={() => onCalculate('workbook')}><RibbonGlyph name="Calculate Now" />Calculate Now</button>
                 <button type="button" className="ribbon-command" onClick={() => onCalculate('sheet')}><RibbonGlyph name="Calculate Sheet" />Calculate Sheet</button>
               </div>
+            </fieldset>
+            <fieldset>
+              <legend>Python</legend>
+              <button type="button" className="ribbon-command ribbon-large" aria-label="Show or hide Python workspace"
+                aria-pressed={pythonOpen} onClick={onPython}><RibbonGlyph name="Python" size={32} />Python</button>
             </fieldset>
           </> : name === 'Data' ? <DataSortFilterRibbon filter={filter} onSort={onSort} onToggleFilter={onToggleFilter}
             onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} /> : null}

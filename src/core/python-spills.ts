@@ -65,10 +65,13 @@ export function applyPythonResult(document: WorkbookDocument, anchor: CellRefere
       requireDocument(!existing || existing.content.kind === 'blank' || existing.spillOwner === block.id,
         '#SPILL! Destination contains data; clear it and Run again.');
       const value = table.cells[rowOffset * table.columns + columnOffset] ?? null;
-      updatedSheet.cells.push({
+      const resultCell: CellDocument = {
         id: oldSpillCell?.id ?? existing?.id ?? makeId(), row, column, content: contentFromCache(value),
         ...(existing?.style && { style: existing.style }), spillOwner: block.id,
-      });
+      };
+      const existingIndex = updatedSheet.cells.findIndex(cell => cell.row === row && cell.column === column);
+      if (existingIndex >= 0) updatedSheet.cells[existingIndex] = resultCell;
+      else updatedSheet.cells.push(resultCell);
     }
   }
 

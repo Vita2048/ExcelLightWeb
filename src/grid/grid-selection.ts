@@ -99,7 +99,7 @@ export function presentCell(cell: CellDocument | undefined, source: boolean, sep
   if (cell?.content.kind === 'formula' && (source || !cell.cache)) {
     return { text: presentFormula(cell.content.source, ',', separator) };
   }
-  if (cell?.content.kind === 'python' && (source || !cell.cache)) return { text: '=PY()' };
+  if (cell?.content.kind === 'python' && source) return { text: '=PY()' };
   return formatCellValue(cell);
 }
 

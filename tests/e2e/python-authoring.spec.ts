@@ -61,6 +61,13 @@ test('=PY opens a lazy local Monaco panel, commits through a selection barrier a
   await ready(page);
   await createAnchor(page);
   await expect(editor(page)).toHaveText('42');
+  await expect(page.getByRole('gridcell', { name: 'A1, blank', exact: true })).toBeAttached();
+  await page.getByRole('tab', { name: 'Formulas' }).click();
+  const showFormulas = page.getByRole('button', { name: 'Show Formulas' });
+  await showFormulas.click();
+  await expect(page.getByRole('gridcell', { name: 'A1, =PY()', exact: true })).toBeAttached();
+  await showFormulas.click();
+  await expect(page.getByRole('gridcell', { name: 'A1, blank', exact: true })).toBeAttached();
 
   await replaceLine(page, 'xl("B1")');
   await expect(editor(page)).toHaveText('xl("B1")');
@@ -71,14 +78,21 @@ test('=PY opens a lazy local Monaco panel, commits through a selection barrier a
   await go(page, 'A1');
   await expect(editor(page)).toHaveText('xl("B1")');
 
-  await page.getByRole('button', { name: 'Hide Python workspace' }).click();
+  await page.getByRole('button', { name: 'Hide Python workspace', exact: true }).click();
   await expect(page.locator('.python-panel')).toHaveCount(0);
   await page.waitForTimeout(300);
   await expect(page.locator('.python-panel')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Formulas' }).click();
-  const pythonToggle = page.getByRole('checkbox', { name: 'Python' });
-  await expect(pythonToggle).not.toBeChecked();
-  await pythonToggle.check();
+  await expect(page.locator('.ribbon-panel:not([hidden]) fieldset > legend'))
+    .toHaveText(['Function Library', 'Defined Names', 'Formula Auditing', 'Calculation', 'Python']);
+  const pythonGroup = page.getByRole('group', { name: 'Python' });
+  await expect(pythonGroup).toBeVisible();
+  const pythonToggle = pythonGroup.getByRole('button', { name: 'Show or hide Python workspace' });
+  await expect(pythonToggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(pythonToggle.locator('svg.ribbon-glyph')).toBeVisible();
+  await expect(pythonToggle.locator('svg.ribbon-glyph path')).toHaveCount(2);
+  await pythonToggle.click();
+  await expect(pythonToggle).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('.python-panel')).toBeVisible();
   await expect(editor(page)).toHaveText('xl("B1")');
   expect(external).toEqual([]);

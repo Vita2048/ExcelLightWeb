@@ -33,7 +33,12 @@ function address(sheet: SheetDocument, cell: CellDocument): CellReference {
 
 function baseValue(cell: CellDocument | undefined): Scalar {
   if (!cell || cell.content.kind === 'blank') return null;
-  if (cell.content.kind === 'python' || cell.content.kind === 'formula') {
+  if (cell.content.kind === 'python') {
+    const block = cell.content.block;
+    const value = block?.hasResult ? block.lastValue : undefined;
+    return value?.kind === 'error' ? value : value?.value ?? null;
+  }
+  if (cell.content.kind === 'formula') {
     return cell.cache?.kind === 'error' ? cell.cache : cell.cache?.value ?? null;
   }
   return cell.content.value;

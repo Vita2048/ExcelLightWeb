@@ -179,7 +179,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [replacementPrompt, setReplacementPrompt] = useState(false);
   const replacementResolver = useRef<((choice: ReplacementChoice) => void) | undefined>(undefined);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const optionsResolver = useRef<((mode: CalculationMode | null) => void) | undefined>(undefined);
+  const optionsResolver = useRef<((options: { readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean } | null) => void) | undefined>(undefined);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [saveNamePurpose, setSaveNamePurpose] = useState<'browser-save' | 'local-save-as'>('local-save-as');
   const saveAsResolver = useRef<((name: string | null) => void) | undefined>(undefined);
@@ -258,13 +258,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }, [selected, sheet, sheetFiltered]);
   const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
-  const python = usePythonEditor({ session, changed: compound => scheduler.current?.changed(compound) });
-  const pythonExecution = usePythonExecution(session, () => {
-    setSnapshot(session.capture());
-    scheduler.current?.changed(true);
-  });
+  const pythonExecution = usePythonExecution(session, locale,
+    snapshot => setSnapshot(snapshot), paused => scheduler.current?.setSuspended(paused));
+  const python = usePythonEditor({ session, changed: compound => workbookChanged(compound) });
   const [pythonOpen, setPythonOpen] = useState(false);
-  const [pythonTrustPrompt, setPythonTrustPrompt] = useState<{ target: PythonAnchorTarget }>();
+  const [pythonTrustPrompt, setPythonTrustPrompt] = useState<{ target: PythonAnchorTarget; all?: boolean }>();
   const trustedPythonSession = useRef<string | undefined>(undefined);
   const [pythonHiddenFor, setPythonHiddenFor] = useState<string>();
   const [pythonWidth, setPythonWidth] = useState(380);
@@ -299,7 +297,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (pythonTarget) setPythonOpen(true);
   }, [pythonTarget, pythonTargetKey, pythonHiddenFor, python.sync, python.context, python.wantsReference]);
   const focusGrid = () => worksheet.current?.focus();
-  const editing = useWorksheetEditing(session, compound => scheduler.current?.changed(compound), separator, locale, makeId, focusGrid, surface => {
+  const editing = useWorksheetEditing(session, (compound, history) => workbookChanged(compound, history), separator, locale, makeId, focusGrid, surface => {
     root.current?.querySelector<HTMLTextAreaElement>('[data-cell-editor="' + surface + '"]')?.focus({ preventScroll: true });
   });
 
@@ -373,6 +371,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }, 250);
     return () => window.clearTimeout(timer);
   }, [localStore, preferences, preferencesReady]);
+
+  useEffect(() => {
+    if (preferencesReady) pythonExecution.setAutomatic(preferences.pythonAutomaticConsent);
+  }, [preferencesReady, preferences.pythonAutomaticConsent, pythonExecution.setAutomatic]);
 
   useEffect(() => {
     if (!preferencesReady || preferences.view === view) return;
@@ -468,18 +470,24 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     resolve?.(name);
   }
 
-  function askOptions(): Promise<CalculationMode | null> {
+  function askOptions(): Promise<{ readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean } | null> {
     return new Promise(resolve => {
       optionsResolver.current = resolve;
       setOptionsOpen(true);
     });
   }
 
-  function finishOptions(mode: CalculationMode | null) {
+  function finishOptions(options: { readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean } | null) {
     const resolve = optionsResolver.current;
     optionsResolver.current = undefined;
     setOptionsOpen(false);
-    resolve?.(mode);
+    resolve?.(options);
+  }
+
+  function workbookChanged(compound: boolean, history = false) {
+    if (history) pythonExecution.historyRestored();
+    else if (pythonExecution.changed(compound)) scheduler.current?.setSuspended(true);
+    scheduler.current?.changed(compound);
   }
 
   function askXlsxReport(title: string, issues: readonly ExchangeIssue[]): Promise<ReportChoice> {
@@ -702,6 +710,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       await lease.switchTo(basis.document.id);
       throw new LocalWorkspaceError('Workbook changed while opening. Your current workbook was kept; try Open again.');
     }
+    pythonExecution.adopted();
     const active: ActiveFileContext = {
       name: record.name, source: saved ? (record.source === 'xlsx' ? 'xlsx' : 'native') : 'recovery',
       ...(record.source === 'xlsx' && saved ? { importedXlsx: true } : {}),
@@ -789,6 +798,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       await lease.switchTo(oldId);
       throw new LocalWorkspaceError('Workbook changed while creating a new workbook. Try New again.');
     }
+    pythonExecution.adopted();
     setActiveFile({ name: 'Book1', source: 'untitled' });
     resetWorkbookUi(document);
     if (keepBackstage) setBackstageOpen(true); else setBackstageOpen(false);
@@ -874,11 +884,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   async function runFileAction(action: FileAction) {
     if (action === 'options') {
       if (root.current?.querySelector('dialog[open]')) return;
-      const mode = await askOptions();
-      if (mode) {
-        scheduler.current?.setMode(mode);
-        setPreferences(current => ({ ...current, nativeCalculation: mode }));
-    setFileStatus('Calculation preference saved.');
+      const options = await askOptions();
+      if (options) {
+        scheduler.current?.setMode(options.nativeCalculation);
+        pythonExecution.setAutomatic(options.pythonAutomaticConsent);
+        setPreferences(current => ({ ...current, ...options }));
+        setFileStatus('Calculation preferences saved.');
       }
       return;
     }
@@ -926,6 +937,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (document.id !== recovery.workbookId) throw new LocalWorkspaceError('Recovery workbook identity is invalid.');
       const basis = session.capture();
       if (!session.tryAdopt(basis, document, false)) throw new LocalWorkspaceError('The current workbook changed during recovery.');
+      pythonExecution.adopted();
       setActiveFile({ name: recovery.name, source: 'recovery' });
       resetWorkbookUi(document);
       setFileStatus('Recovered ' + recovery.name + '. Save the workbook to keep these changes.');
@@ -1044,7 +1056,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (session.revision !== revision) {
       editing.selectionChanged();
       editing.clearCut();
-      scheduler.current?.changed(true);
+      workbookChanged(true);
     }
     setBorderTool(undefined);
     if (active && active !== sheet.id) {
@@ -1249,7 +1261,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (outcome.changed) {
       editing.selectionChanged();
       editing.clearCut();
-      scheduler.current?.changed(true);
+      workbookChanged(true);
     }
     editing.report('Sorted ' + rangeLabel(range) + ' by column ' + columnLetters(draft.column) + ', ' +
       (draft.ascending ? 'smallest to largest' : 'largest to smallest') + '. Records moved together.');
@@ -1344,7 +1356,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         session.execute(setFilter(basis, sheet.id, null));
         editing.selectionChanged();
         editing.clearCut();
-        scheduler.current?.changed(true);
+        workbookChanged(true);
         editing.report('Filter removed. Manually hidden rows stay hidden.');
         requestAnimationFrame(focusGrid);
         return;
@@ -1361,7 +1373,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         rows: target.rows, columns: target.columns, criteria: [] }));
       editing.selectionChanged();
       editing.clearCut();
-      scheduler.current?.changed(true);
+      workbookChanged(true);
       editing.report('Filter applied to ' + rangeLabel(target) + '. Choose values from a header funnel.');
       requestAnimationFrame(focusGrid);
     } catch (error) { editing.reject(error); }
@@ -1376,7 +1388,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       session.execute(setFilter(basis, sheet.id, { ...current.filter, criteria: [] }));
       editing.selectionChanged();
       editing.clearCut();
-      scheduler.current?.changed(true);
+      workbookChanged(true);
       editing.report('Filter cleared. Manually hidden rows stay hidden.');
       requestAnimationFrame(focusGrid);
     } catch (error) { editing.reject(error); }
@@ -1385,7 +1397,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   function reapplyFilter() {
     if (!editing.commit()) return;
     if (!sheet.filter) { editing.reject(new Error('There is no filter to reapply.')); return; }
-    scheduler.current?.changed(true);
+    workbookChanged(true);
     editing.report('Filter reapplied. ' + (recordSummary(sheet) ?? 'All records are visible.'));
     requestAnimationFrame(focusGrid);
   }
@@ -1411,7 +1423,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             rows: input.rows, columns: input.columns, criteria: [] }));
           basis = session.capture();
           current = basis.document.sheets.find(item => item.id === sheet.id)!;
-          scheduler.current?.changed(true);
+          workbookChanged(true);
         }
       }
       const filter = current.filter;
@@ -1450,7 +1462,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (outcome.changed) {
         editing.selectionChanged();
         editing.clearCut();
-        scheduler.current?.changed(true);
+        workbookChanged(true);
       }
       const applied = session.active.sheets.find(item => item.id === sheet.id)!;
       editing.report('Filtered ' + open.header + '. ' + (recordSummary(applied) ?? ''));
@@ -1471,7 +1483,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (outcome.changed) {
         editing.selectionChanged();
         editing.clearCut();
-        scheduler.current?.changed(true);
+        workbookChanged(true);
       }
       editing.report('Sorted the filtered records. Hidden rows were included and the filter still applies.');
     } catch (error) { editing.reject(error); }
@@ -1491,7 +1503,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (outcome.changed) {
         editing.selectionChanged();
         editing.clearCut();
-        scheduler.current?.changed(true);
+        workbookChanged(true);
       }
       editing.report('Cleared the filter for this column. Manually hidden rows stay hidden.');
     } catch (error) { editing.reject(error); }
@@ -1589,7 +1601,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (outcome.changed) {
         editing.selectionChanged();
         editing.clearCut();
-        scheduler.current?.changed(true);
+        workbookChanged(true);
       }
       let next: SearchMatch | undefined;
       if (target === 'one') {
@@ -1656,7 +1668,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (outcome.changed) {
       editing.selectionChanged();
       editing.clearCut();
-      scheduler.current?.changed(true);
+      workbookChanged(true);
     }
   }
 
@@ -1908,12 +1920,25 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     } else setPythonTrustPrompt({ target });
   }
 
+  function requestPythonRunAll() {
+    if (!python.barrier()) return;
+    const first = session.capture().document.sheets.flatMap(current => current.cells.map(cell => ({ current, cell })))
+      .find(item => item.cell.content.kind === 'python');
+    const target = first && pythonAnchorAt(session.capture(), first.current.id,
+      { row: first.cell.row, column: first.cell.column });
+    if (!target) return;
+    if (trustedPythonSession.current === target.sessionId) pythonExecution.runAll();
+    else setPythonTrustPrompt({ target, all: true });
+  }
+
   function confirmPythonRun(trustSession: boolean) {
-    const target = pythonTrustPrompt?.target;
+    const prompt = pythonTrustPrompt;
+    const target = prompt?.target;
     setPythonTrustPrompt(undefined);
     if (!target || target.sessionId !== session.sessionId) return;
     if (trustSession) trustedPythonSession.current = target.sessionId;
-    void pythonExecution.run(target, calculation.stale);
+    if (prompt?.all) pythonExecution.runAll();
+    else void pythonExecution.run(target, calculation.stale);
   }
 
   async function copyPythonResult() {
@@ -1949,7 +1974,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (!python.leave()) return;
       session.execute(command);
       setSnapshot(session.capture());
-      scheduler.current?.changed(true);
+      workbookChanged(true);
       setPythonOpen(false);
       setPythonPick(undefined);
     } catch (error) { setFileStatus(error instanceof Error ? error.message : 'Python values could not be inserted.'); }
@@ -2251,7 +2276,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
               {...(pythonExecutionState && { execution: pythonExecutionState })}
               {...(pythonResultExecution && { resultExecution: pythonResultExecution })}
               onDraft={python.receiveDraft} onPickable={python.setPickable}
-              onHide={hidePython} onRun={requestPythonRun} onStop={pythonExecution.stop}
+              automatic={preferences.pythonAutomaticConsent} onHide={hidePython} onRun={requestPythonRun}
+              onRunAll={requestPythonRunAll} onStop={pythonExecution.stop}
               onCopy={() => { void copyPythonResult(); }} onInsertValues={insertPythonValues} />
           </>}
         </div>
@@ -2331,12 +2357,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         {...(storageError ? { storageError } : {})} />
       {pendingRecovery && <RecoveryDialog recovery={pendingRecovery} onChoice={choice => { void chooseRecovery(choice); }} />}
       {replacementPrompt && <UnsavedChangesDialog name={activeFile.name} onChoice={chooseReplacement} />}
-      {optionsOpen && <OptionsDialog preferences={preferences} onApply={mode => finishOptions(mode)} onCancel={() => finishOptions(null)} />}
+      {optionsOpen && <OptionsDialog preferences={preferences} onApply={finishOptions} onCancel={() => finishOptions(null)} />}
       {saveAsOpen && <SaveAsDialog initialName={activeFile.name} purpose={saveNamePurpose}
         onSave={finishSaveAsName} onCancel={() => finishSaveAsName(null)} />}
       {workspaceToRemove && <RemoveWorkspaceDialog name={workspaceToRemove.name}
         onChoice={remove => { void decideWorkspaceRemoval(workspaceToRemove, remove); }} />}
-      {pythonTrustPrompt && <PythonTrustDialog onRunOnce={() => confirmPythonRun(false)}
+      {pythonTrustPrompt && <PythonTrustDialog {...(pythonTrustPrompt.all !== undefined && { all: pythonTrustPrompt.all })}
+        onRunOnce={() => confirmPythonRun(false)}
         onTrustSession={() => confirmPythonRun(true)} onCancel={() => setPythonTrustPrompt(undefined)} />}
       {fileMessage && <FileMessageDialog title={fileMessage.title} message={fileMessage.message} onClose={() => setFileMessage(undefined)} />}
       {xlsxReport && <XlsxReportDialog title={xlsxReport.title} issues={xlsxReport.issues}

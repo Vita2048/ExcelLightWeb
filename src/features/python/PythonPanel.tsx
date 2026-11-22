@@ -31,6 +31,7 @@ export interface PythonPanelProps {
   readonly context: PythonEditorContext | null;
   readonly insertRequest: PythonInsertRequest | undefined;
   readonly status: string;
+  readonly automatic: boolean;
   readonly pythonInputFresh: boolean;
   readonly block?: PythonBlock;
   readonly execution?: PythonExecutionState;
@@ -39,6 +40,7 @@ export interface PythonPanelProps {
   readonly onPickable: (pickable: boolean) => void;
   readonly onHide: () => void;
   readonly onRun: () => void;
+  readonly onRunAll: () => void;
   readonly onStop: () => void;
   readonly onCopy: () => void;
   readonly onInsertValues: () => void;
@@ -187,6 +189,7 @@ export const PythonPanel = forwardRef<PythonEditorHandle, PythonPanelProps>(func
       {state === 'ready' && !props.context && <p className="python-empty">Select a Python cell or type =PY on the worksheet.</p>}
       {(props.context || props.execution?.running) && <div className="python-run-controls">
         {props.context && <button type="button" className="file-primary" onClick={props.onRun} disabled={!!props.execution?.running || state !== 'ready'}>Run</button>}
+        {props.context && <button type="button" className="file-secondary" onClick={props.onRunAll} disabled={!!props.execution?.running || state !== 'ready'}>Run All</button>}
         <button type="button" className="file-secondary" onClick={props.onStop} disabled={!props.execution?.running}>Stop</button>
         <span className="python-status" role="status">{props.execution?.message ?? props.status}</span>
       </div>}
@@ -194,7 +197,8 @@ export const PythonPanel = forwardRef<PythonEditorHandle, PythonPanelProps>(func
         onCopy={props.onCopy} onInsertValues={props.onInsertValues} />}
       <div className="python-panel-footer">
         {!props.context && <span className="python-status" role="status">{props.status}</span>}
-        <span className="python-note">Runs only when you choose Run. Opening a workbook never executes its Python source.</span>
+        <span className="python-note">{props.automatic ? 'Automatic runs after relevant edits and when a workbook is opened, using this browser’s saved consent.' :
+          'Manual runs only when you choose Run. Opening a workbook never executes its Python source.'}</span>
       </div>
     </aside>
   );

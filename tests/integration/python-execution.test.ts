@@ -118,6 +118,33 @@ describe('S20 manually executed Python results', () => {
     expect(findCell(session.active.sheets[0]!, at(3, 4))?.spillOwner).toBe(block.id);
   });
 
+  it('replaces styled spill cells in place when a subsequent generation updates the same extent', () => {
+    const { session, at, block, makeId } = harness();
+    session.execute({ kind: 'set-cells', label: 'Style spill output', edits: [
+      { target: at(2, 4), content: { kind: 'blank' }, style: { fillRgb: 'EAF1F7' }, preserveStyle: false },
+      { target: at(3, 4), content: { kind: 'blank' }, style: { fillRgb: 'FFFFFF' }, preserveStyle: false },
+    ] });
+    const first = applyPythonResult(session.active, at(1, 4), successfulTable(block), makeId);
+    session.execute({ kind: 'structure', document: first, label: 'First Python generation' });
+    const firstAnchor = findCell(session.active.sheets[0]!, at(1, 4));
+    if (firstAnchor?.content.kind !== 'python' || !firstAnchor.content.block) throw new Error('Expected Python result block.');
+    const refreshed = pythonBlockFromOutput(firstAnchor.content.block, {
+      status: 'succeeded', result: { kind: 'table', headers: ['Value'], rows: [[9], [10]], notices: [] },
+      stdout: '', stderr: '', outputTruncated: false,
+    }, 'inputs-b', 'pyodide-test');
+
+    const second = applyPythonResult(session.active, at(1, 4), refreshed, makeId);
+    session.execute({ kind: 'structure', document: second, label: 'Second Python generation' });
+    const cells = session.active.sheets[0]!.cells;
+    expect(new Set(cells.map(cell => `${cell.row}:${cell.column}`)).size).toBe(cells.length);
+    expect(findCell(session.active.sheets[0]!, at(2, 4))).toMatchObject({
+      content: { kind: 'number', value: 9 }, style: { fillRgb: 'EAF1F7' }, spillOwner: block.id,
+    });
+    expect(findCell(session.active.sheets[0]!, at(3, 4))).toMatchObject({
+      content: { kind: 'number', value: 10 }, style: { fillRgb: 'FFFFFF' }, spillOwner: block.id,
+    });
+  });
+
   it('clears anchor-owned spill state and inserts the normalized result as ordinary values', () => {
     const { session, anchor, block, at, makeId } = harness();
     const result = successfulTable(block);

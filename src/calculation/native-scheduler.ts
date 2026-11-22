@@ -18,6 +18,7 @@ export class NativeScheduler {
   #acceptedRequestId: string | undefined;
   #timer?: ReturnType<typeof setTimeout>;
   #queued = false;
+  #suspended = false;
   #explicit: ExplicitScope | undefined;
   #status: CalculationStatus = { mode: 'automatic', pending: false, stale: new Set() };
 
@@ -40,6 +41,19 @@ export class NativeScheduler {
     this.#schedule(0);
   }
 
+  setSuspended(suspended: boolean) {
+    if (this.#suspended === suspended) return;
+    this.#suspended = suspended;
+    if (suspended) {
+      clearTimeout(this.#timer);
+      this.session.cancelNativeCalculation();
+      this.#superseded = !!this.#request;
+      this.#queued = true;
+      const { error: _error, ...current } = this.#status;
+      this.#update({ ...current, pending: 'observe' });
+    } else this.#schedule(0);
+  }
+
   dispose() {
     clearTimeout(this.#timer);
     this.session.cancelNativeCalculation();
@@ -56,6 +70,12 @@ export class NativeScheduler {
     this.session.cancelNativeCalculation();
     this.#superseded = !!this.#request;
     clearTimeout(this.#timer);
+    if (this.#suspended) {
+      this.#queued = true;
+      const { error: _error, ...current } = this.#status;
+      this.#update({ ...current, pending: 'observe' });
+      return;
+    }
     this.#queued = false;
     const { error: _error, ...current } = this.#status;
     this.#update({ ...current, pending: this.#explicit || current.mode === 'automatic' ? 'calculate' : 'observe' });
@@ -66,7 +86,7 @@ export class NativeScheduler {
   }
 
   #send() {
-    if (!this.#queued || this.#request) return;
+    if (!this.#queued || this.#request || this.#suspended) return;
     this.#queued = false;
     const explicit = this.#explicit;
     if (typeof explicit === 'object' && !this.session.active.sheets.some(sheet => sheet.id === explicit.sheetId)) {

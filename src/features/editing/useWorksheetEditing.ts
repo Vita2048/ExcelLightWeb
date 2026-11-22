@@ -46,7 +46,7 @@ interface ManualPaste {
 const clipboardType = 'application/x-excellight-cells';
 
 export function useWorksheetEditing(
-  session: WorkbookSession, changed: (compound: boolean) => void, separator: ',' | ';', locale: string,
+  session: WorkbookSession, changed: (compound: boolean, history?: boolean) => void, separator: ',' | ';', locale: string,
   makeId: () => string, focusGrid: () => void, focusEditor: (surface: EditSurface) => void,
 ) {
   const liveDraft = useRef<Draft | null>(null);
@@ -171,7 +171,7 @@ export function useWorksheetEditing(
   function moveHistory(undo: boolean) {
     if (!commit()) return;
     intent.current++;
-    if (undo ? session.undo() : session.redo()) changed(true);
+    if (undo ? session.undo() : session.redo()) changed(true, true);
     setStatus('');
     focusGrid();
   }

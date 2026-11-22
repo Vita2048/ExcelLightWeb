@@ -464,6 +464,7 @@ export class WorkspaceLease {
   #heartbeat: ReturnType<typeof setInterval> | undefined;
   #lost = false;
   #suspended = false;
+  #suspension: Promise<void> | undefined;
   #ownerChecked = false;
   #channel: BroadcastChannel | undefined;
   #pendingProbe: { readonly nonce: string; readonly found: () => void } | undefined;
@@ -502,16 +503,24 @@ export class WorkspaceLease {
   get isLost() { return this.#lost; }
 
   async suspend(): Promise<void> {
+    if (this.#suspended) {
+      await this.#suspension;
+      return;
+    }
     this.#suspended = true;
-    this.#lastActiveId = this.#activeId;
+    this.#lastActiveId ??= this.#activeId;
     try { sessionStorage.setItem(suspendedLeaseOwnerKey, this.owner); }
     catch { /* Lease release still protects the workbook when session storage is unavailable. */ }
     this.#channel?.close();
     this.#channel = undefined;
-    await this.release();
+    const suspension = this.release();
+    this.#suspension = suspension;
+    await suspension;
   }
 
   async resume(): Promise<void> {
+    await this.#suspension;
+    this.#suspension = undefined;
     try { sessionStorage.removeItem(suspendedLeaseOwnerKey); }
     catch { /* Keep the in-memory lease owner when session storage is unavailable. */ }
     this.#openChannel();
@@ -572,9 +581,20 @@ export class WorkspaceLease {
 
   async #renew(workbookId: string) {
     if (this.#activeId !== workbookId || this.#lost) return;
+    let renewed = false;
     try {
-      if (await this.store.renewLease(workbookId, this.owner)) return;
-    } catch { /* A failed renewal is treated as a lost lease. */ }
+      renewed = await this.store.renewLease(workbookId, this.owner);
+    } catch { /* A backgrounded tab can miss its renewal window; try the atomic claim below. */ }
+    if (renewed || this.#activeId !== workbookId || this.#lost) return;
+    let reclaimed = false;
+    try { reclaimed = await this.store.acquireLease(workbookId, this.owner); }
+    catch { /* Treat failed reacquisition as a lost lease. */ }
+    if (reclaimed) {
+      if (this.#activeId === workbookId && !this.#lost) return;
+      await this.store.releaseLease(workbookId, this.owner);
+      return;
+    }
+    if (this.#activeId !== workbookId || this.#lost) return;
     this.#lost = true;
     clearInterval(this.#heartbeat);
     this.#heartbeat = undefined;

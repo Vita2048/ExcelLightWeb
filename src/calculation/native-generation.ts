@@ -85,7 +85,9 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
     for (const node of graph.order) if (stale.has(node) || node.volatile) selected.add(node);
     expand(selected, 'dependents');
   } else if (scope !== 'observe') {
-    for (const node of graph.order) if (scope === 'workbook' || node.target.sheetId === scope.sheetId) selected.add(node);
+    for (const node of graph.order) if (scope === 'workbook' ||
+        'sheetId' in scope && node.target.sheetId === scope.sheetId ||
+        'targets' in scope && scope.targets.includes(node.id)) selected.add(node);
     expand(selected, 'inputs');
   }
 

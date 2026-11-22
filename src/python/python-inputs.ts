@@ -65,6 +65,14 @@ function resolveRange(document: WorkbookDocument, localSheetId: string, referenc
   return { area, dataOnlyTable: false };
 }
 
+/** Resolve the ranges read by one Python anchor for mixed dependency analysis. */
+export function pythonInputRanges(document: WorkbookDocument, localSheetId: string, source: string,
+  bindings: PythonBlock['bindings'] = []): readonly (CellExtent & { readonly sheetId: string })[] {
+  const references = discoverPythonReferences(source).map(item => item.reference);
+  const raw = [...references, ...bindings.map(binding => binding.reference.replace(/^=/u, ''))];
+  return raw.map(reference => resolveRange(document, localSheetId, reference).area);
+}
+
 function tableHeaders(document: WorkbookDocument, name: WorkbookName): string[] {
   const design = tableDesign(name);
   if (!design.headerRow) {
