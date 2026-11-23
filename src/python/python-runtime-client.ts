@@ -1,5 +1,6 @@
 import lock from './runtime-lock.json';
-import { pythonRuntimeProtocolVersion, type PythonRuntimeInput, type PythonRuntimeOutput, type PythonRuntimeReply, type PythonRuntimeRequest } from './runtime-protocol';
+import { pythonRuntimeProtocolVersion, type PythonRuntimeInput, type PythonRuntimeOutput,
+  type PythonRuntimeReply, type PythonRuntimeRequest } from './runtime-protocol';
 
 export class PythonRuntimeError extends Error {
   constructor(message: string, readonly status: 'failed' | 'cancelled' | 'timedOut' | 'workerExited' = 'failed') {
@@ -18,7 +19,7 @@ export class PythonRuntimeClient {
   get generation() { return this.workerGeneration; }
   get isReady() { return !!this.worker && !!this.ready; }
 
-  start(signal?: AbortSignal): Promise<string> {
+  start(signal?: AbortSignal, onProgress?: (message: string) => void): Promise<string> {
     if (this.ready) return this.ready;
     const worker = new Worker(new URL('../workers/python-runtime.worker.ts', import.meta.url), { type: 'module' });
     this.worker = worker;
@@ -27,7 +28,7 @@ export class PythonRuntimeClient {
     const runtimeUrl = new URL(`./runtime/pyodide/${lock.version}/`, document.baseURI).href;
     const request: PythonRuntimeRequest = { kind: 'init', protocolVersion: pythonRuntimeProtocolVersion,
       requestId, runtimeUrl };
-    this.ready = this.exchangeWith(worker, request, 180_000, signal).then(reply => {
+    this.ready = this.exchangeWith(worker, request, 180_000, signal, onProgress).then(reply => {
       if (reply.kind === 'error') throw new PythonRuntimeError(reply.message);
       if (reply.kind !== 'ready' || reply.runtimeFingerprint.length > 128) {
         throw new PythonRuntimeError('Python runtime handshake was invalid.');
@@ -40,12 +41,14 @@ export class PythonRuntimeClient {
     return this.ready;
   }
 
-  async run(source: string, input: PythonRuntimeInput, signal?: AbortSignal, timeoutMs = 30_000): Promise<{
+  async run(source: string, input: PythonRuntimeInput, signal?: AbortSignal, timeoutMs = 30_000,
+    onProgress?: (message: string) => void): Promise<{
     readonly runtimeFingerprint: string;
     readonly output: PythonRuntimeOutput;
   }> {
     if (new TextEncoder().encode(source).length > 1024 * 1024) throw new PythonRuntimeError('Source exceeds 1 MiB.');
-    const runtimeFingerprint = await this.start(signal);
+    const runtimeFingerprint = await this.start(signal, onProgress);
+    onProgress?.('Running Python calculation…');
     const worker = this.worker;
     if (!worker) throw new PythonRuntimeError('Python runtime is stopped.', 'workerExited');
     const request: PythonRuntimeRequest = { kind: 'run', protocolVersion: pythonRuntimeProtocolVersion,
@@ -86,7 +89,7 @@ export class PythonRuntimeClient {
   private nextRequestId() { return `python-${++this.requestId}`; }
 
   private exchangeWith(worker: Worker, request: PythonRuntimeRequest, timeoutMs: number,
-    signal?: AbortSignal): Promise<PythonRuntimeReply> {
+    signal?: AbortSignal, onProgress?: (message: string) => void): Promise<PythonRuntimeReply> {
     if (this.exchange) return Promise.reject(new PythonRuntimeError('Python worker is busy.'));
     if (signal?.aborted) return Promise.reject(new PythonRuntimeError('Python run stopped.', 'cancelled'));
     return new Promise((resolve, reject) => {
@@ -123,6 +126,10 @@ export class PythonRuntimeClient {
         if (data.protocolVersion !== pythonRuntimeProtocolVersion) {
           finish(undefined, new PythonRuntimeError('Python worker protocol version did not match.', 'workerExited'));
           this.terminate(new PythonRuntimeError('Python worker protocol version did not match.', 'workerExited'));
+          return;
+        }
+        if (data.kind === 'progress') {
+          onProgress?.(data.message);
           return;
         }
         finish(data);

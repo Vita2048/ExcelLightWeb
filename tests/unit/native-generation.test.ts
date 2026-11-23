@@ -40,6 +40,21 @@ test('literal edits reuse the dependency graph and evaluate only the range depen
   expect(clock).not.toHaveBeenCalled();
 });
 
+test('reports the formula cells selected for calculation before evaluating them', () => {
+  const document = book(cell('input', 1, 1, 2), cell('first', 1, 2, '=A1+3'),
+    cell('second', 1, 3, '=B1+4'), cell('unrelated', 1, 4, '=9'));
+  const first = runNativeGeneration(document, 'automatic');
+  const cached = apply(document, first);
+  const edited = { ...cached, sheets: [{ ...cached.sheets[0]!, cells: cached.sheets[0]!.cells.map(item =>
+    item.id === 'input' ? cell('input', 1, 1, 10) : item) }] };
+  const progress: string[][] = [];
+  const result = runNativeGeneration(edited, 'automatic', first.generation, {}, ids => {
+    progress.push([...ids]);
+  });
+  expect(progress).toEqual([['first', 'second']]);
+  expect(values(result)).toEqual([['s', 1, 2, 13], ['s', 1, 3, 17]]);
+});
+
 test('SUMIF expanded sum ranges and SUBTOTAL row visibility invalidate dependent nodes', () => {
   const document = book(cell('a1', 1, 1, 1), cell('a2', 2, 1, 1), cell('b1', 1, 2, 5), cell('b2', 2, 2, 6),
     cell('sumif', 1, 3, '=SUMIF(A1:A2,1,B1)'), cell('subtotal', 1, 4, '=SUBTOTAL(109,B1:B2)'),

@@ -208,6 +208,11 @@ test('applies the desktop Zoom dialog presets, custom percentages and Fit select
   await expect(dialog.getByRole('heading', { name: 'Magnification' })).toBeVisible();
   await expect(dialog.getByRole('radio')).toHaveCount(7);
   await expect(dialog.getByRole('radio', { name: '100%' })).toBeChecked();
+  const initialCustom = dialog.getByRole('spinbutton', { name: 'Custom zoom percentage, 10 to 400' });
+  const customBox = await initialCustom.boundingBox();
+  const zoomOkBox = await dialog.getByRole('button', { name: 'OK', exact: true }).boundingBox();
+  if (!customBox || !zoomOkBox) throw new Error('The Zoom dialog controls are not visible.');
+  expect(zoomOkBox.y - (customBox.y + customBox.height)).toBeGreaterThanOrEqual(10);
   await dialog.getByRole('radio', { name: '200%' }).check();
   await dialog.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(dialog).toBeHidden();

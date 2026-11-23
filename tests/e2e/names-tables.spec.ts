@@ -26,7 +26,14 @@ test('uses the desktop table dialog, ribbon and contextual tab memory', async ({
   await expect(create.getByText('Workbook', { exact: true })).toBeVisible();
   await expect(create.getByRole('textbox', { name: 'Comment' })).toBeVisible();
   await expect(create.getByRole('textbox', { name: 'Range', exact: true })).toHaveValue("='Sheet1'!$A$1");
-  await expect(create.getByRole('checkbox', { name: 'My table has headers' })).not.toBeChecked();
+  const headersCheckbox = create.getByRole('checkbox', { name: 'My table has headers' });
+  await expect(headersCheckbox).not.toBeChecked();
+  const checkboxBox = await headersCheckbox.boundingBox();
+  const headersTextBox = await create.locator('.table-headers-check span').boundingBox();
+  if (!checkboxBox || !headersTextBox) throw new Error('The table header checkbox layout is not visible.');
+  expect(Math.abs((checkboxBox.y + checkboxBox.height / 2) - (headersTextBox.y + headersTextBox.height / 2)))
+    .toBeLessThan(1);
+  expect(headersTextBox.x).toBeGreaterThan(checkboxBox.x + checkboxBox.width);
   await expect(create.locator('.dialog-actions button')).toHaveText(['OK', 'Cancel']);
   const rangeButton = create.getByRole('button', { name: 'Select range from worksheet' });
   await expect(rangeButton).toHaveText('...');
@@ -305,4 +312,34 @@ test('keeps the grid still when Table Design closes and shrinks a table that has
   await expect(page.getByRole('gridcell', { name: 'A4, Total' })).toBeAttached();
   await go(page, 'B4');
   await expect(page.getByRole('textbox', { name: 'Formula bar' })).toHaveValue('=SUBTOTAL(109,B2:B3)');
+});
+
+test('keeps table filter buttons clear of both frozen dividers', async ({ page }) => {
+  await page.goto(path);
+  await go(page, 'A1', 'Team');
+  await go(page, 'B1', 'Priority');
+  await go(page, 'A2', 'Platform');
+  await go(page, 'B2', 'P1');
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Table', exact: true }).click();
+  const create = page.getByRole('dialog', { name: 'Create Table' });
+  await create.getByRole('textbox', { name: 'Range', exact: true }).fill("='Sheet1'!$A$1:$B$2");
+  await create.getByRole('checkbox', { name: 'My table has headers' }).check();
+  await create.getByRole('button', { name: 'OK', exact: true }).click();
+
+  await go(page, 'B2');
+  await page.getByRole('tab', { name: 'View', exact: true }).click();
+  await page.getByRole('button', { name: 'Freeze Panes', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Freeze Panes', exact: true }).click();
+  await expect(page.locator('.edit-status')).toHaveText('Froze panes.');
+
+  const grid = page.getByRole('grid');
+  const gridBox = await grid.boundingBox();
+  const teamBox = await page.getByRole('button', { name: 'Filter Team', exact: true }).boundingBox();
+  const priorityBox = await page.getByRole('button', { name: 'Filter Priority', exact: true }).boundingBox();
+  if (!gridBox || !teamBox || !priorityBox) throw new Error('The table filter buttons or grid are not visible.');
+  // The first column and top row are frozen. Their buttons must leave room for the 2px split lines.
+  expect(teamBox.x + teamBox.width).toBeLessThanOrEqual(gridBox.x + 138.5);
+  expect(teamBox.y + teamBox.height).toBeLessThanOrEqual(gridBox.y + 50.5);
+  expect(priorityBox.y + priorityBox.height).toBeLessThanOrEqual(gridBox.y + 50.5);
 });

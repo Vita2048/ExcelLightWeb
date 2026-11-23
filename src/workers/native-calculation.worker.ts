@@ -11,7 +11,9 @@ self.onmessage = ({ data }: MessageEvent<NativeWorkerRequest>) => {
   if (pending?.requestId === acceptedRequestId && pending?.sessionId === basis.sessionId) accepted = pending;
   const previous = accepted?.requestId === acceptedRequestId && accepted?.sessionId === basis.sessionId
     ? accepted.generation : undefined;
-  const { generation, updates, staleCellIds } = runNativeGeneration(document, scope, previous, { locale });
+  const { generation, updates, staleCellIds } = runNativeGeneration(document, scope, previous, { locale }, calculatingCellIds => {
+    self.postMessage({ ...basis, kind: 'native-calculating', calculatingCellIds });
+  });
   pending = { requestId: basis.requestId, sessionId: basis.sessionId, generation };
   self.postMessage({ ...basis, kind: 'native-calculated', updates, staleCellIds } satisfies NativeWorkerReply);
 };

@@ -7,6 +7,7 @@ type ExplicitScope = 'workbook' | { readonly sheetId: string };
 export interface CalculationStatus {
   readonly mode: CalculationMode;
   readonly pending: 'calculate' | 'observe' | false;
+  readonly calculating: ReadonlySet<string>;
   readonly stale: ReadonlySet<string>;
   readonly error?: string;
 }
@@ -20,7 +21,7 @@ export class NativeScheduler {
   #queued = false;
   #suspended = false;
   #explicit: ExplicitScope | undefined;
-  #status: CalculationStatus = { mode: 'automatic', pending: false, stale: new Set() };
+  #status: CalculationStatus = { mode: 'automatic', pending: false, calculating: new Set(), stale: new Set() };
 
   constructor(private readonly session: WorkbookSession,
     private readonly publish: (snapshot: WorkbookSnapshot, status: CalculationStatus) => void,
@@ -50,7 +51,7 @@ export class NativeScheduler {
       this.#superseded = !!this.#request;
       this.#queued = true;
       const { error: _error, ...current } = this.#status;
-      this.#update({ ...current, pending: 'observe' });
+      this.#update({ ...current, pending: 'observe', calculating: new Set() });
     } else this.#schedule(0);
   }
 
@@ -78,7 +79,8 @@ export class NativeScheduler {
     }
     this.#queued = false;
     const { error: _error, ...current } = this.#status;
-    this.#update({ ...current, pending: this.#explicit || current.mode === 'automatic' ? 'calculate' : 'observe' });
+    this.#update({ ...current, pending: this.#explicit || current.mode === 'automatic' ? 'calculate' : 'observe',
+      calculating: new Set() });
     this.#timer = setTimeout(() => {
       this.#queued = true;
       this.#send();
@@ -115,6 +117,13 @@ export class NativeScheduler {
   #receive(reply: NativeWorkerReply) {
     const request = this.#request;
     if (!request || reply?.requestId !== request.requestId) return;
+    if (reply.kind === 'native-calculating') {
+      if (this.#superseded || !this.session.isCurrent(reply) || !Array.isArray(reply.calculatingCellIds) ||
+          reply.calculatingCellIds.length > documentLimits.formulas ||
+          reply.calculatingCellIds.some(id => typeof id !== 'string')) return;
+      this.#update({ ...this.#status, calculating: new Set(reply.calculatingCellIds) });
+      return;
+    }
     this.#request = undefined;
     if (this.#superseded) {
       this.#superseded = false;
@@ -130,7 +139,7 @@ export class NativeScheduler {
       if (this.session.tryCommitNativeCalculation(reply)) {
         this.#acceptedRequestId = reply.requestId;
         if (request.scope === this.#explicit) this.#explicit = undefined;
-        this.#update({ mode: this.#status.mode, pending: false, stale: new Set(reply.staleCellIds) });
+        this.#update({ mode: this.#status.mode, pending: false, calculating: new Set(), stale: new Set(reply.staleCellIds) });
       } else this.#fail();
     } catch {
       this.#fail();
@@ -145,6 +154,7 @@ export class NativeScheduler {
     this.#acceptedRequestId = undefined;
     this.#queued = false;
     this.#explicit = undefined;
-    this.#update({ ...this.#status, pending: false, error: 'Calculation failed. Choose Calculate Now to retry.' });
+    this.#update({ ...this.#status, pending: false, calculating: new Set(),
+      error: 'Calculation failed. Choose Calculate Now to retry.' });
   }
 }

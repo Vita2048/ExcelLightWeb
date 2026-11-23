@@ -145,7 +145,7 @@ export function NameDefinitionDialog({
                 checked={headers}
                 onChange={e => setHeaders(e.target.checked)}
               />
-              My table has headers
+              <span>My table has headers</span>
             </label>
           )}
 

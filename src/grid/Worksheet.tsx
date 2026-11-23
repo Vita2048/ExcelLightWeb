@@ -59,6 +59,7 @@ interface WorksheetProps {
   readonly gridlines: boolean;
   readonly showFormulas: boolean;
   readonly staleCells: ReadonlySet<string>;
+  readonly calculatingCells: ReadonlySet<string>;
   readonly separator: ',' | ';';
   readonly tables?: readonly WorkbookName[];
   readonly rangePicking?: boolean;
@@ -130,7 +131,8 @@ interface ReferenceDrag {
 const initialViewport: GridViewport = { x: 0, y: 0, width: 0, height: 0 };
 
 export function Worksheet(props: WorksheetProps) {
-  const { sheet, selection, onSelection, onAdjacentSheet, zoom, headings, gridlines, showFormulas, staleCells, separator } = props;
+  const { sheet, selection, onSelection, onAdjacentSheet, zoom, headings, gridlines, showFormulas,
+    staleCells, calculatingCells, separator } = props;
   const scroll = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const drag = useRef<Drag | null>(null);
@@ -360,7 +362,7 @@ export function Worksheet(props: WorksheetProps) {
   useLayoutEffect(() => {
     drawWorksheet(canvas.current!, {
       sheet, view, rows: rowTracks, columns: columnTracks, rowAxis: rows, columnAxis: columns, selection, areas, scale, headings, gridlines,
-      showFormulas, staleCells, separator, referenceArea: props.referenceArea, tables: props.tables,
+      showFormulas, staleCells, calculatingCells, separator, referenceArea: props.referenceArea, tables: props.tables,
       borderPreview: props.borderTool && borderPreview && ('area' in borderPreview ? {
         area: { top: borderPreview.area.row, left: borderPreview.area.column,
           bottom: borderPreview.area.row + borderPreview.area.rows - 1, right: borderPreview.area.column + borderPreview.area.columns - 1 },
@@ -368,7 +370,7 @@ export function Worksheet(props: WorksheetProps) {
       frozenRows: rows.frozen, frozenColumns: columns.frozen, frozenHeight: rows.frozenSize, frozenWidth: columns.frozenSize,
       resizePreview,
     });
-  }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells,
+  }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells, calculatingCells,
     separator, props.referenceArea, props.tables, props.borderTool, props.borderPen, borderPreview, resizePreview, rows, columns, palette]);
 
   function alignTo(point: Coordinate) {
@@ -781,6 +783,9 @@ export function Worksheet(props: WorksheetProps) {
     }
     const controls: { row: number; column: number; label: string; active: boolean;
       sort: { readonly ascending: boolean } | undefined; left: number; top: number; width: number; height: number }[] = [];
+    const dividerThickness = Math.max(1, 2 * scale);
+    const splitX = left + columns.frozenSize;
+    const splitY = top + rows.frozenSize;
     for (const row of rowTracks) {
       if (!headers.has(row.index)) continue;
       for (const column of columnTracks) {
@@ -788,12 +793,19 @@ export function Worksheet(props: WorksheetProps) {
         const bounds = cellBounds(row.index, column.index);
         if (!bounds) continue;
         const sort = filter && filter.row === row.index && filter.sort?.column === column.index ? filter.sort : undefined;
-        const width = Math.min(bounds.width, (sort ? 27.5 : 18) * scale);
-        if (width < 8 || bounds.height < 8) continue;
-        if (bounds.right - width < left || bounds.right > view.width || bounds.top < top || bounds.bottom > view.height) continue;
+        const intendedWidth = Math.min(bounds.width, (sort ? 27.5 : 18) * scale);
+        const controlLeft = bounds.right - intendedWidth;
+        const overlapsFrozenColumn = columns.frozen > 0 && bounds.left < splitX && bounds.right >= splitX - dividerThickness;
+        const overlapsFrozenRow = rows.frozen > 0 && bounds.top < splitY && bounds.bottom >= splitY - dividerThickness;
+        const controlRight = overlapsFrozenColumn ? Math.min(bounds.right, splitX - dividerThickness) : bounds.right;
+        const controlBottom = overlapsFrozenRow ? Math.min(bounds.bottom, splitY - dividerThickness) : bounds.bottom;
+        const width = controlRight - controlLeft;
+        const height = controlBottom - bounds.top;
+        if (width < 8 || height < 8) continue;
+        if (controlLeft < left || controlRight > view.width || bounds.top < top || controlBottom > view.height) continue;
         controls.push({ row: row.index, column: column.index, label: headerLabel(sheet, row.index, column.index),
           active: !!filter && filter.row === row.index && filter.criteria.some(item => item.column === column.index),
-          sort, left: bounds.right - width, top: bounds.top, width, height: bounds.height });
+          sort, left: controlLeft, top: bounds.top, width, height });
       }
     }
     return controls;
@@ -844,7 +856,8 @@ export function Worksheet(props: WorksheetProps) {
                 const value = cellDisplay(cell, showFormulas, separator);
                 return <div key={column} id={cellId(point)} role="gridcell" aria-colindex={column} aria-rowspan={merge?.rows} aria-colspan={merge?.columns}
                   aria-selected={areas.some(area => includes(area, point))}
-                  aria-description={cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
+                  aria-description={cell && calculatingCells.has(cell.id) ? 'Calculating' :
+                    cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
                   aria-label={address(point) + (value ? ', ' + value : ', blank')} />;
               })}
             </div>

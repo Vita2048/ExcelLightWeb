@@ -1,6 +1,7 @@
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
 import type { WorkbookSession } from '../application/workbook-session';
 import type { WorkbookDocument } from '../core/workbook';
+import { formulaAddress } from '../core/formula-references';
 import { PythonRuntimeClient } from '../python/python-runtime-client';
 import { pythonRuntimeFingerprint } from '../python/runtime-fingerprint';
 import { MixedGraph } from './mixed-graph';
@@ -57,6 +58,14 @@ function targetKey(document: WorkbookDocument, id?: string) {
     const cell = sheet.cells.find(item => item.id === id);
     if (cell) return sheet.id + ':' + cell.id;
   }
+}
+
+function targetLabel(document: WorkbookDocument, id: string) {
+  for (const sheet of document.sheets) {
+    const cell = sheet.cells.find(item => item.id === id);
+    if (cell) return `${sheet.name}!${formulaAddress(cell)}`;
+  }
+  return 'Python cell';
 }
 
 /** Coordinates debounce, cancellation and single-transaction mixed generations. */
@@ -248,33 +257,51 @@ export class MixedPythonScheduler {
     this.#cancel(false);
     const serial = ++this.#serial;
     const basis = this.session.capture();
+    const displayId = roots.values().next().value;
+    if (!displayId) return;
     const controller = new AbortController();
     this.#controller = controller;
     this.#activeRoots = new Set(roots);
     this.#activeAutomatic = automatic;
-    this.#displayId = [...roots][0];
+    this.#displayId = displayId;
     let stdout = '', stderr = '', outputTruncated = false;
     const isCurrent = () => serial === this.#serial && !this.#disposed;
-    this.publish({ key: targetKey(basis.document, this.#displayId) ?? '', running: true, stdout, stderr,
-      outputTruncated, message: automatic ? 'Automatic · calculating mixed dependencies…' : 'Starting local Python runtime…' });
+    this.publish({ key: targetKey(basis.document, displayId) ?? '', running: true, stdout, stderr,
+      currentCellId: displayId, outputTruncated,
+      message: automatic ? 'Automatic · calculating mixed dependencies…' : 'Starting local Python runtime…' });
     const native = new NativePassClient(basis, this.locale);
     this.#nativeWorker = native;
     try {
       const result = await calculateMixedGeneration({ basis, requestedPythonIds: roots, forcedPythonIds: forced,
         signal: controller.signal }, {
-        calculateNative: async (document, targets, signal) => {
-          const reply = await native.calculate(document, targets, signal);
+        calculateNative: async (document, targets, signal, onCalculating) => {
+          const reply = await native.calculate(document, targets, signal, onCalculating);
           return { updates: reply.updates, staleCellIds: reply.staleCellIds };
         },
-        runPython: async (source, input, signal) => this.#runtime.run(source, input, signal),
+        runPython: async (source, input, signal, onProgress) =>
+          this.#runtime.run(source, input, signal, 30_000, onProgress),
         runtimeFingerprint: pythonRuntimeFingerprint, makeId: () => crypto.randomUUID(),
+        onNativeCalculating: (id, cellIds) => {
+          if (!isCurrent()) return;
+          const first = cellIds[0];
+          const details = first ? `${targetLabel(basis.document, first)}${cellIds.length > 1 ? ` and ${cellIds.length - 1} more` : ''}` :
+            targetLabel(basis.document, id);
+          this.publish({ key: targetKey(basis.document, id) ?? '', currentCellId: id, calculatingCellIds: cellIds,
+            running: true, stdout, stderr, outputTruncated, message: `Calculating ${details}…` });
+        },
+        onPythonStart: id => this.publish({ key: targetKey(basis.document, id) ?? '', currentCellId: id,
+          running: true, stdout, stderr, outputTruncated, message: `Calculating ${targetLabel(basis.document, id)}…` }),
+        onPythonProgress: (id, progress) => this.publish({ key: targetKey(basis.document, id) ?? '', currentCellId: id,
+          running: true, stdout, stderr, outputTruncated,
+          message: progress === 'Running Python calculation…' ? `Calculating ${targetLabel(basis.document, id)}…` : progress }),
         onOutput: (id, output) => {
           if (!isCurrent() || id !== this.#displayId) return;
           stdout = output.stdout;
           stderr = output.stderr;
           outputTruncated = output.outputTruncated;
-          this.publish({ key: targetKey(basis.document, id) ?? '', running: true, stdout, stderr, outputTruncated,
-            ...(output.error && { error: output.error }), message: 'Running Python locally…' });
+          this.publish({ key: targetKey(basis.document, id) ?? '', currentCellId: id, running: true,
+            stdout, stderr, outputTruncated, ...(output.error && { error: output.error }),
+            message: `Updating ${targetLabel(basis.document, id)}…` });
         },
       });
       if (!isCurrent()) return;
@@ -291,6 +318,9 @@ export class MixedPythonScheduler {
             const sheet = result.document.sheets.find(item => item.id === placement.sheetId);
             if (!sheet) continue;
             try {
+              this.publish({ key: targetKey(result.document, cell.id) ?? '', currentCellId: cell.id,
+                running: true, stdout, stderr, outputTruncated,
+                message: `Drawing ${targetLabel(result.document, cell.id)}…` });
               const canvas = figureCanvasForPlacement(placement, sheet, 1.5);
               const output = await this.#runtime.renderFigure(sourceId, canvas.width, canvas.height, canvas.dpi, controller.signal);
               const image = chartImage(output);

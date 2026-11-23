@@ -24,8 +24,21 @@ self.addEventListener('message', async (event: MessageEvent<PythonRuntimeRequest
       if (!index.pathname.endsWith('/')) index.pathname += '/';
       const loaderUrl = new URL('pyodide.mjs', index).href;
       const { loadPyodide } = await import(/* @vite-ignore */ loaderUrl) as Loader;
+      send({ kind: 'progress', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId,
+        message: 'Loading Python runtime…' });
       runtime = await loadPyodide({ indexURL: index.href });
-      await runtime.loadPackage(['numpy', 'pandas', 'matplotlib']);
+      const packages = [
+        { name: 'NumPy', package: 'numpy' },
+        { name: 'pandas', package: 'pandas' },
+        { name: 'Matplotlib', package: 'matplotlib' },
+      ];
+      for (const [index, item] of packages.entries()) {
+        send({ kind: 'progress', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId,
+          message: `Loading ${item.name} (${index + 1} of ${packages.length})…` });
+        await runtime.loadPackage([item.package]);
+        send({ kind: 'progress', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId,
+          message: `Loaded ${item.name} (${index + 1} of ${packages.length}).` });
+      }
       runtime.runPython(adapter);
       send({ kind: 'ready', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId,
         runtimeFingerprint: pythonRuntimeFingerprint });

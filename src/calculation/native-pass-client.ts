@@ -1,5 +1,6 @@
-import type { NativeWorkerReply, NativeWorkerRequest, WorkbookSnapshot } from '../application/workbook-protocol';
+import type { NativeCalculationResult, NativeWorkerReply, NativeWorkerRequest, WorkbookSnapshot } from '../application/workbook-protocol';
 import { workbookProtocolVersion } from '../application/workbook-protocol';
+import { documentLimits } from '../core/workbook';
 
 class NativeWorkerError extends Error {}
 
@@ -8,12 +9,13 @@ export class NativePassClient {
   #worker: Worker | undefined;
   #serial = 0;
   #acceptedRequestId: string | undefined;
-  #active: { requestId: string; resolve: (reply: NativeWorkerReply) => void; reject: (error: Error) => void;
-    signal: AbortSignal; abort: () => void } | undefined;
+  #active: { requestId: string; resolve: (reply: NativeCalculationResult) => void; reject: (error: Error) => void;
+    signal: AbortSignal; abort: () => void; onCalculating?: (cellIds: readonly string[]) => void } | undefined;
 
   constructor(private readonly basis: WorkbookSnapshot, private readonly locale: string) {}
 
-  calculate(document: WorkbookSnapshot['document'], targets: readonly string[], signal: AbortSignal): Promise<NativeWorkerReply> {
+  calculate(document: WorkbookSnapshot['document'], targets: readonly string[], signal: AbortSignal,
+    onCalculating?: (cellIds: readonly string[]) => void): Promise<NativeCalculationResult> {
     signal.throwIfAborted();
     if (this.#active) return Promise.reject(new Error('Native calculation worker is busy.'));
     const worker = this.#worker ??= this.#createWorker();
@@ -27,7 +29,7 @@ export class NativePassClient {
         if (this.#active?.requestId === requestId) this.#clear(new NativeWorkerError('Mixed calculation stopped.'));
         this.dispose();
       };
-      this.#active = { requestId, resolve, reject, signal, abort };
+      this.#active = { requestId, resolve, reject, signal, abort, ...(onCalculating && { onCalculating }) };
       signal.addEventListener('abort', abort, { once: true });
       try { worker.postMessage(request); }
       catch (error) { this.#clear(error instanceof Error ? error : new Error(String(error))); this.dispose(); }
@@ -46,10 +48,25 @@ export class NativePassClient {
     worker.onmessage = ({ data }: MessageEvent<NativeWorkerReply>) => {
       const active = this.#active;
       if (!active || data?.requestId !== active.requestId) return;
-      if (data.kind !== 'native-calculated' || data.protocolVersion !== workbookProtocolVersion ||
+      if (data.protocolVersion !== workbookProtocolVersion ||
           data.sessionId !== this.basis.sessionId || data.revision !== this.basis.revision ||
           data.generation !== this.basis.generation || data.sourceFingerprint !== this.basis.sourceFingerprint ||
-          data.runtimeFingerprint !== 'native-formulas-v1' || !Array.isArray(data.updates) || !Array.isArray(data.staleCellIds)) {
+          data.runtimeFingerprint !== 'native-formulas-v1') {
+        this.#clear(new NativeWorkerError('Native calculation worker returned an invalid generation.'));
+        this.dispose();
+        return;
+      }
+      if (data.kind === 'native-calculating') {
+        if (!Array.isArray(data.calculatingCellIds) || data.calculatingCellIds.length > documentLimits.formulas ||
+            data.calculatingCellIds.some(id => typeof id !== 'string')) {
+          this.#clear(new NativeWorkerError('Native calculation worker returned invalid progress.'));
+          this.dispose();
+          return;
+        }
+        active.onCalculating?.(data.calculatingCellIds);
+        return;
+      }
+      if (data.kind !== 'native-calculated' || !Array.isArray(data.updates) || !Array.isArray(data.staleCellIds)) {
         this.#clear(new NativeWorkerError('Native calculation worker returned an invalid generation.'));
         this.dispose();
         return;
@@ -64,7 +81,7 @@ export class NativePassClient {
     return worker;
   }
 
-  #clear(error?: Error, reply?: NativeWorkerReply) {
+  #clear(error?: Error, reply?: NativeCalculationResult) {
     const active = this.#active;
     if (!active) return;
     this.#active = undefined;

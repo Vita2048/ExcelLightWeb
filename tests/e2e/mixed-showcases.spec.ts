@@ -207,7 +207,32 @@ test('runs the edited SLA showcase spill and refreshes its native breach KPI', a
   expect(runtimeRequests).toEqual([]);
   const initialRate = await cellLabel(page, 'E6');
   await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await page.evaluate(() => {
+    const probe = { messages: [] as string[], sawCalculatingCell: false };
+    (window as Window & { calculationProgressProbe?: typeof probe }).calculationProgressProbe = probe;
+    const capture = () => {
+      const status = document.querySelector('.status-bar [role="status"]');
+      if (status) probe.messages.push(status.textContent ?? '');
+      const cell = document.querySelector('[role="gridcell"][id$="-B6"]');
+      if (cell?.getAttribute('aria-description') === 'Calculating') probe.sawCalculatingCell = true;
+    };
+    const observer = new MutationObserver(capture);
+    observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true,
+      attributeFilter: ['aria-description'], characterData: true });
+    (window as Window & { calculationProgressObserver?: MutationObserver }).calculationProgressObserver = observer;
+    capture();
+  });
   await runOnce(page, 'B6');
+  const progress = await page.evaluate(() => (window as Window & { calculationProgressProbe?: {
+    messages: string[]; sawCalculatingCell: boolean;
+  } }).calculationProgressProbe);
+  expect(progress?.messages.some(message => message.includes('Loading NumPy (1 of 3)'))).toBe(true);
+  expect(progress?.messages.some(message => message.includes('Loading pandas (2 of 3)'))).toBe(true);
+  expect(progress?.messages.some(message => message.includes('Loading Matplotlib (3 of 3)'))).toBe(true);
+  expect(progress?.messages.some(message => message.includes('Calculating Analysis!B6'))).toBe(true);
+  expect(progress?.sawCalculatingCell).toBe(true);
+  await page.evaluate(() => (window as Window & { calculationProgressObserver?: MutationObserver })
+    .calculationProgressObserver?.disconnect());
   await expect(page.locator('.python-result-table')).toContainText('0.3207236842105263');
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   const updatedRate = await page.getByRole('gridcell', { name: /^E6,/u }).getAttribute('aria-label');

@@ -207,7 +207,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     setFileStatus('This workbook is open in another tab. Editing is paused to protect its local copy.');
   };
   if (!workspaceLease.current) workspaceLease.current = new WorkspaceLease(localStore, id => workspaceConflictRef.current(id));
-  const [calculation, setCalculation] = useState<CalculationStatus>(() => ({ mode: 'automatic', pending: false, stale: new Set() }));
+  const [calculation, setCalculation] = useState<CalculationStatus>(() => ({ mode: 'automatic', pending: false,
+    calculating: new Set(), stale: new Set() }));
   const scheduler = useRef<NativeScheduler>(null);
   const [locale] = useState(() => navigator.language);
   const separator = useMemo(() => localeArgumentSeparator(locale), [locale]);
@@ -323,6 +324,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }, [snapshot, pythonPanelTarget?.sheetId, pythonPanelTarget?.cellId, pythonPanelTarget?.blockId,
     pythonBlock, pythonPanelCell, calculation.stale]);
   const pythonExecutionState = pythonExecution.state;
+  const calculatingCells = useMemo(() => new Set([
+    ...calculation.calculating,
+    ...(pythonExecutionState?.running ? pythonExecutionState.calculatingCellIds ?? [] : []),
+    ...(pythonExecutionState?.running && pythonExecutionState.currentCellId ? [pythonExecutionState.currentCellId] : []),
+  ]), [calculation.calculating, pythonExecutionState?.running, pythonExecutionState?.calculatingCellIds,
+    pythonExecutionState?.currentCellId]);
   const pythonResultExecution = pythonPanelTarget && pythonExecutionState?.key === pythonPanelTarget.sheetId + ':' + pythonPanelTarget.cellId
     ? pythonExecutionState : undefined;
   useEffect(() => {
@@ -2337,7 +2344,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     };
   }
 
-  const calculationMessage = calculation.error ??
+  const calculationMessage = pythonExecutionState?.running ? pythonExecutionState.message : calculation.error ??
     (calculation.pending ? calculation.pending === 'observe' ? 'Checking calculation status…' : 'Calculating…' :
       calculation.stale.size ? 'Calculation needed' : '');
 
@@ -2501,7 +2508,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             }}
             editor={editing.draft?.surface === 'inline' ? { at: editing.draft.target, input: <CellEditor {...editorProps('inline')} /> } : undefined}
             zoom={view.zoom} headings={view.headings} gridlines={view.gridlines} showFormulas={view.showFormulas}
-            staleCells={calculation.stale} separator={separator}
+            staleCells={calculation.stale} calculatingCells={calculatingCells} separator={separator}
             tables={tables}
             rangePicking={rangePicker !== undefined}
             onRangePickFinish={accept => rangePicker?.onDone(accept ? rangePicker.initial : null)}
@@ -2575,7 +2582,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       </main>
 
       <footer className="status-bar" aria-label="Worksheet status" inert={backstageOpen || !!workspaceConflict}>
-        <span className={editing.status || fileStatus || calculationMessage ? 'edit-status' : 'ready'} role="status">
+        <span className={editing.status || fileStatus || calculationMessage ? 'edit-status' : 'ready'} role="status"
+          data-calculating={pythonExecutionState?.running || calculation.pending === 'calculate' ? 'true' : undefined}>
           {[editing.status, fileStatus, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
             ' · Select a destination or press Enter · Esc cancels', borderTool && borderModes[borderTool.mode] + ' · Esc exits', calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
         </span>

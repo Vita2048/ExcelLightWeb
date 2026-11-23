@@ -7,6 +7,8 @@ import type { PythonFigure } from '../../core/workbook';
 
 export interface PythonExecutionState {
   readonly key: string;
+  readonly currentCellId?: string;
+  readonly calculatingCellIds?: readonly string[];
   readonly running: boolean;
   readonly stdout: string;
   readonly stderr: string;

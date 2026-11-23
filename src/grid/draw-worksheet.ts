@@ -28,6 +28,7 @@ interface GridFrame {
   readonly gridlines: boolean;
   readonly showFormulas: boolean;
   readonly staleCells: ReadonlySet<string>;
+  readonly calculatingCells: ReadonlySet<string>;
   readonly separator: ',' | ';';
   readonly referenceArea?: Area | undefined;
   readonly borderPreview?: { readonly area: Area } | { readonly segments: readonly BorderSegment[]; readonly pen: CellBorder } | undefined;
@@ -37,6 +38,20 @@ interface GridFrame {
   readonly frozenColumns: number;
   readonly frozenHeight: number;
   readonly frozenWidth: number;
+}
+
+export interface HeaderCornerPoint { readonly x: number; readonly y: number }
+
+/** Returns the centered 45° select-all marker as an isosceles right triangle. */
+export function selectAllCornerTriangle(width: number, height: number): readonly [HeaderCornerPoint, HeaderCornerPoint, HeaderCornerPoint] {
+  const size = Math.min(width, height) * 0.64;
+  const right = width * 0.8;
+  const bottom = height * 0.75;
+  return [
+    { x: right - size, y: bottom },
+    { x: right, y: bottom },
+    { x: right, y: bottom - size },
+  ];
 }
 
 export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void {
@@ -165,6 +180,14 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
       drawAlignedText(context, label, cell.style, styles.fontFamily, scale,
         { x: cellX, y: cellY, width, height }, value?.kind ?? 'blank');
       context.restore();
+      if (frame.calculatingCells.has(cell.id)) {
+        context.strokeStyle = forced ? 'Highlight' : token('--accent');
+        context.lineWidth = 1.6;
+        context.setLineDash([]);
+        context.beginPath();
+        context.arc(cellX + width - 7, cellY + 7, 3, -Math.PI * 0.42, Math.PI * 1.28);
+        context.stroke();
+      }
       if (frame.staleCells.has(cell.id)) {
         context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');
         context.lineWidth = 1;
@@ -344,10 +367,11 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
   context.fillRect(line(left), 0, 1 / ratio, height);
   context.fillRect(0, line(top), width, 1 / ratio);
   context.fillStyle = textColor;
+  const [bottomLeft, bottomRight, topRight] = selectAllCornerTriangle(left, top);
   context.beginPath();
-  context.moveTo(left * 0.42, top * 0.75);
-  context.lineTo(left * 0.8, top * 0.75);
-  context.lineTo(left * 0.8, top * 0.3);
+  context.moveTo(bottomLeft.x, bottomLeft.y);
+  context.lineTo(bottomRight.x, bottomRight.y);
+  context.lineTo(topRight.x, topRight.y);
   context.fill();
   drawFrozenDividers();
 }

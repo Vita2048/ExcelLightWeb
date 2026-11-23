@@ -37,6 +37,11 @@ export interface NativeCalculationReply extends WorkerBasis {
   readonly updates: readonly CacheUpdate[];
 }
 
+export interface NativeCalculationProgress extends WorkerBasis {
+  readonly kind: 'native-calculating';
+  readonly calculatingCellIds: readonly string[];
+}
+
 export type NativeCalculationScope = 'automatic' | 'observe' | 'workbook' | { readonly sheetId: string } |
   { readonly targets: readonly string[] };
 
@@ -46,6 +51,5 @@ export interface NativeWorkerRequest extends NativeCalculationRequest {
   readonly locale: string;
 }
 
-export interface NativeWorkerReply extends NativeCalculationReply {
-  readonly staleCellIds: readonly string[];
-}
+export type NativeCalculationResult = NativeCalculationReply & { readonly staleCellIds: readonly string[] };
+export type NativeWorkerReply = NativeCalculationResult | NativeCalculationProgress;

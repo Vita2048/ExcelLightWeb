@@ -41,6 +41,13 @@ export interface PythonRuntimeOutput {
   readonly outputTruncated: boolean;
 }
 
+export interface PythonRuntimeProgress {
+  readonly kind: 'progress';
+  readonly protocolVersion: typeof pythonRuntimeProtocolVersion;
+  readonly requestId: string;
+  readonly message: string;
+}
+
 export type PythonRuntimeRequest =
   | { readonly kind: 'init'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly runtimeUrl: string }
   | { readonly kind: 'run'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly source: string; readonly input: PythonRuntimeInput }
@@ -50,7 +57,8 @@ export type PythonRuntimeRequest =
 export type PythonRuntimeReply =
   | { readonly kind: 'ready'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly runtimeFingerprint: string }
   | { readonly kind: 'result'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly output: PythonRuntimeOutput }
-  | { readonly kind: 'error'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly message: string };
+  | { readonly kind: 'error'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly message: string }
+  | PythonRuntimeProgress;
 
 export function pythonCache(value: PythonInputValue): CellCache | undefined {
   if (value === null) return undefined;

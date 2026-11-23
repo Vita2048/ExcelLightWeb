@@ -215,6 +215,16 @@ button:disabled { cursor: default; opacity: .5; }
 .grid-keyboard-hint, .app-shell:has(.worksheet-scroll:focus-visible) .ready { display: none; }
 .app-shell:has(.worksheet-scroll:focus-visible) .grid-keyboard-hint { display: inline; }
 .edit-status { overflow-wrap: anywhere; }
+.edit-status[data-calculating='true'] { display: inline-flex; align-items: center; gap: 7px; }
+.edit-status[data-calculating='true']::before {
+  content: ''; display: inline-block; flex: none; width: 10px; height: 10px;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: worksheet-calculation-spin 850ms linear infinite;
+}
+@keyframes worksheet-calculation-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .edit-status[data-calculating='true']::before { animation: none; border-right-color: currentColor; }
+}
 .selection-stats { margin-left: auto; display: flex; gap: 12px; flex-wrap: wrap; }
 .offline-menu { position: absolute; z-index: 12; right: 9px; bottom: 38px; }
 .offline-status-button { min-height: 25px; padding: 2px 8px; color: var(--muted); background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; }
@@ -641,7 +651,10 @@ button:disabled { cursor: default; opacity: .5; }
 .range-input-row { display: grid; grid-template-columns: 1fr auto; column-gap: 6px; align-items: center; }
 .range-pick-btn { min-width: 32px; height: 28px; padding: 0 6px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; cursor: pointer; }
 .range-pick-btn:disabled, .name-dialog-row input:disabled, .name-manager-refers-input:disabled { opacity: 0.5; cursor: not-allowed; }
-.table-headers-check { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; font-size: 13px; }
+.paste-dialog .table-headers-check {
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+  width: fit-content; margin: 4px 0 0; font-size: 13px;
+}
 .dialog-error { color: #f87171; margin: 4px 0; font-size: 12px; }
 
 /* Name Manager Dialog */
@@ -807,6 +820,7 @@ button:disabled { cursor: default; opacity: .5; }
 .zoom-heading { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
 .zoom-presets { display: grid; gap: 4px; }
 .paste-dialog .zoom-check { display: flex; align-items: center; gap: 6px; min-height: 28px; }
+.zoom-dialog .dialog-actions { margin-top: 10px; }
 .zoom-custom { display: flex; align-items: center; gap: 8px; min-height: 32px; }
 .zoom-custom input[type='number'] { width: 96px; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; color: inherit; padding: 4px 6px; }
 .zoom-error { margin: 6px 0; min-height: 1em; color: #ffb4b4; }

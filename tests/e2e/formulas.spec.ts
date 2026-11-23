@@ -172,8 +172,10 @@ test('the production worker calculates a 1,000-formula chain and drops a reply s
   await go(page, 'B1000');
   await expect(cell(page, 'B1000', '=B999+1')).toBeAttached();
   await expect.poll(() => page.evaluate(() => (window as unknown as ProbedWindow).probe.held.length)).toBe(1);
+  await expect(page.locator('[role="gridcell"][id$="-B1000"]')).toHaveAccessibleDescription('Calculating');
   await page.evaluate(() => (window as unknown as ProbedWindow).probe.held.shift()!());
   await expect(cell(page, 'B1000', '1001')).toBeAttached();
+  await expect(page.locator('[role="gridcell"][id$="-B1000"]')).toHaveAccessibleDescription('');
   await enter(page, 'A1', '10');
   await expect.poll(() => page.evaluate(() => (window as unknown as ProbedWindow).probe.sent.length)).toBe(2);
   await enter(page, 'A1', '20');

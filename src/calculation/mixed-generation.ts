@@ -13,14 +13,19 @@ export interface NativePassResult {
 }
 
 export interface MixedGenerationServices {
-  readonly calculateNative: (document: WorkbookDocument, targets: readonly string[], signal: AbortSignal) => Promise<NativePassResult>;
-  readonly runPython: (source: string, input: PythonRuntimeInput, signal: AbortSignal) => Promise<{
+  readonly calculateNative: (document: WorkbookDocument, targets: readonly string[], signal: AbortSignal,
+    onCalculating: (cellIds: readonly string[]) => void) => Promise<NativePassResult>;
+  readonly runPython: (source: string, input: PythonRuntimeInput, signal: AbortSignal,
+    onProgress: (message: string) => void) => Promise<{
     readonly runtimeFingerprint: string;
     readonly output: PythonRuntimeOutput;
   }>;
   readonly runtimeFingerprint: string;
   readonly makeId: () => string;
   readonly onOutput?: (pythonId: string, output: PythonRuntimeOutput) => void;
+  readonly onNativeCalculating?: (pythonId: string, cellIds: readonly string[]) => void;
+  readonly onPythonStart?: (pythonId: string) => void;
+  readonly onPythonProgress?: (pythonId: string, message: string) => void;
 }
 
 export interface MixedGenerationRequest {
@@ -145,7 +150,8 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
     try {
       const nativeTargets = graph.nativePrerequisites(id);
       if (nativeTargets.size) {
-        const native = await services.calculateNative(document, [...nativeTargets], signal);
+        const native = await services.calculateNative(document, [...nativeTargets], signal,
+          cellIds => services.onNativeCalculating?.(id, cellIds));
         document = applyNativeUpdates(document, native.updates);
         staleFormulaIds.clear();
         for (const stale of native.staleCellIds) staleFormulaIds.add(stale);
@@ -165,7 +171,9 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
         continue;
       }
 
-      const result = await services.runPython(anchor.source, built.input, signal);
+      services.onPythonStart?.(id);
+      const result = await services.runPython(anchor.source, built.input, signal,
+        message => services.onPythonProgress?.(id, message));
       executed.add(id);
       if (result.output.status === 'succeeded' && result.output.result?.kind === 'figure' &&
           result.output.result.figure.figureId) figureIds.set(id, result.output.result.figure.figureId.toUpperCase());
@@ -208,7 +216,8 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
   const nativeOutputs = new Set([...downstream].filter(id => graph.nodes.get(id)?.kind === 'formula'));
   if (nativeOutputs.size) {
     try {
-      const native = await services.calculateNative(document, [...nativeOutputs], signal);
+      const native = await services.calculateNative(document, [...nativeOutputs], signal,
+        cellIds => services.onNativeCalculating?.([...roots][0] ?? '', cellIds));
       document = applyNativeUpdates(document, native.updates);
       staleFormulaIds.clear();
       for (const stale of native.staleCellIds) staleFormulaIds.add(stale);

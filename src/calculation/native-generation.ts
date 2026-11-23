@@ -23,7 +23,7 @@ function hiddenRows(rows: WorkbookDocument['sheets'][number]['rows']) {
 }
 
 export function runNativeGeneration(document: WorkbookDocument, scope: NativeCalculationScope,
-  previous?: Generation, options: CalculationOptions = {}) {
+  previous?: Generation, options: CalculationOptions = {}, onCalculating?: (cellIds: readonly string[]) => void) {
   const inputs = indexNativeInputs(document);
   let topologyChanged = !previous || inputs.size !== previous.inputs.size;
   const changed = new Map<string, Coordinate[]>();
@@ -91,6 +91,7 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
     expand(selected, 'inputs');
   }
 
+  onCalculating?.([...selected].map(node => node.id));
   const updates: readonly CacheUpdate[] = selected.size ? evaluateNative(inputs, graph, selected, options).updates : [];
   const caches = new Map<string, CellCache>();
   for (const node of graph.order) {
