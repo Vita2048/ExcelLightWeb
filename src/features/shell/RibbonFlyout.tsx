@@ -156,8 +156,11 @@ export function RibbonFlyout({ label, caption, icon, items, large = false }: {
     });
   }
 
+  // The accessible name keeps the visible caption, so a changing value like the Number
+  // Format sample still satisfies label-in-name while the command stays identifiable.
+  const accessibleName = typeof caption === 'string' && caption !== '' && caption !== label ? label + ' ' + caption : label;
   return <>
-    <button type="button" ref={trigger} className={'ribbon-command' + (large ? ' ribbon-large' : '')} aria-label={label}
+    <button type="button" ref={trigger} className={'ribbon-command' + (large ? ' ribbon-large' : '')} aria-label={accessibleName}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} title={label}
       onClick={() => { if (open) close(); else setOpen(true); }} onKeyDown={event => {
         if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); }

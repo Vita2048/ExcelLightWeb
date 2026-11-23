@@ -197,6 +197,24 @@ These are targets to calibrate in S02/S03 and enforce in S25, not measured claim
 - Python default timeout remains 30 seconds. Cold runtime load and both showcase cold/warm runs are measured separately; approve realistic browser targets after S02.
 - First shell JS/CSS gzip target below 500 KiB excluding lazy Monaco/Pyodide. Runtime compressed/uncompressed asset sizes must be reported and stay below actual Pages constraints. Never include user workbooks in public assets to hit a demo goal.
 
+## Cross-browser parity and performance
+
+S25 adds a desktop-derived ribbon manifest in [tests/fixtures/parity/ribbon-order.json](../tests/fixtures/parity/ribbon-order.json). After a production build, run `npm run test:e2e -- tests/e2e/ribbon-parity.spec.ts` in Chromium, Firefox and WebKit. It checks the tab order, each tab's group order, every menu's command order, the nested Format → Hide & Unhide submenu, split-control pairing, glyph presence, viewport placement, an axe scan with an open flyout, and the dark-only and forced-colors palettes. The F2/double-click selection contract is covered by [editing](../tests/e2e/editing.spec.ts).
+
+The maximum-bound workloads are separate from the fast check: run `npm run test:performance`. It builds a deterministic 2-sheet, 200,000-populated-cell / 10,000-formula workbook and a 10,000-cell fixture, records OS, CPU, cores, RAM and Node, and writes p50/p95 samples to ignored `test-results/performance/`. It asserts no data loss at the exact limits, the 10,000-cell session-edit p95 under 100 ms, and the fixed 1,000-formula warm recalculation p95 under 500 ms. The 200,000-cell measurements are recorded rather than asserted against an interaction budget.
+
+Browser input and scrolling are measured after a production build with `npm run test:e2e -- tests/e2e/performance.spec.ts`. Key events are dispatched inside the page so Playwright's protocol overhead is excluded; typing and selection p95 are asserted under 100 ms on the 10,000-cell fixture, Chromium long tasks must stay under 50 ms, and scroll frame times, dropped-at-60-Hz counts and idle cadence are reported. The scroll assertion refuses stalls (p95 ≥ 120 ms or any frame ≥ 250 ms) while the recorded 60 Hz result is reported honestly: on the S25 machine Chromium held 16.8 ms and Firefox 25 ms, while Playwright's software-rendered WebKit at 2x device pixels stayed near 47–60 ms. That WebKit value is an environment limitation, not Safari parity evidence, and the 60 Hz target is not claimed for it.
+
+The Python timing case runs with the existing probe harness, now honoring `PLAYWRIGHT_TEST_PORT`:
+
+```powershell
+$env:PLAYWRIGHT_TEST_PORT='4211'
+npm run test:python-probe -- --project=chromium -g "cold runtime startup"
+Remove-Item Env:PLAYWRIGHT_TEST_PORT
+```
+
+It records cold worker start plus 20 warm unchanged sales-script runs under the pinned runtime in ignored `test-results/performance/S25-python-timings.json`.
+
 ## Check outcomes and workflow
 
 Every sprint updates its parity rows with test paths, then writes docs/handovers/SNN.md. Include pass/fail/skipped/unrun counts where available, not just "tested". A missing real-runtime/interop gate is a blocker for that capability. Fix introduced regressions before advancing. Do not add redundant implementation-mirroring tests merely to increase counts.

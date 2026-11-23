@@ -106,7 +106,7 @@ test('supports Czech and US dates, the fictitious leap day, elapsed time and can
   await expect(cell(page, 'B1', '61.25')).toBeAttached();
 
   await go(page, 'B1');
-  await page.getByRole('button', { name: 'Number Format', exact: true }).click();
+  await page.getByRole('button', { name: /^Number Format/u }).click();
   await page.getByRole('menuitem', { name: 'More Number Formats…' }).click();
   await dialog.getByLabel('Category').selectOption('Time');
   await dialog.getByLabel('Date/time type').selectOption('5');

@@ -273,6 +273,11 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
               <AutoSum onEdit={onEdit} />
             </fieldset>
             <fieldset>
+              <legend>Formula Auditing</legend>
+              <button type="button" className="ribbon-command" aria-pressed={view.showFormulas}
+                onClick={() => onView({ showFormulas: !view.showFormulas })}><RibbonGlyph name="Insert Function" />Show Formulas</button>
+            </fieldset>
+            <fieldset>
               <legend>Defined Names</legend>
               <button type="button" className="ribbon-command ribbon-large" onClick={onNameManagerClick}>
                 <RibbonGlyph name="Name Manager" size={32} />Name Manager
@@ -282,11 +287,6 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
                 icon="Define Name"
                 items={[{ label: 'Define Name...', icon: 'Define Name', select: onDefineNameClick ?? (() => {}) }]}
               />
-            </fieldset>
-            <fieldset>
-              <legend>Formula Auditing</legend>
-              <button type="button" className="ribbon-command" aria-pressed={view.showFormulas}
-                onClick={() => onView({ showFormulas: !view.showFormulas })}><RibbonGlyph name="Insert Function" />Show Formulas</button>
             </fieldset>
             <fieldset>
               <legend>Calculation</legend>

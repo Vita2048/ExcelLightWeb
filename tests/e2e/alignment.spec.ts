@@ -139,7 +139,7 @@ test('aligns stacked fixed-decimal glyphs at the top, bottom, and across the row
   const height = page.getByRole('dialog', { name: 'Row Height', exact: true });
   await height.getByRole('spinbutton', { name: 'Size in pixels' }).fill('184');
   await height.getByRole('button', { name: 'OK' }).click();
-  await page.getByRole('button', { name: 'Number Format', exact: true }).click();
+  await page.getByRole('button', { name: /^Number Format/u }).click();
   await page.getByRole('menuitem', { name: /^Number(?:$| )/ }).click();
   await choose(page, 'Orientation', 'Vertical Text', true);
   await page.getByRole('button', { name: 'Font Color', exact: true }).click();

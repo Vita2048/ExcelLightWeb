@@ -79,8 +79,12 @@ export function useWorksheetEditing(
     intent.current++;
     setStatus('');
     const original = findReferencedCell(session.active, target);
-    showDraft({ surface, sessionId: session.sessionId, target, original, text: replacement ?? editorText(original),
-      direct: surface === 'inline' && replacement !== undefined && !functionDraft, functionDraft });
+    const text = replacement ?? editorText(original);
+    // F2 and double-click open the existing content selected, matching the desktop grid editor.
+    const selectText = surface === 'inline' && replacement === undefined && text.length > 0
+      ? { start: 0, end: text.length } : undefined;
+    showDraft({ surface, sessionId: session.sessionId, target, original, text,
+      direct: surface === 'inline' && replacement !== undefined && !functionDraft, functionDraft, ...(selectText && { selectText }) });
   }
 
   function update(text: string) {

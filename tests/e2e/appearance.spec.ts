@@ -204,7 +204,7 @@ test('Format Painter tiles a locked source across sheets, applies once in single
   await enter(page, 'A1', '123');
   await go(page, 'A1');
   await toolbar(page).getByRole('button', { name: 'Apply last fill color' }).click();
-  await toolbar(page).getByRole('button', { name: 'Number Format', exact: true }).click();
+  await toolbar(page).getByRole('button', { name: /^Number Format/u }).click();
   await page.getByRole('menuitem', { name: /^Number(?:$| )/ }).click();
   await grid.press('Shift+ArrowRight');
 

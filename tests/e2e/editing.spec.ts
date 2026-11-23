@@ -88,6 +88,37 @@ test('direct entry, formula bar, F2 and Escape share a draft and restore grid fo
   await inline.press('Escape');
 });
 
+test('F2 and double-click open the cell editor with the existing content selected, and typing replaces it', async ({ page }) => {
+  await page.goto(path);
+  const grid = await go(page, 'A1');
+  await page.getByRole('textbox', { name: 'Formula bar' }).fill('existing');
+  await page.getByRole('textbox', { name: 'Formula bar' }).press('Enter');
+  await expect(cell(page, 'A1', 'existing')).toBeAttached();
+
+  await go(page, 'A1');
+  await grid.press('F2');
+  const inline = page.getByRole('textbox', { name: 'Edit A1' });
+  await expect(inline).toBeFocused();
+  expect(await inline.evaluate(node => {
+    const input = node as HTMLTextAreaElement;
+    return [input.selectionStart, input.selectionEnd, input.value];
+  })).toEqual([0, 8, 'existing']);
+  await inline.press('Escape');
+  await expect(grid).toBeFocused();
+
+  const box = (await grid.boundingBox())!;
+  await page.mouse.dblclick(box.x + 50, box.y + 38);
+  await expect(inline).toBeFocused();
+  expect(await inline.evaluate(node => {
+    const input = node as HTMLTextAreaElement;
+    return [input.selectionStart, input.selectionEnd, input.value];
+  })).toEqual([0, 8, 'existing']);
+  await page.keyboard.type('replacement');
+  await expect(inline).toHaveValue('replacement');
+  await inline.press('Enter');
+  await expect(cell(page, 'A1', 'replacement')).toBeAttached();
+});
+
 test('formula hints follow the active function and caret in both editors', async ({ page }) => {
   await page.goto(path);
   const grid = await go(page, 'A1');

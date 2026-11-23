@@ -131,6 +131,63 @@ test('runs the edited Sales showcase spill and refreshes its native KPI', async 
   expect(runtimeRequests.length).toBeGreaterThan(0);
 });
 
+test('both showcases keep an edit and their saved Python results across a browser save and reload', async ({ page }) => {
+  test.setTimeout(240_000);
+  const runtimeRequests: string[] = [];
+  page.on('request', request => {
+    if (request.url().includes('/runtime/pyodide/')) runtimeRequests.push(request.url());
+  });
+  await disableFileSystemPickers(page);
+
+  for (const [fixture, title, sheet, kpi] of [
+    [salesFixture, 'Showcase', 'Dashboard', 'A4'],
+    [slaFixture, 'Support-SLA', 'Dashboard', 'E6'],
+  ] as const) {
+    await page.goto(appPath);
+    await page.getByRole('grid').waitFor();
+    await openFixture(page, fixture, title);
+    await page.getByRole('button', { name: sheet, exact: true }).click();
+    const savedKpi = await cellLabel(page, kpi);
+    await enter(page, 'Z60', 'Reviewed in the browser');
+    await expect(page.getByRole('gridcell', { name: 'Z60, Reviewed in the browser' })).toHaveAttribute('aria-label',
+      'Z60, Reviewed in the browser');
+
+    await page.getByRole('tab', { name: 'File' }).click();
+    await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.locator('.status-bar [role="status"]')).toContainText('Saved to this browser');
+    const stored = await page.evaluate(async name => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open('excellight-workspace', 2);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const transaction = db.transaction('workspaces', 'readonly');
+      const loaded = await new Promise<boolean>((resolve, reject) => {
+        const request = transaction.objectStore('workspaces').getAll();
+        request.onsuccess = () => resolve((request.result as { name?: string }[]).some(record => record.name === name));
+        request.onerror = () => reject(request.error);
+      });
+      db.close();
+      return loaded;
+    }, title);
+    expect(stored).toBe(true);
+
+    await page.reload();
+    await page.getByRole('grid').waitFor();
+    await page.getByRole('tab', { name: 'File' }).click();
+    await page.getByRole('button', { name: 'Open recent ' + title, exact: true }).click();
+    await expect(page.locator('.workbook-title')).toHaveText(title);
+    await page.getByRole('button', { name: sheet, exact: true }).click();
+    // Navigate to the edited cell so the bounded accessible projection mounts it.
+    expect(await cellLabel(page, 'Z60')).toBe('Z60, Reviewed in the browser');
+    // Saved Python caches and Figures are restored without executing workbook code.
+    expect(await cellLabel(page, kpi)).toBe(savedKpi);
+    expect(runtimeRequests).toEqual([]);
+    await page.getByRole('tab', { name: 'File' }).click();
+    await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Close', exact: true }).click();
+  }
+});
+
 test('runs the edited SLA showcase spill and refreshes its native breach KPI', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'S22 showcase chains execute the real Pyodide worker in Chromium.');
   test.setTimeout(480_000);

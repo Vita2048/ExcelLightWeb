@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
 import lock from '../../src/python/runtime-lock.json' with { type: 'json' };
@@ -43,7 +43,8 @@ function png(output: RunOutput, dimensions: [number, number]) {
 
 async function start(page: Page) {
   const unexpected: string[] = [];
-  await page.route(url => url.origin !== 'http://127.0.0.1:4173', route => {
+  const origin = 'http://127.0.0.1:' + (process.env.PLAYWRIGHT_TEST_PORT ?? '4173');
+  await page.route(url => url.origin !== origin, route => {
     unexpected.push(route.request().url());
     return route.abort();
   });
@@ -180,6 +181,31 @@ with ipc.new_stream(out, table.schema) as writer:
     writer.write_table(table)
 ipc.open_stream(out.getvalue()).read_all().equals(table)
 `)).result).toEqual({ kind: 'scalar', value: true });
+  expect(unexpected).toEqual([]);
+});
+
+test('reports cold runtime startup and warm sales-script runs', async ({ page }) => {
+  const coldStart = performance.now();
+  const unexpected = await start(page);
+  const coldMs = performance.now() - coldStart;
+  const sales = fixture('sales/Showcase.exlt');
+  const source = script(sales, 'Sales Analysis!3:1');
+  const warm: number[] = [];
+  for (let index = 0; index < 20; index++) {
+    const started = performance.now();
+    const result = table(await run(page, source, sales.snapshots));
+    warm.push(performance.now() - started);
+    expect(result.rows.length).toBeGreaterThan(0);
+  }
+  const sorted = [...warm].sort((a, b) => a - b);
+  const measurement = {
+    runtime: lock,
+    coldStartupMs: coldMs,
+    warmRuns: { samples: warm.length, p50: sorted[9], p95: sorted[18], max: sorted.at(-1) },
+  };
+  await test.info().attach('python-timings', { body: JSON.stringify(measurement, null, 2), contentType: 'application/json' });
+  mkdirSync('test-results/performance', { recursive: true });
+  writeFileSync('test-results/performance/S25-python-timings.json', JSON.stringify(measurement, null, 2) + '\n');
   expect(unexpected).toEqual([]);
 });
 

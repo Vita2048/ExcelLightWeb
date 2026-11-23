@@ -20,7 +20,8 @@
     "build": "npm run prepare:python-runtime && npm run typecheck && vite build && node scripts/finalize-static-build.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "check": "npm run typecheck && npm test && npm run build",
-    "test:worksheet": "vite build --config vite.worksheet.config.ts && playwright test --config playwright.worksheet.config.ts"
+    "test:worksheet": "vite build --config vite.worksheet.config.ts && playwright test --config playwright.worksheet.config.ts",
+    "test:performance": "vitest run --config vitest.performance.config.ts"
   },
   "dependencies": {
     "@xmldom/xmldom": "0.9.12",
