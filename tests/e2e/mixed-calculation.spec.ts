@@ -81,9 +81,13 @@ test('runs a mixed dependency chain atomically and schedules only after local Au
   const save = page.getByRole('dialog', { name: 'Save to this browser' });
   await save.getByRole('textbox', { name: 'Workbook name' }).fill('Mixed Automatic Stale');
   await save.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('.status-bar [role="status"]'))
+    .toContainText('Saved to this browser as Mixed Automatic Stale.');
 
   await page.getByRole('tab', { name: 'File' }).click();
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  const newWorkbook = page.getByRole('button', { name: 'New', exact: true });
+  await expect(newWorkbook).toBeEnabled();
+  await newWorkbook.click();
   await page.getByRole('tab', { name: 'File' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   const automaticOptions = page.getByRole('dialog', { name: 'Excel-Lite Options' });

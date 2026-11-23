@@ -216,7 +216,7 @@ test('runs local Python only on consent, rejects occupied spills and inserts a s
     cachedResizeBounds.y + cachedResizeBounds.height / 2 + 25, { steps: 3 });
   await page.mouse.up();
   await expect(page.locator('.python-run-controls [role="status"]'))
-    .toContainText(/Starting local Python runtime|calculating mixed dependencies/iu);
+    .toContainText(/^(?:Starting local Python runtime|Automatic · calculating mixed dependencies|Loading (?:Python runtime|NumPy|pandas|Matplotlib)(?: \(\d of 3\))?|Calculating .+|Updating .+)…$/iu);
   expect((await cachedPlacement.boundingBox())?.width).toBeGreaterThan(beforeCachedResize.width);
   await expect(page.locator('.python-run-controls [role="status"]')).toHaveText('Python run completed.', { timeout: 420_000 });
   await expect(page.locator('.status-bar [role="status"]')).toContainText('Figure placement updated.');
