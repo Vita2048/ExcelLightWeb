@@ -3,6 +3,7 @@ import type { WorkbookSnapshot } from '../../application/workbook-protocol';
 import type { WorkbookSession } from '../../application/workbook-session';
 import type { PythonAnchorTarget } from './python-editor-model';
 import { MixedPythonScheduler } from '../../calculation/mixed-scheduler';
+import type { PythonFigure } from '../../core/workbook';
 
 export interface PythonExecutionState {
   readonly key: string;
@@ -40,6 +41,10 @@ export function usePythonExecution(session: WorkbookSession, locale: string,
   const setAutomatic = useCallback((automatic: boolean) => scheduler.current?.setAutomatic(automatic), []);
   const adopted = useCallback(() => scheduler.current?.adopted(), []);
   const historyRestored = useCallback(() => scheduler.current?.historyRestored(), []);
+  const redrawFigure = useCallback((figure: PythonFigure, width: number, height: number, dpi: number,
+    signal?: AbortSignal): Promise<{ readonly figure?: PythonFigure; readonly error?: string }> =>
+    scheduler.current?.redrawFigure(figure, width, height, dpi, signal) ??
+      Promise.resolve({ error: 'The Python figure service is not ready.' }), []);
 
-  return { state, run, runAll, stop, changed, setAutomatic, adopted, historyRestored };
+  return { state, run, runAll, stop, changed, setAutomatic, adopted, historyRestored, redrawFigure };
 }

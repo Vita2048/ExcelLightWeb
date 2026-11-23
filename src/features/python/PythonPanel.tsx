@@ -36,6 +36,8 @@ export interface PythonPanelProps {
   readonly block?: PythonBlock;
   readonly execution?: PythonExecutionState;
   readonly resultExecution?: PythonExecutionState;
+  readonly placingFigure?: boolean;
+  readonly figureStatus?: string;
   readonly onDraft: (contextId: string, text: string) => void;
   readonly onPickable: (pickable: boolean) => void;
   readonly onHide: () => void;
@@ -44,6 +46,9 @@ export interface PythonPanelProps {
   readonly onStop: () => void;
   readonly onCopy: () => void;
   readonly onInsertValues: () => void;
+  readonly onPlaceFigure: () => void;
+  readonly onSaveImage: () => void;
+  readonly onRebuildFigure: () => void;
 }
 
 type Editor = Monaco.editor.IStandaloneCodeEditor;
@@ -194,7 +199,9 @@ export const PythonPanel = forwardRef<PythonEditorHandle, PythonPanelProps>(func
         <span className="python-status" role="status">{props.execution?.message ?? props.status}</span>
       </div>}
       {props.context && props.block && <PythonResult block={props.block} inputFresh={props.pythonInputFresh} execution={props.resultExecution}
-        onCopy={props.onCopy} onInsertValues={props.onInsertValues} />}
+        placing={!!props.placingFigure} figureStatus={props.figureStatus}
+        onCopy={props.onCopy} onInsertValues={props.onInsertValues} onPlaceFigure={props.onPlaceFigure}
+        onSaveImage={props.onSaveImage} onRebuildFigure={props.onRebuildFigure} />}
       <div className="python-panel-footer">
         {!props.context && <span className="python-status" role="status">{props.status}</span>}
         <span className="python-note">{props.automatic ? 'Automatic runs after relevant edits and when a workbook is opened, using this browser’s saved consent.' :
@@ -210,12 +217,18 @@ function displayCache(value: { readonly kind: string; readonly value?: string | 
   return String(value.value ?? '');
 }
 
-function PythonResult({ block, inputFresh, execution, onCopy, onInsertValues }: {
+function PythonResult({ block, inputFresh, execution, placing, figureStatus, onCopy, onInsertValues,
+  onPlaceFigure, onSaveImage, onRebuildFigure }: {
   block: PythonBlock;
   inputFresh: boolean;
   execution: PythonExecutionState | undefined;
+  placing: boolean;
+  figureStatus: string | undefined;
   onCopy: () => void;
   onInsertValues: () => void;
+  onPlaceFigure: () => void;
+  onSaveImage: () => void;
+  onRebuildFigure: () => void;
 }) {
   const table = block.spillActive ? block.lastTable : null;
   const rows = table ? Math.min(table.rows, 500) : 0;
@@ -233,9 +246,20 @@ function PythonResult({ block, inputFresh, execution, onCopy, onInsertValues }: 
     {execution?.error && <pre className="python-error" role="alert">{execution.error}</pre>}
     {!execution?.error && block.error && block.status !== 'succeeded' && <pre className="python-error" role="alert">{block.error}</pre>}
     {!successful && !execution?.error && !block.error && <p className="python-empty-result">Run Python to see its result.</p>}
-    {successful && block.lastFigure && <img className="python-figure" alt="Python generated figure"
-      width={block.lastFigure.width} height={block.lastFigure.height}
-      src={`data:image/png;base64,${block.lastFigure.pngBase64}`} />}
+    {successful && block.lastFigure && <>
+      <img className="python-figure" alt="Python generated figure"
+        width={block.lastFigure.width} height={block.lastFigure.height}
+        src={`data:image/png;base64,${block.lastFigure.pngBase64}`} />
+      <div className="python-figure-actions" role="group" aria-label="Figure actions">
+        <button type="button" className="ribbon-command" onClick={onSaveImage}>Save Image</button>
+        <button type="button" className="ribbon-command" onClick={onPlaceFigure} disabled={!!execution?.running}>
+          {placing ? 'Cancel placement' : 'Place on Sheet'}
+        </button>
+        {(figureStatus || !block.lastFigure.figureId) && <button type="button" className="ribbon-command"
+          onClick={onRebuildFigure} disabled={!!execution?.running}>Rebuild Figure</button>}
+      </div>
+      {figureStatus && <p className="python-figure-status" role="status">{figureStatus}</p>}
+    </>}
     {successful && table && <div className="python-table-scroll"><table className="python-result-table"><tbody>
       {Array.from({ length: rows }, (_, row) => <tr key={row}>{Array.from({ length: columns }, (_, column) => {
         const value = table.cells[row * columns + column];

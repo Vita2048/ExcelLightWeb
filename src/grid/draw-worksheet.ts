@@ -1,6 +1,7 @@
 import { findCell, type CellBorder, type CellDocument, type CellExtent, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { mergeAt } from '../application/border-commands';
 import { cellBorders, type BorderSegment } from '../core/formats/borders';
+import { displayCellValue } from '../core/formats/cell-format';
 import { drawBorder } from './border-rendering';
 import { drawCellFill, drawAlignedText, effectiveCellStyle, usesLightPaper } from './cell-appearance';
 import { columnName, gridMetrics, type GridAxis, type Track } from './grid-geometry';
@@ -155,14 +156,14 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     }
     for (const { cell, x: cellX, y: cellY, width, height, selected, active } of entries) {
       const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator);
-      const value = frame.showFormulas ? cell.content : cell.cache ?? cell.content;
+      const value = displayCellValue(cell, frame.showFormulas);
       clip(cellX, cellY, width, height);
       const authoredColor = color ?? cell.style?.textRgb;
       context.fillStyle = forced ? selected && !active ? 'HighlightText' : textColor :
         authoredColor ? '#' + authoredColor : usesLightPaper(cell.style) ? '#1b1b1b' : textColor;
       context.save();
       drawAlignedText(context, label, cell.style, styles.fontFamily, scale,
-        { x: cellX, y: cellY, width, height }, value.kind);
+        { x: cellX, y: cellY, width, height }, value?.kind ?? 'blank');
       context.restore();
       if (frame.staleCells.has(cell.id)) {
         context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');

@@ -53,7 +53,11 @@ function figureResult(figure: PythonFigure): PythonFigure {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   requireDocument(view.getUint32(16) === figure.width && view.getUint32(20) === figure.height,
     'Python figure dimensions do not match its PNG.');
-  return figure;
+  if (figure.figureId !== undefined) {
+    requireDocument(typeof figure.figureId === 'string' && /^[0-9A-F]{64}$/i.test(figure.figureId),
+      'Python figure identity is invalid.');
+  }
+  return { pngBase64: figure.pngBase64, width: figure.width, height: figure.height };
 }
 
 export function pythonBlockFromOutput(prior: PythonBlock, output: PythonRuntimeOutput,
@@ -83,8 +87,10 @@ export function pythonBlockFromOutput(prior: PythonBlock, output: PythonRuntimeO
   }
   if (result.kind === 'figure') {
     const lastFigure = figureResult(result.figure);
+    const placements = (prior.placements ?? []).map(placement => ({ ...placement,
+      renderedFigure: null, renderedSourceId: null }));
     return { ...prior, status: 'succeeded', error: null, hasResult: true, lastValue: null,
-      inputFingerprint, runtimeFingerprint, lastTable: null, spillActive: false, lastFigure, placements: [] };
+      inputFingerprint, runtimeFingerprint, lastTable: null, spillActive: false, lastFigure, placements };
   }
   throw new Error('Python worker returned an unsupported result.');
 }

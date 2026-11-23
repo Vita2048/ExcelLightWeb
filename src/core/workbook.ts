@@ -121,6 +121,8 @@ export interface PythonFigure {
   readonly pngBase64: string;
   readonly width: number;
   readonly height: number;
+  /** SHA-256 of the PNG for the current live worker session; omitted from native files. */
+  readonly figureId?: string;
 }
 
 export interface FigurePlacement {

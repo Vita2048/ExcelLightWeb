@@ -44,7 +44,8 @@ import {
 } from '../application/table-commands';
 import { extentContains, lastColumn, lastRow, ownsTableFilter, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
-import type { TableDesign, WorkbookName } from '../core/workbook';
+import type { FigurePlacement, PythonFigure, TableDesign, WorkbookName } from '../core/workbook';
+import { putFigurePlacement, removeFigurePlacement } from '../application/figure-commands';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
 import { NativeScheduler, type CalculationMode, type CalculationStatus } from '../calculation/native-scheduler';
@@ -56,6 +57,7 @@ import { PasteTextDialog } from '../features/editing/PasteTextDialog';
 import { localeArgumentSeparator } from '../features/formulas/formula-presentation';
 import { useWorksheetEditing, type AfterEditKey, type EditAction, type EditSurface } from '../features/editing/useWorksheetEditing';
 import { Worksheet, type WorksheetHandle } from '../grid/Worksheet';
+import type { WorksheetFigure } from '../grid/Worksheet';
 import { PythonPanel } from '../features/python/PythonPanel';
 import { pythonAnchorAt, type PythonAnchorTarget } from '../features/python/python-editor-model';
 import { usePythonEditor } from '../features/python/usePythonEditor';
@@ -63,6 +65,7 @@ import { usePythonExecution } from '../features/python/usePythonExecution';
 import { PythonTrustDialog } from '../features/python/PythonTrustDialog';
 import { pythonInsertCommand, pythonResultText } from '../python/python-results';
 import { buildPythonInputs } from '../python/python-inputs';
+import { figureCacheKey, figureCanvasForPlacement } from '../python/figure-rendering';
 import { StructureDialog, StructureMenu, type DialogAction, type StructureAction, type StructureInput } from '../features/structure/StructureControls';
 import { fitDimensions } from '../grid/autofit';
 import { address, clamp, gridMetrics } from '../grid/grid-geometry';
@@ -101,6 +104,15 @@ interface ActiveFileContext {
   readonly sourceFileHandle?: WorkspaceFileHandle;
   readonly fileSize?: number;
   readonly fileLastModified?: number;
+}
+
+interface PendingFigureResize {
+  readonly ownerId: string;
+  readonly requested: FigurePlacement;
+  readonly original: FigurePlacement;
+  readonly target: PythonAnchorTarget;
+  readonly baseRevision: number;
+  readonly runningObserved: boolean;
 }
 
 function visibleIndex(index: number, dimensions: WorkbookDocument['sheets'][number]['rows'], limit: number,
@@ -263,6 +275,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const python = usePythonEditor({ session, changed: compound => workbookChanged(compound) });
   const [pythonOpen, setPythonOpen] = useState(false);
   const [pythonTrustPrompt, setPythonTrustPrompt] = useState<{ target: PythonAnchorTarget; all?: boolean }>();
+  const [pendingFigureOwner, setPendingFigureOwner] = useState<string>();
+  const [figureStatus, setFigureStatus] = useState<{ readonly ownerId: string; readonly message: string }>();
+  const [pendingFigureResize, setPendingFigureResize] = useState<PendingFigureResize>();
   const trustedPythonSession = useRef<string | undefined>(undefined);
   const [pythonHiddenFor, setPythonHiddenFor] = useState<string>();
   const [pythonWidth, setPythonWidth] = useState(380);
@@ -275,6 +290,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const pythonPanelCell = pythonPanelTarget && snapshot.document.sheets.find(item => item.id === pythonPanelTarget.sheetId)?.cells
     .find(cell => cell.id === pythonPanelTarget.cellId);
   const pythonBlock = pythonPanelCell?.content.kind === 'python' ? pythonPanelCell.content.block : undefined;
+  const worksheetFigures = useMemo<readonly WorksheetFigure[]>(() => snapshot.document.sheets.flatMap(sourceSheet =>
+    sourceSheet.cells.flatMap(cell => {
+      if (cell.content.kind !== 'python' || !cell.content.block?.lastFigure) return [];
+      const block = cell.content.block;
+      return (block.placements ?? []).filter(placement => placement.sheetId === sheet.id).map(placement => ({
+        ownerId: block.id, figure: block.lastFigure!, placement, label: `Figure from ${sourceSheet.name}!${address(cell)}`,
+      }));
+    })), [snapshot.document, sheet.id]);
+  const pendingFigure = useMemo(() => {
+    if (!pendingFigureOwner) return undefined;
+    for (const sourceSheet of snapshot.document.sheets) for (const cell of sourceSheet.cells) {
+      if (cell.content.kind === 'python' && cell.content.block?.id === pendingFigureOwner && cell.content.block.lastFigure) {
+        return { ownerId: pendingFigureOwner, figure: cell.content.block.lastFigure };
+      }
+    }
+    return undefined;
+  }, [snapshot.document, pendingFigureOwner]);
+  useEffect(() => {
+    if (pendingFigureOwner && !pendingFigure) setPendingFigureOwner(undefined);
+  }, [pendingFigureOwner, pendingFigure]);
+  const panelFigureStatus = pythonBlock && figureStatus?.ownerId === pythonBlock.id ? figureStatus.message : undefined;
   const pythonInputFresh = useMemo(() => {
     if (!pythonPanelTarget || !pythonPanelCell || pythonPanelCell.content.kind !== 'python' || !pythonBlock?.hasResult ||
         !pythonBlock.inputFingerprint || pythonBlock.status !== 'succeeded') return false;
@@ -1915,9 +1951,187 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     const context = python.context;
     const target = context && pythonAnchorAt(session.capture(), context.sheetId, context);
     if (!target) return;
+    setFigureStatus(undefined);
     if (trustedPythonSession.current === target.sessionId) {
       void pythonExecution.run(target, calculation.stale);
     } else setPythonTrustPrompt({ target });
+  }
+
+  function requestFigurePlacement() {
+    if (!python.barrier() || !editing.commit()) return;
+    const context = python.context;
+    const target = context && pythonAnchorAt(session.capture(), context.sheetId, context);
+    const cell = target && session.active.sheets.find(item => item.id === target.sheetId)?.cells.find(item => item.id === target.cellId);
+    const block = cell?.content.kind === 'python' ? cell.content.block : undefined;
+    if (!block?.lastFigure) {
+      setFileStatus('Run a Python Figure before placing it on the worksheet.');
+      return;
+    }
+    setPendingFigureOwner(current => current === block.id ? undefined : block.id);
+    worksheet.current?.focus();
+    setFileStatus(pendingFigureOwner === block.id
+      ? 'Figure placement cancelled.' : 'Move the pointer over the worksheet, then click or drag to place the Figure. Press Escape to cancel.');
+  }
+
+  async function saveFigureImage() {
+    const figure = pythonBlock?.lastFigure;
+    if (!figure) return;
+    try {
+      const binary = atob(figure.pngBase64);
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'image/png' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'Python Figure.png';
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setFileStatus('Saved the last successful Python Figure image.');
+    } catch (error) { setFileStatus(error instanceof Error ? error.message : 'The Figure image could not be saved.'); }
+  }
+
+  async function saveFigurePlacement(ownerId: string, requested: FigurePlacement, original?: FigurePlacement) {
+    if (!python.barrier() || !editing.commit()) return;
+    const basis = session.capture();
+    let source: PythonFigure | null | undefined;
+    let placements: readonly FigurePlacement[] = [];
+    let sourceTarget: PythonAnchorTarget | undefined;
+    for (const sourceSheet of basis.document.sheets) for (const cell of sourceSheet.cells) {
+      if (cell.content.kind === 'python' && cell.content.block?.id === ownerId) {
+        source = cell.content.block.lastFigure;
+        placements = cell.content.block.placements ?? [];
+        sourceTarget = pythonAnchorAt(basis, sourceSheet.id, { row: cell.row, column: cell.column });
+      }
+    }
+    if (!source) { setFileStatus('The Python Figure source is no longer available.'); return; }
+    const prior = original && placements.find(item => item.id === original.id);
+    if (original && (!prior || ['sheetId', 'row', 'column', 'rows', 'columns', 'offsetX', 'offsetY', 'width', 'height']
+      .some(key => prior?.[key as keyof FigurePlacement] !== original[key as keyof FigurePlacement]))) {
+      const message = 'The Figure placement changed while Python was running. The requested resize was not applied.';
+      setFigureStatus({ ownerId, message });
+      setFileStatus(message);
+      return;
+    }
+    let placement = requested;
+    const targetSheet = basis.document.sheets.find(item => item.id === requested.sheetId);
+    if (!targetSheet) { setFileStatus('The destination worksheet no longer exists.'); return; }
+    try {
+      const newCanvas = figureCanvasForPlacement(requested, targetSheet, window.devicePixelRatio || 1);
+      let placedFromCachedImage = false;
+      let cacheReusable = false;
+      if (prior?.renderedFigure && prior.renderedSourceId) {
+        const oldCanvas = figureCanvasForPlacement(prior, targetSheet, window.devicePixelRatio || 1);
+        cacheReusable = oldCanvas.width === newCanvas.width && oldCanvas.height === newCanvas.height && oldCanvas.dpi === newCanvas.dpi;
+      }
+      if (cacheReusable && prior?.renderedFigure && prior.renderedSourceId) {
+        placement = { ...requested, renderedFigure: prior.renderedFigure, renderedSourceId: prior.renderedSourceId };
+      } else {
+        setFigureStatus({ ownerId, message: 'Redrawing the Figure at its placement size…' });
+        const redraw = await pythonExecution.redrawFigure(source, newCanvas.width, newCanvas.height, newCanvas.dpi);
+        if (!redraw.figure) {
+          if (original) {
+            if (pythonExecutionState?.running) {
+              setFigureStatus({ ownerId, message: 'Wait for the current Python run to finish before resizing this Figure.' });
+              setFileStatus('Figure resize paused until the current Python run finishes. The existing placement is unchanged.');
+              return;
+            }
+            if (!sourceTarget) {
+              setFigureStatus({ ownerId, message: 'The Python source for this Figure is no longer available.' });
+              setFileStatus('The Figure could not be recalculated because its Python source is unavailable.');
+              return;
+            }
+            setPendingFigureResize({ ownerId, requested, original, target: sourceTarget,
+              baseRevision: basis.revision, runningObserved: false });
+            setFigureStatus({ ownerId, message: 'Recalculating the Figure at its new size.' });
+            setFileStatus('Recalculating the resized Figure from its Python source.');
+            // The resize gesture is the explicit request to rebuild this Figure; ordinary Run remains consent-gated.
+            void pythonExecution.run(sourceTarget, calculation.stale);
+            return;
+          }
+          // Placement and geometry edits remain available after worker loss by retaining the last PNG.
+          placedFromCachedImage = true;
+          placement = { ...requested, renderedFigure: prior?.renderedFigure ?? source,
+            renderedSourceId: prior?.renderedSourceId ?? await figureCacheKey(source) };
+        } else {
+          placement = { ...requested, renderedFigure: redraw.figure, renderedSourceId: await figureCacheKey(source) };
+        }
+      }
+      const document = putFigurePlacement(basis.document, ownerId, placement);
+      const isMove = !!prior;
+      if (!session.tryExecute(basis, { kind: 'structure', document, label: isMove ? 'Move or resize Figure' : 'Place Figure' })) {
+        const message = 'The workbook changed during Figure redraw. The previous placement remains.';
+        setFigureStatus({ ownerId, message });
+        setFileStatus(message);
+        return;
+      }
+      setSnapshot(session.capture());
+      workbookChanged(true);
+      setFigureStatus(placedFromCachedImage ? { ownerId,
+        message: 'Retained the cached Figure image. Rebuild Figure to redraw it at this size.' } : undefined);
+      setPendingFigureOwner(undefined);
+      setFileStatus(placedFromCachedImage
+        ? isMove ? 'Figure placement geometry updated with its cached image. Rebuild Figure to redraw at this size.'
+          : 'Figure placed from its cached image. Rebuild Figure to redraw at another size.'
+        : isMove ? 'Figure placement updated.'
+        : 'Figure placed on the worksheet.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Figure placement failed.';
+      setFigureStatus({ ownerId, message });
+      setFileStatus(message);
+    }
+  }
+
+  useEffect(() => {
+    const pending = pendingFigureResize;
+    const execution = pythonExecutionState;
+    if (!pending || !execution || execution.key !== pending.target.sheetId + ':' + pending.target.cellId) return;
+    if (execution.running) {
+      if (!pending.runningObserved) setPendingFigureResize({ ...pending, runningObserved: true });
+      return;
+    }
+    if (!pending.runningObserved) return;
+    if (execution.message === 'Python run completed.') {
+      const current = session.capture();
+      if (current.sessionId === pending.target.sessionId && current.revision <= pending.baseRevision) return;
+      setPendingFigureResize(undefined);
+      const hasFigure = current.sessionId === pending.target.sessionId && current.document.sheets.some(sourceSheet =>
+        sourceSheet.cells.some(cell => cell.content.kind === 'python' && cell.content.block?.id === pending.ownerId &&
+          cell.content.block.lastFigure));
+      if (hasFigure) {
+        void saveFigurePlacement(pending.ownerId, pending.requested, pending.original);
+        return;
+      }
+      const message = 'Python completed without a Figure; the previous placement remains unchanged.';
+      setFigureStatus({ ownerId: pending.ownerId, message });
+      setFileStatus(message);
+      return;
+    }
+    setPendingFigureResize(undefined);
+    const detail = execution.error ?? execution.message;
+    const message = 'Python could not recalculate the resized Figure; the previous placement remains unchanged.' +
+      (detail ? ' ' + detail : '');
+    setFigureStatus({ ownerId: pending.ownerId, message });
+    setFileStatus(message);
+  }, [pendingFigureResize, pythonExecutionState, session, snapshot.revision]);
+
+  function deleteFigurePlacement(placementId: string) {
+    if (!python.barrier() || !editing.commit()) return;
+    const basis = session.capture();
+    try {
+      const document = removeFigurePlacement(basis.document, placementId);
+      if (!session.tryExecute(basis, { kind: 'structure', document, label: 'Delete Figure placement' })) {
+        setFileStatus('The workbook changed before the Figure placement could be deleted.');
+        return;
+      }
+      setSnapshot(session.capture());
+      workbookChanged(true);
+      setFileStatus('Figure placement deleted.');
+    } catch (error) { setFileStatus(error instanceof Error ? error.message : 'Figure placement could not be deleted.'); }
+  }
+
+  function rebuildFigure() {
+    setFigureStatus(undefined);
+    requestPythonRun();
   }
 
   function requestPythonRunAll() {
@@ -2243,6 +2457,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             }}
             onEdit={beginInline} onShortcut={shortcut} onClipboard={clipboardEvent}
             onStructureMenu={openGridMenu}
+            figures={worksheetFigures}
+            {...(pendingFigure && { pendingFigure })}
+            {...(figureStatus && { figureStatus })}
+            onFigurePlacement={(ownerId, placement, original) => { void saveFigurePlacement(ownerId, placement, original); }}
+            onFigureDelete={deleteFigurePlacement}
+            onFigureCancel={() => setPendingFigureOwner(undefined)}
             onHeaderFit={(axis, index) => openStructure(`fit-${axis}`, targetHeader(axis, index))}
             onHeaderResize={(axis, index) => {
               if (!python.barrier() || !editing.commit()) return;
@@ -2275,10 +2495,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
               status={python.status} pythonInputFresh={pythonInputFresh} {...(pythonBlock && { block: pythonBlock })}
               {...(pythonExecutionState && { execution: pythonExecutionState })}
               {...(pythonResultExecution && { resultExecution: pythonResultExecution })}
+              placingFigure={!!pythonBlock && pendingFigureOwner === pythonBlock.id}
+              {...(panelFigureStatus && { figureStatus: panelFigureStatus })}
               onDraft={python.receiveDraft} onPickable={python.setPickable}
               automatic={preferences.pythonAutomaticConsent} onHide={hidePython} onRun={requestPythonRun}
               onRunAll={requestPythonRunAll} onStop={pythonExecution.stop}
-              onCopy={() => { void copyPythonResult(); }} onInsertValues={insertPythonValues} />
+              onCopy={() => { void copyPythonResult(); }} onInsertValues={insertPythonValues}
+              onPlaceFigure={requestFigurePlacement} onSaveImage={() => { void saveFigureImage(); }}
+              onRebuildFigure={rebuildFigure} />
           </>}
         </div>
         <nav className="sheet-strip" aria-label="Worksheets">
@@ -2364,7 +2588,15 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onChoice={remove => { void decideWorkspaceRemoval(workspaceToRemove, remove); }} />}
       {pythonTrustPrompt && <PythonTrustDialog {...(pythonTrustPrompt.all !== undefined && { all: pythonTrustPrompt.all })}
         onRunOnce={() => confirmPythonRun(false)}
-        onTrustSession={() => confirmPythonRun(true)} onCancel={() => setPythonTrustPrompt(undefined)} />}
+        onTrustSession={() => confirmPythonRun(true)} onCancel={() => {
+          if (pendingFigureResize) {
+            setPendingFigureResize(undefined);
+            setFigureStatus({ ownerId: pendingFigureResize.ownerId,
+              message: 'Resize cancelled; the existing Figure placement was kept.' });
+            setFileStatus('Figure resize cancelled. No Python code was run.');
+          }
+          setPythonTrustPrompt(undefined);
+        }} />}
       {fileMessage && <FileMessageDialog title={fileMessage.title} message={fileMessage.message} onClose={() => setFileMessage(undefined)} />}
       {xlsxReport && <XlsxReportDialog title={xlsxReport.title} issues={xlsxReport.issues}
         onChoice={finishXlsxReport} />}

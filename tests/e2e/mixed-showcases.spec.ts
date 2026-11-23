@@ -42,7 +42,7 @@ async function runOnce(page: Page, anchor: string) {
     .getByRole('button', { name: 'Run once' }).click();
   const status = page.locator('.python-run-controls [role="status"]');
   await expect.poll(async () => await status.textContent(), { timeout: 420_000 })
-    .toMatch(/(?:completed|failed|stopped|timed out)\./u);
+    .toMatch(/(?:completed|unavailable|failed|stopped|timed out)\./u);
   const message = await status.textContent();
   if (message !== 'Python run completed.') {
     const error = await page.locator('.python-error').textContent();
@@ -57,6 +57,42 @@ async function cellLabel(page: Page, address: string) {
   const cell = page.locator(`[role="gridcell"][id$="-${address}"]`);
   await cell.waitFor({ state: 'attached', timeout: 15_000 });
   return await cell.getAttribute('aria-label');
+}
+
+async function placeOnDashboard(page: Page, sourceLabel: string) {
+  await expect(page.locator('.python-figure')).toBeVisible();
+  await page.getByRole('button', { name: 'Place on Sheet', exact: true }).click();
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  const capture = page.getByLabel('Place Python Figure on worksheet');
+  const bounds = await capture.boundingBox();
+  if (!bounds) throw new Error('The Dashboard Figure placement preview is not available.');
+  await page.mouse.move(bounds.x + 60, bounds.y + 45);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + 310, bounds.y + 205, { steps: 5 });
+  await page.mouse.up();
+  const figure = page.getByRole('group', { name: `Figure from ${sourceLabel}` }).last();
+  await expect(figure).toBeVisible();
+  await expect(figure.getByRole('button', { name: 'Resize figure bottom right' })).toBeVisible();
+  await expect(figure.getByRole('button', { name: 'Resize figure top left', exact: true })).toHaveCSS('cursor', 'nwse-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure top', exact: true })).toHaveCSS('cursor', 'ns-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure right', exact: true })).toHaveCSS('cursor', 'ew-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure bottom right', exact: true })).toHaveCSS('cursor', 'nwse-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure bottom', exact: true })).toHaveCSS('cursor', 'ns-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure bottom left', exact: true })).toHaveCSS('cursor', 'nesw-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure left', exact: true })).toHaveCSS('cursor', 'ew-resize');
+  await expect(figure.getByRole('button', { name: 'Resize figure top right', exact: true })).toHaveCSS('cursor', 'nesw-resize');
+  const initialWidth = await figure.locator('img').evaluate(image => (image as HTMLImageElement).naturalWidth);
+  const handle = figure.getByRole('button', { name: 'Resize figure bottom right' });
+  const handleBounds = await handle.boundingBox();
+  if (!handleBounds) throw new Error('The Dashboard Figure resize handle is not visible.');
+  await page.mouse.move(handleBounds.x + handleBounds.width / 2, handleBounds.y + handleBounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(handleBounds.x + handleBounds.width / 2 + 25,
+    handleBounds.y + handleBounds.height / 2 + 20, { steps: 3 });
+  await page.mouse.up();
+  await expect(page.locator('.status-bar [role="status"]')).toContainText('Figure placement updated.');
+  await expect.poll(() => figure.locator('img').evaluate(image => (image as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(initialWidth);
 }
 
 test('runs the edited Sales showcase spill and refreshes its native KPI', async ({ page, browserName }) => {
@@ -85,12 +121,19 @@ test('runs the edited Sales showcase spill and refreshes its native KPI', async 
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   const updatedRevenue = await page.getByRole('gridcell', { name: /^A4,/u }).getAttribute('aria-label');
   expect(updatedRevenue).not.toBe(initialRevenue);
+
+  await page.getByRole('button', { name: 'Charts', exact: true }).click();
+  await runOnce(page, 'A3');
+  await expect(page.locator('.python-result-table')).toBeVisible();
+  await runOnce(page, 'E22');
+  expect(await cellLabel(page, 'E22')).toContain('[plot]');
+  await placeOnDashboard(page, 'Charts!E22');
   expect(runtimeRequests.length).toBeGreaterThan(0);
 });
 
 test('runs the edited SLA showcase spill and refreshes its native breach KPI', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'S22 showcase chains execute the real Pyodide worker in Chromium.');
-  test.setTimeout(180_000);
+  test.setTimeout(480_000);
   const runtimeRequests: string[] = [];
   page.on('request', request => {
     if (request.url().includes('/runtime/pyodide/')) runtimeRequests.push(request.url());
@@ -113,5 +156,10 @@ test('runs the edited SLA showcase spill and refreshes its native breach KPI', a
   const updatedRate = await page.getByRole('gridcell', { name: /^E6,/u }).getAttribute('aria-label');
   expect(updatedRate).not.toBe(initialRate);
   expect(updatedRate).toMatch(/32\.1%/u);
+
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await runOnce(page, 'B52');
+  expect(await cellLabel(page, 'B52')).toContain('[plot]');
+  await placeOnDashboard(page, 'Analysis!B52');
   expect(runtimeRequests.length).toBeGreaterThan(0);
 });

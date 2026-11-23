@@ -34,6 +34,8 @@ export interface MixedGenerationResult {
   readonly document: WorkbookDocument;
   readonly staleFormulaIds: ReadonlySet<string>;
   readonly completedPythonIds: ReadonlySet<string>;
+  readonly executedPythonIds: ReadonlySet<string>;
+  readonly executedFigureIds: ReadonlyMap<string, string>;
   readonly failedPythonIds: ReadonlySet<string>;
   readonly messages: ReadonlyMap<string, string>;
 }
@@ -97,6 +99,8 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
   let selected = graph.closure(roots);
   const pending = new Set([...selected].filter(id => graph.nodes.get(id)?.kind === 'python'));
   const completed = new Set<string>();
+  const executed = new Set<string>();
+  const figureIds = new Map<string, string>();
   const failed = new Set<string>();
   const messages = new Map<string, string>();
   const staleFormulaIds = new Set<string>();
@@ -162,6 +166,9 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
       }
 
       const result = await services.runPython(anchor.source, built.input, signal);
+      executed.add(id);
+      if (result.output.status === 'succeeded' && result.output.result?.kind === 'figure' &&
+          result.output.result.figure.figureId) figureIds.set(id, result.output.result.figure.figureId.toUpperCase());
       services.onOutput?.(id, result.output);
       const next = pythonBlockFromOutput(block, result.output, built.fingerprint, result.runtimeFingerprint);
       document = applyPythonResult(document, anchor, next, services.makeId);
@@ -210,6 +217,7 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
       throw new Error(`Native formula refresh failed: ${messageOf(error)}`);
     }
   }
-  return { document, staleFormulaIds, completedPythonIds: completed, failedPythonIds: failed, messages };
+  return { document, staleFormulaIds, completedPythonIds: completed, executedPythonIds: executed,
+    executedFigureIds: figureIds, failedPythonIds: failed, messages };
 }
 

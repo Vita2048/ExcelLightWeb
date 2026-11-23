@@ -116,6 +116,9 @@ button:disabled { cursor: default; opacity: .5; }
 .python-result pre, .python-error { white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
 .python-error { color: #ffb4ab; }
 .python-figure { display: block; max-width: 100%; max-height: 220px; object-fit: contain; margin: 8px auto 0; }
+.python-figure-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.python-figure-actions button { min-height: 26px; padding-inline: 7px; font-size: 11px; }
+.python-figure-status { margin: 6px 0 0; color: #ffcc80; overflow-wrap: anywhere; }
 .python-empty-result { color: var(--muted); margin: 8px 0 2px; }
 .python-trust-dialog { width: min(520px, calc(100% - 32px)); padding: 22px; color: var(--text);
   background: var(--panel); border: 1px solid var(--accent); border-radius: 7px; box-shadow: 0 12px 40px #0009; }
@@ -135,6 +138,43 @@ button:disabled { cursor: default; opacity: .5; }
   content: ''; position: absolute; inset: 0; box-shadow: inset 0 0 0 2px var(--accent); pointer-events: none;
 }
 .worksheet-canvas { position: absolute; top: 0; left: 0; display: block; pointer-events: none; }
+.worksheet-figure-layer { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.figure-placement, .figure-placement-preview {
+  position: absolute; box-sizing: border-box; overflow: visible; background: #fff; touch-action: none;
+}
+.figure-placement { pointer-events: auto; cursor: move; }
+.figure-placement img, .figure-placement-preview img {
+  display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none;
+}
+.figure-placement.selected { outline: 2px solid var(--accent); outline-offset: -2px; z-index: 2; }
+.figure-placement.range-picking { pointer-events: none; }
+.figure-placement-preview { opacity: .72; pointer-events: none; z-index: 3; outline: 2px solid var(--accent); }
+.figure-placement-capture { position: absolute; z-index: 4; cursor: crosshair; pointer-events: auto; touch-action: none; }
+.figure-handle {
+  position: absolute; width: 9px; height: 9px; min-width: 0; min-height: 0; padding: 0;
+  border: 1px solid var(--accent); border-radius: 1px; background: #fff; transform: translate(-50%, -50%);
+}
+.figure-handle.top-left, .figure-handle.bottom-right { cursor: nwse-resize; }
+.figure-handle.top-right, .figure-handle.bottom-left { cursor: nesw-resize; }
+.figure-handle.top, .figure-handle.bottom { cursor: ns-resize; }
+.figure-handle.left, .figure-handle.right { cursor: ew-resize; }
+.figure-handle.top-left { left: 0; top: 0; }
+.figure-handle.top { left: 50%; top: 0; }
+.figure-handle.top-right { left: 100%; top: 0; }
+.figure-handle.right { left: 100%; top: 50%; }
+.figure-handle.bottom-right { left: 100%; top: 100%; }
+.figure-handle.bottom { left: 50%; top: 100%; }
+.figure-handle.bottom-left { left: 0; top: 100%; }
+.figure-handle.left { left: 0; top: 50%; }
+.figure-delete {
+  position: absolute; top: 4px; right: 4px; z-index: 1; width: 22px; height: 22px; min-width: 0; min-height: 0;
+  padding: 0; border: 1px solid var(--accent); border-radius: 3px; color: var(--text); background: var(--panel);
+}
+@media (forced-colors: active) {
+  .figure-placement.selected { outline-color: Highlight; }
+  .figure-handle, .figure-delete { border-color: ButtonText; color: ButtonText; background: ButtonFace; }
+  .figure-placement-preview { outline-color: Highlight; }
+}
 .inline-editor-layer { position: absolute; overflow: hidden; pointer-events: none; }
 .inline-cell-editor { position: absolute; pointer-events: auto; }
 .inline-cell-input {

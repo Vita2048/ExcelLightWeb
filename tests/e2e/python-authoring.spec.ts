@@ -85,7 +85,7 @@ test('=PY opens a lazy local Monaco panel, commits through a selection barrier a
   await page.getByRole('tab', { name: 'Formulas' }).click();
   await expect(page.locator('.ribbon-panel:not([hidden]) fieldset > legend'))
     .toHaveText(['Function Library', 'Defined Names', 'Formula Auditing', 'Calculation', 'Python']);
-  const pythonGroup = page.getByRole('group', { name: 'Python' });
+  const pythonGroup = page.getByRole('group', { name: 'Python', exact: true });
   await expect(pythonGroup).toBeVisible();
   const pythonToggle = pythonGroup.getByRole('button', { name: 'Show or hide Python workspace' });
   await expect(pythonToggle).toHaveAttribute('aria-pressed', 'false');

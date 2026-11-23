@@ -7,6 +7,34 @@ import { MixedGraph } from './mixed-graph';
 import { calculateMixedGeneration } from './mixed-generation';
 import { NativePassClient } from './native-pass-client';
 import type { PythonExecutionState } from '../features/python/usePythonExecution';
+import type { PythonFigure } from '../core/workbook';
+import { figureCacheKey, figureCanvasForPlacement } from '../python/figure-rendering';
+
+function updatePlacementRender(document: WorkbookDocument, ownerId: string, placementId: string,
+  image: PythonFigure, sourceId: string): WorkbookDocument {
+  let changed = false;
+  const sheets = document.sheets.map(sheet => {
+    let sheetChanged = false;
+    const cells = sheet.cells.map(cell => {
+      if (cell.content.kind !== 'python' || cell.content.block?.id !== ownerId) return cell;
+      const block = cell.content.block;
+      const placements = (block.placements ?? []).map(placement => {
+        if (placement.id !== placementId) return placement;
+        changed = sheetChanged = true;
+        return { ...placement, renderedFigure: image, renderedSourceId: sourceId };
+      });
+      return sheetChanged ? { ...cell, content: { ...cell.content, block: { ...block, placements } } } : cell;
+    });
+    return sheetChanged ? { ...sheet, cells } : sheet;
+  });
+  return changed ? { ...document, sheets } : document;
+}
+
+function chartImage(output: import('../python/runtime-protocol').PythonRuntimeOutput): PythonFigure | undefined {
+  if (output.status !== 'succeeded' || output.result?.kind !== 'figure') return undefined;
+  const { figureId: _figureId, ...image } = output.result.figure;
+  return image;
+}
 
 const singleEditDelay = 75;
 const coalescingDelay = 220;
@@ -155,6 +183,22 @@ export class MixedPythonScheduler {
     void this.#run(all, all, false);
   }
 
+  async redrawFigure(figure: PythonFigure, width: number, height: number, dpi: number,
+    signal?: AbortSignal): Promise<{ readonly figure?: PythonFigure; readonly error?: string }> {
+    if (!this.#runtime.isReady) {
+      return { error: 'The live Figure was lost when the Python worker stopped. Rebuild it from its Python source.' };
+    }
+    try {
+      const key = await figureCacheKey(figure);
+      const output = await this.#runtime.renderFigure(key, width, height, dpi, signal);
+      const image = chartImage(output);
+      if (!image) return { error: output.error ?? 'The live Figure could not be redrawn. Rebuild it from its Python source.' };
+      return { figure: image };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   stop() {
     this.#cancel(true);
     this.#queued.clear();
@@ -234,7 +278,33 @@ export class MixedPythonScheduler {
         },
       });
       if (!isCurrent()) return;
-      if (!this.session.tryCommitGeneration(basis, result.document,
+      let completedDocument = result.document;
+      const figureErrors: string[] = [];
+      for (const sourceSheet of result.document.sheets) {
+        for (const cell of sourceSheet.cells) {
+          if (cell.content.kind !== 'python' || !result.executedPythonIds.has(cell.id) ||
+              cell.content.block?.status !== 'succeeded' || !cell.content.block.lastFigure) continue;
+          const figure = cell.content.block.lastFigure;
+          const sourceId = result.executedFigureIds.get(cell.id) ?? await figureCacheKey(figure);
+          for (const placement of cell.content.block.placements ?? []) {
+            if (!isCurrent()) return;
+            const sheet = result.document.sheets.find(item => item.id === placement.sheetId);
+            if (!sheet) continue;
+            try {
+              const canvas = figureCanvasForPlacement(placement, sheet, 1.5);
+              const output = await this.#runtime.renderFigure(sourceId, canvas.width, canvas.height, canvas.dpi, controller.signal);
+              const image = chartImage(output);
+              if (image) completedDocument = updatePlacementRender(completedDocument, cell.content.block.id,
+                placement.id, image, sourceId);
+              else figureErrors.push(output.error ?? 'A linked Figure placement could not be redrawn.');
+            } catch (error) {
+              figureErrors.push(error instanceof Error ? error.message : String(error));
+            }
+          }
+        }
+      }
+      if (!isCurrent()) return;
+      if (!this.session.tryCommitGeneration(basis, completedDocument,
         automatic ? 'Automatic Python calculation' : 'Run Python generation')) {
         this.#observed = this.session.active;
         this.#graph = new MixedGraph(this.#observed);
@@ -256,10 +326,12 @@ export class MixedPythonScheduler {
       const failedStatuses = [...result.failedPythonIds].map(id => pythonStatus(result.document, id));
       this.publish({ key: targetKey(snapshot.document, this.#displayId) ?? '', running: false, stdout, stderr,
         outputTruncated, ...(firstError && { error: firstError }),
+        ...(!firstError && figureErrors[0] && { error: figureErrors[0] }),
         message: errors ? automatic ? `Automatic · ${errors} Python cell${errors === 1 ? '' : 's'} failed or was skipped.` :
           failedStatuses.includes('timedOut') ? 'Python run timed out.' :
             failedStatuses.includes('workerExited') ? 'Python worker exited.' : 'Python run failed.' :
-          automatic ? 'Automatic · Python results are current.' : 'Python run completed.' });
+          figureErrors.length ? `${automatic ? 'Automatic · ' : ''}Python completed; ${figureErrors.length} Figure redraw${figureErrors.length === 1 ? ' is' : 's are'} unavailable.` :
+            automatic ? 'Automatic · Python results are current.' : 'Python run completed.' });
     } catch (error) {
       if (!isCurrent()) return;
       if (controller.signal.aborted) return;

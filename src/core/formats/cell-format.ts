@@ -1,4 +1,4 @@
-import type { CellDocument } from '../workbook';
+import type { CellCache, CellContent, CellDocument } from '../workbook';
 import { formatSections, type FormatSection, type FormatToken } from './format-code';
 import { explicitFormatLocale, formatLocale } from './format-locales';
 import { temporalDisplay } from './temporal';
@@ -210,10 +210,22 @@ export function formatNumber(value: number, code?: string): FormattedCell {
   return { text: formatted, ...(!conditional && section.color && { color: section.color }) };
 }
 
+export function displayCellValue(cell: CellDocument | undefined, source = false): CellContent | CellCache | undefined {
+  if (!cell) return undefined;
+  if (source) return cell.content;
+  if (cell.content.kind === 'python') {
+    const block = cell.content.block;
+    if (block?.hasResult && block.lastFigure) return { kind: 'text', value: '[plot]' };
+    if (block?.hasResult && block.lastValue) return block.lastValue;
+    return cell.cache ?? { kind: 'blank' };
+  }
+  return cell.content.kind === 'formula' ? cell.cache ?? cell.content : cell.content;
+}
+
 export function formatCellValue(cell: CellDocument | undefined, code = cell?.style?.numberFormat): FormattedCell {
   if (!cell) return { text: '' };
-  const value = cell.content.kind === 'formula' || cell.content.kind === 'python' ? cell.cache : cell.content;
-  if (!value || value.kind === 'blank') return { text: '' };
+  const value = displayCellValue(cell);
+  if (!value || value.kind === 'blank' || value.kind === 'formula' || value.kind === 'python') return { text: '' };
   if (value.kind === 'number') return formatNumber(value.value, code);
   return { text: value.kind === 'boolean' ? value.value ? 'TRUE' : 'FALSE' : value.value };
 }

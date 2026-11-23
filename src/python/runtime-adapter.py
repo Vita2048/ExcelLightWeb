@@ -1,13 +1,19 @@
 """Bounded Pyodide adapter for explicitly requested workbook Python runs."""
 import ast
 import base64
+import copy
+import hashlib
 import io
 import json
+import itertools
 import math
+import re
 import struct
 import traceback
+import types
 from collections import Counter
 from contextlib import redirect_stderr, redirect_stdout
+from collections import OrderedDict
 
 import matplotlib
 matplotlib.use("Agg")
@@ -15,12 +21,51 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 import numpy as np
 import pandas as pd
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 MAX_SOURCE_BYTES = 1_048_576
 MAX_LOG_BYTES = 1_048_576
 MAX_TABLE_CELLS = 100_000
 MAX_RESULT_BYTES = 16 * 1024 * 1024
 MAX_FRAME_BYTES = 32 * 1024 * 1024
+MAX_RETAINED_FIGURES = 8
+_retained_figures = OrderedDict()
+
+
+def _copy_figure(source):
+    """Deep-copy a live Figure, recreating Matplotlib's opaque counters without sharing them."""
+    counter_type = type(itertools.count())
+    memo, visited = {}, set()
+
+    def seed_counters(value):
+        identity = id(value)
+        if identity in visited:
+            return
+        visited.add(identity)
+        if isinstance(value, counter_type):
+            match = re.fullmatch(r"count\((-?\d+)(?:,\s*(-?\d+))?\)", repr(value))
+            if not match:
+                raise ValueError("Matplotlib Figure contains an unsupported live counter.")
+            memo[identity] = itertools.count(*(int(item) for item in match.groups() if item is not None))
+            return
+        if isinstance(value, dict):
+            for key, item in value.items():
+                seed_counters(key)
+                seed_counters(item)
+            return
+        if isinstance(value, (list, tuple, set, frozenset)):
+            for item in value:
+                seed_counters(item)
+            return
+        if isinstance(value, (str, bytes, bytearray, int, float, bool, type(None), type,
+                              types.FunctionType, types.BuiltinFunctionType, types.ModuleType)):
+            return
+        attributes = getattr(value, "__dict__", None)
+        if isinstance(attributes, dict):
+            seed_counters(attributes)
+
+    seed_counters(source)
+    return copy.deepcopy(source, memo)
 
 
 class BoundedText(io.StringIO):
@@ -119,7 +164,7 @@ def _table(headers, rows):
     return result
 
 
-def _encode(value):
+def _encode(value, *, retain_figure=True):
     if isinstance(value, Figure):
         width_in, height_in = value.get_size_inches()
         width = round(width_in * value.dpi)
@@ -134,10 +179,17 @@ def _encode(value):
         if len(raw) < 24 or raw[:8] != b"\x89PNG\r\n\x1a\n":
             raise ValueError("Figure did not produce a valid PNG.")
         actual_width, actual_height = struct.unpack(">II", raw[16:24])
-        if actual_width != width or actual_height != height or actual_width * actual_height > 16_000_000:
-            raise ValueError("Figure dimensions did not match the requested canvas.")
+        if (actual_width < 1 or actual_height < 1 or actual_width > 8192 or actual_height > 8192 or
+                actual_width * actual_height > 16_000_000):
+            raise ValueError("Figure PNG exceeds the 16-million-pixel output limit.")
+        figure_id = hashlib.sha256(raw).hexdigest().upper()
+        if retain_figure:
+            _retained_figures[figure_id] = value
+            _retained_figures.move_to_end(figure_id)
+            while len(_retained_figures) > MAX_RETAINED_FIGURES:
+                _retained_figures.popitem(last=False)
         return {"kind": "figure", "figure": {"pngBase64": base64.b64encode(raw).decode("ascii"),
-                "width": actual_width, "height": actual_height}}
+                "width": actual_width, "height": actual_height, "figureId": figure_id}}
 
     if isinstance(value, pd.Series):
         name = value.name if value.name is not None else "Value"
@@ -157,6 +209,54 @@ def _encode(value):
             raise ValueError("Expected a rectangular two-dimensional result.")
         return _table(None, rows)
     return {"kind": "scalar", "value": _scalar(value)}
+
+
+def render_figure(figure_id, width, height, dpi):
+    """Redraw one worker-retained Figure from a private copy at a bounded canvas size."""
+    stdout, stderr = BoundedText(MAX_LOG_BYTES), BoundedText(MAX_LOG_BYTES)
+    try:
+        if (not isinstance(figure_id, str) or len(figure_id) != 64 or
+                any(character not in "0123456789ABCDEF" for character in figure_id)):
+            raise ValueError("Figure identity is invalid.")
+        if (type(width) is not int or type(height) is not int or not 1 <= width <= 8192 or
+                not 1 <= height <= 8192 or width * height > 16_000_000 or
+                type(dpi) not in (int, float) or not math.isfinite(dpi) or not 0 < dpi <= 384):
+            raise ValueError("Invalid figure render dimensions.")
+        baseline = _retained_figures.get(figure_id)
+        if baseline is None:
+            raise ValueError("The live Figure is no longer available. Rebuild it from its Python source.")
+        _retained_figures.move_to_end(figure_id)
+        figure = _copy_figure(baseline)
+        try:
+            figure.set_dpi(float(dpi))
+            size = [width / dpi, height / dpi]
+            result = None
+            for _ in range(4):
+                figure.set_size_inches(size, forward=False)
+                FigureCanvasAgg(figure)
+                result = _encode(figure, retain_figure=False)
+                actual_width = result["figure"]["width"]
+                actual_height = result["figure"]["height"]
+                if actual_width == width and actual_height == height:
+                    break
+                size[0] += (width - actual_width + (.001 if width > actual_width else -.001 if width < actual_width else 0)) / dpi
+                size[1] += (height - actual_height + (.001 if height > actual_height else -.001 if height < actual_height else 0)) / dpi
+            if result is None or result["figure"]["width"] != width or result["figure"]["height"] != height:
+                raise ValueError("Figure redraw did not match the requested canvas dimensions.")
+        finally:
+            plt.close(figure)
+        output = {"status": "succeeded", "result": result, "stdout": "", "stderr": "", "outputTruncated": False}
+    except BaseException:
+        error = traceback.format_exc()
+        if len(error) > 32767:
+            error = error[-32767:]
+        output = {"status": "failed", "stdout": stdout.getvalue(), "stderr": stderr.getvalue(),
+                  "error": error, "outputTruncated": stdout.truncated or stderr.truncated}
+
+    if len(json.dumps(output, ensure_ascii=False, allow_nan=False).encode("utf-8")) > MAX_FRAME_BYTES:
+        return json.dumps({"status": "failed", "stdout": "", "stderr": "", "error": "Figure output exceeds 32 MiB.",
+                           "outputTruncated": False})
+    return json.dumps(output, ensure_ascii=False, allow_nan=False)
 
 
 def _as_dataframe(item, headers=False):

@@ -12,12 +12,17 @@ export class PythonRuntimeClient {
   private worker: Worker | undefined;
   private ready: Promise<string> | undefined;
   private requestId = 0;
+  private workerGeneration = 0;
   private exchange: ((reply: PythonRuntimeReply | undefined, error?: PythonRuntimeError) => void) | undefined;
+
+  get generation() { return this.workerGeneration; }
+  get isReady() { return !!this.worker && !!this.ready; }
 
   start(signal?: AbortSignal): Promise<string> {
     if (this.ready) return this.ready;
     const worker = new Worker(new URL('../workers/python-runtime.worker.ts', import.meta.url), { type: 'module' });
     this.worker = worker;
+    this.workerGeneration++;
     const requestId = this.nextRequestId();
     const runtimeUrl = new URL(`./runtime/pyodide/${lock.version}/`, document.baseURI).href;
     const request: PythonRuntimeRequest = { kind: 'init', protocolVersion: pythonRuntimeProtocolVersion,
@@ -49,6 +54,27 @@ export class PythonRuntimeClient {
     if (reply.kind === 'error') throw new PythonRuntimeError(reply.message, 'workerExited');
     if (reply.kind !== 'result') throw new PythonRuntimeError('Python worker returned an invalid reply.', 'workerExited');
     return { runtimeFingerprint, output: reply.output };
+  }
+
+  /** Redraws only a Figure retained by the already-running worker; it never starts Python execution. */
+  async renderFigure(figureId: string, width: number, height: number, dpi: number,
+    signal?: AbortSignal, timeoutMs = 120_000): Promise<PythonRuntimeOutput> {
+    const worker = this.worker;
+    const ready = this.ready;
+    if (!worker || !ready) throw new PythonRuntimeError('The Python worker no longer retains this Figure.', 'workerExited');
+    await ready;
+    if (worker !== this.worker) throw new PythonRuntimeError('The Python worker changed before the Figure redraw.', 'workerExited');
+    if (!/^[0-9A-F]{64}$/i.test(figureId) || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
+        width < 1 || height < 1 || width > 8192 || height > 8192 || width * height > 16_000_000 ||
+        !Number.isFinite(dpi) || dpi <= 0 || dpi > 384) {
+      throw new PythonRuntimeError('Invalid figure render dimensions.');
+    }
+    const request: PythonRuntimeRequest = { kind: 'render-figure', protocolVersion: pythonRuntimeProtocolVersion,
+      requestId: this.nextRequestId(), figureId: figureId.toUpperCase(), width, height, dpi };
+    const reply = await this.exchangeWith(worker, request, timeoutMs, signal);
+    if (reply.kind === 'error') throw new PythonRuntimeError(reply.message, 'workerExited');
+    if (reply.kind !== 'result') throw new PythonRuntimeError('Python worker returned an invalid Figure redraw.', 'workerExited');
+    return reply.output;
   }
 
   stop() {

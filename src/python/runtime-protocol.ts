@@ -43,7 +43,9 @@ export interface PythonRuntimeOutput {
 
 export type PythonRuntimeRequest =
   | { readonly kind: 'init'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly runtimeUrl: string }
-  | { readonly kind: 'run'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly source: string; readonly input: PythonRuntimeInput };
+  | { readonly kind: 'run'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly source: string; readonly input: PythonRuntimeInput }
+  | { readonly kind: 'render-figure'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string;
+      readonly figureId: string; readonly width: number; readonly height: number; readonly dpi: number };
 
 export type PythonRuntimeReply =
   | { readonly kind: 'ready'; readonly protocolVersion: typeof pythonRuntimeProtocolVersion; readonly requestId: string; readonly runtimeFingerprint: string }

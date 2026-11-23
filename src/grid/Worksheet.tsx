@@ -1,5 +1,5 @@
 import {
-  useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
+  useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
   type ClipboardEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref,
 } from 'react';
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
@@ -13,6 +13,9 @@ import { TotalRowDropdown } from '../features/tables/TotalRowDropdown';
 import type { Axis } from '../core/axis-edit';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
+import type { FigurePlacement, PythonFigure } from '../core/workbook';
+import { figureLogicalRect, figurePlacementFromRect, figureScreenRect, logicalPoint,
+  type FigureRect } from './figure-geometry';
 import drawBorderCursor from './cursors/draw-border.svg';
 import eraseBorderCursor from './cursors/erase-border.svg';
 import selectColumnCursor from './cursors/select-column.svg';
@@ -63,7 +66,38 @@ interface WorksheetProps {
   readonly onResizeTable?: (table: WorkbookName, rows: number, columns: number) => void;
   readonly onTotalFunction?: (tableId: string, column: number, code: number) => void;
   readonly onFilter?: (row: number, column: number, x: number, y: number) => void;
+  readonly figures?: readonly WorksheetFigure[];
+  readonly pendingFigure?: { readonly ownerId: string; readonly figure: PythonFigure };
+  readonly figureStatus?: { readonly ownerId: string; readonly message: string };
+  readonly onFigurePlacement?: (ownerId: string, placement: FigurePlacement, original?: FigurePlacement) => void;
+  readonly onFigureDelete?: (placementId: string) => void;
+  readonly onFigureCancel?: () => void;
   readonly ref: Ref<WorksheetHandle>;
+}
+
+export interface WorksheetFigure {
+  readonly ownerId: string;
+  readonly figure: PythonFigure;
+  readonly placement: FigurePlacement;
+  readonly label?: string;
+}
+
+type FigureEdge = 'left' | 'top' | 'right' | 'bottom' | 'top-left' | 'top-right' | 'bottom-right' | 'bottom-left';
+const figureEdges: readonly FigureEdge[] = ['top-left', 'top', 'top-right', 'right', 'bottom-right', 'bottom', 'bottom-left', 'left'];
+interface FigureDrag {
+  readonly pointerId: number;
+  readonly ownerId: string;
+  readonly figure: PythonFigure;
+  readonly original?: FigurePlacement;
+  readonly mode: 'place' | 'move' | 'resize';
+  readonly edge?: FigureEdge;
+  readonly start: { readonly x: number; readonly y: number };
+  readonly initial: FigureRect;
+}
+interface FigureDraft {
+  readonly ownerId: string;
+  readonly placementId?: string;
+  readonly box: FigureRect;
 }
 
 interface Drag {
@@ -111,6 +145,11 @@ export function Worksheet(props: WorksheetProps) {
   const id = useId();
   const [view, setView] = useState(initialViewport);
   const [palette, setPalette] = useState(0);
+  const [selectedFigureId, setSelectedFigureId] = useState<string>();
+  const pendingFigureSelection = useRef<string | undefined>(undefined);
+  const [figureDraft, setFigureDraft] = useState<FigureDraft>();
+  const [figureCursor, setFigureCursor] = useState<{ readonly ownerId: string; readonly x: number; readonly y: number }>();
+  const figureDrag = useRef<FigureDrag | null>(null);
   const scale = zoom / 100;
   const left = headings ? gridMetrics.rowHeader * scale : 0;
   const top = headings ? gridMetrics.columnHeader * scale : 0;
@@ -131,6 +170,120 @@ export function Worksheet(props: WorksheetProps) {
     const next = { x: node.scrollLeft, y: node.scrollTop, width: node.clientWidth, height: node.clientHeight };
     setView(current => current.x === next.x && current.y === next.y &&
       current.width === next.width && current.height === next.height ? current : next);
+  }
+
+  useEffect(() => {
+    if (pendingFigureSelection.current && props.figures?.some(item => item.placement.id === pendingFigureSelection.current)) {
+      setSelectedFigureId(pendingFigureSelection.current);
+      pendingFigureSelection.current = undefined;
+    }
+    if (selectedFigureId && !props.figures?.some(item => item.placement.id === selectedFigureId)) setSelectedFigureId(undefined);
+  }, [props.figures, selectedFigureId]);
+
+  useEffect(() => {
+    const draft = figureDraft;
+    if (!draft?.placementId) return;
+    const placement = props.figures?.find(item => item.placement.id === draft.placementId)?.placement;
+    const message = props.figureStatus?.ownerId === draft.ownerId ? props.figureStatus.message : '';
+    if (/cancelled|unchanged|remains|no longer available|could not recalculate|failed|was not applied/iu.test(message)) {
+      setFigureDraft(undefined);
+      return;
+    }
+    if (!placement) return;
+    const saved = figureLogicalRect(placement, rows, columns, scale);
+    if (saved && Math.abs(saved.x - draft.box.x) < 1 && Math.abs(saved.y - draft.box.y) < 1 &&
+        Math.abs(saved.width - draft.box.width) < 1 && Math.abs(saved.height - draft.box.height) < 1) {
+      setFigureDraft(undefined);
+    }
+  }, [figureDraft, props.figures, props.figureStatus, rows, columns, scale]);
+
+  function figurePoint(clientX: number, clientY: number) {
+    const node = scroll.current;
+    if (!node) return { x: 0, y: 0 };
+    const bounds = node.getBoundingClientRect();
+    return {
+      x: logicalPoint(clientX - bounds.left, left, columns, node.scrollLeft, scale),
+      y: logicalPoint(clientY - bounds.top, top, rows, node.scrollTop, scale),
+    };
+  }
+
+  function figureBoxForPoint(active: FigureDrag, point: { readonly x: number; readonly y: number }): FigureRect {
+    const dx = point.x - active.start.x, dy = point.y - active.start.y;
+    const bounds = { width: columns.total / scale, height: rows.total / scale };
+    let box: FigureRect;
+    if (active.mode === 'place') {
+      box = { x: Math.min(active.start.x, point.x), y: Math.min(active.start.y, point.y),
+        width: Math.abs(dx), height: Math.abs(dy) };
+    } else if (active.mode === 'move') {
+      box = { ...active.initial,
+        x: clamp(active.initial.x + dx, 0, Math.max(0, bounds.width - active.initial.width)),
+        y: clamp(active.initial.y + dy, 0, Math.max(0, bounds.height - active.initial.height)) };
+    } else {
+      const edge = active.edge!;
+      let x = active.initial.x, y = active.initial.y;
+      let right = x + active.initial.width, bottom = y + active.initial.height;
+      if (edge.includes('left')) x = clamp(x + dx, 0, right - 80);
+      if (edge.includes('right')) right = clamp(right + dx, x + 80, bounds.width);
+      if (edge.includes('top')) y = clamp(y + dy, 0, bottom - 60);
+      if (edge.includes('bottom')) bottom = clamp(bottom + dy, y + 60, bounds.height);
+      box = { x, y, width: right - x, height: bottom - y };
+    }
+    return box;
+  }
+
+  function updateFigureDraft(event: PointerEvent<HTMLDivElement>) {
+    const active = figureDrag.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    const box = figureBoxForPoint(active, figurePoint(event.clientX, event.clientY));
+    setFigureDraft({ ownerId: active.ownerId, ...(active.original && { placementId: active.original.id }), box });
+  }
+
+  function beginFigureDrag(event: PointerEvent<HTMLDivElement>, mode: FigureDrag['mode'],
+    ownerId: string, figure: PythonFigure, original?: FigurePlacement, edge?: FigureEdge) {
+    event.preventDefault();
+    event.stopPropagation();
+    const point = figurePoint(event.clientX, event.clientY);
+    const initial = original ? figureLogicalRect(original, rows, columns, scale) : undefined;
+    const sourceAspect = figure.height / Math.max(1, figure.width);
+    const box = initial ?? { x: point.x, y: point.y, width: 480, height: 480 * sourceAspect };
+    figureDrag.current = { pointerId: event.pointerId, ownerId, figure, ...(original && { original }),
+      mode, ...(edge && { edge }), start: point, initial: box };
+    setSelectedFigureId(original?.id);
+    setFigureDraft({ ownerId, ...(original && { placementId: original.id }), box });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scroll.current?.focus({ preventScroll: true });
+  }
+
+  function finishFigureDrag(event: PointerEvent<HTMLDivElement>) {
+    const active = figureDrag.current;
+    if (!active || active.pointerId !== event.pointerId) return;
+    const point = figurePoint(event.clientX, event.clientY);
+    const latest = figureBoxForPoint(active, point);
+    // A click chooses the default aspect-preserving size; a drag uses the live rectangle.
+    const box = active.mode === 'place' && Math.hypot(point.x - active.start.x, point.y - active.start.y) < 8 ? active.initial : latest;
+    const moved = active.mode !== 'move' || Math.hypot(latest.x - active.initial.x, latest.y - active.initial.y) >= 1;
+    const resized = active.mode !== 'resize' || Math.hypot(latest.width - active.initial.width,
+      latest.height - active.initial.height) >= 1;
+    let keepDraft = false;
+    try {
+      if (moved && resized) {
+        const placementId = active.original?.id ?? crypto.randomUUID();
+        const placement = figurePlacementFromRect(placementId, sheet.id, box, rows, columns, scale);
+        if (active.original) setSelectedFigureId(placementId);
+        else pendingFigureSelection.current = placementId;
+        props.onFigurePlacement?.(active.ownerId, placement, active.original);
+        keepDraft = !!props.onFigurePlacement && !!active.original;
+      }
+    } catch { /* An out-of-range pointer leaves the previous workbook placement intact. */ }
+    figureDrag.current = null;
+    setFigureDraft(keepDraft ? { ownerId: active.ownerId, placementId: active.original!.id, box } : undefined);
+    setFigureCursor(undefined);
+  }
+
+  function cancelFigureDrag(event?: PointerEvent<HTMLDivElement>) {
+    if (event && figureDrag.current?.pointerId !== event.pointerId) return;
+    figureDrag.current = null;
+    setFigureDraft(undefined);
   }
 
   function reveal(point: Coordinate) {
@@ -315,6 +468,7 @@ export function Worksheet(props: WorksheetProps) {
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || !event.isPrimary) return;
+    setSelectedFigureId(undefined);
     const node = event.currentTarget;
     const bounds = node.getBoundingClientRect();
     const x = event.clientX - bounds.left;
@@ -438,6 +592,24 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (props.pendingFigure && event.key === 'Escape') {
+      event.preventDefault();
+      props.onFigureCancel?.();
+      setFigureCursor(undefined);
+      setFigureDraft(undefined);
+      return;
+    }
+    if (selectedFigureId && (event.key === 'Delete' || event.key === 'Backspace')) {
+      event.preventDefault();
+      props.onFigureDelete?.(selectedFigureId);
+      setSelectedFigureId(undefined);
+      return;
+    }
+    if (selectedFigureId && event.key === 'Escape') {
+      event.preventDefault();
+      setSelectedFigureId(undefined);
+      return;
+    }
     if (props.rangePicking) {
       if (event.key === 'Enter' || event.key === 'Escape') {
         event.preventDefault();
@@ -683,6 +855,70 @@ export function Worksheet(props: WorksheetProps) {
         Use arrow keys or Tab to move between cells. Press F2 to edit. Press Escape then Tab to leave the worksheet.
       </p>
       <canvas ref={canvas} aria-hidden="true" className="worksheet-canvas" style={{ width: view.width, height: view.height }} />
+      <div className="worksheet-figure-layer" role="group" aria-label="Python Figure placements">
+        {(props.figures ?? []).map((item, index) => {
+          const isDraft = figureDraft?.placementId === item.placement.id;
+          const displayPlacement = isDraft
+            ? figurePlacementFromRect(item.placement.id, sheet.id, figureDraft.box, rows, columns, scale)
+            : item.placement;
+          const bounds = figureScreenRect(displayPlacement, rows, columns, scale, view.x, view.y, left, top);
+          if (!bounds) return null;
+          const image = item.placement.renderedFigure && item.placement.renderedSourceId
+            ? item.placement.renderedFigure : item.figure;
+          const selected = selectedFigureId === item.placement.id;
+          const label = item.label ?? `Figure placement ${index + 1}`;
+          return <div key={item.placement.id} className={'figure-placement' + (selected ? ' selected' : '') +
+            (props.rangePicking ? ' range-picking' : '')} role="group" aria-label={label}
+            style={{ left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height }}
+            onPointerDown={event => {
+              if (props.rangePicking || (event.target as HTMLElement).closest('[data-figure-delete]')) return;
+              const edge = (event.target as HTMLElement).closest<HTMLElement>('[data-figure-edge]')?.dataset.figureEdge as FigureEdge | undefined;
+              beginFigureDrag(event, edge ? 'resize' : 'move', item.ownerId, item.figure, item.placement, edge);
+            }}
+            onPointerMove={updateFigureDraft} onPointerUp={finishFigureDrag}
+            onPointerCancel={cancelFigureDrag} onLostPointerCapture={cancelFigureDrag}>
+            <img src={`data:image/png;base64,${image.pngBase64}`} alt={label} draggable={false} />
+            {selected && !props.rangePicking && <>
+              <button type="button" className="figure-delete" data-figure-delete="true"
+                aria-label="Delete figure placement" title="Delete figure placement"
+                onPointerDown={event => event.stopPropagation()}
+                onClick={event => { event.stopPropagation(); props.onFigureDelete?.(item.placement.id); setSelectedFigureId(undefined); }}>×</button>
+              {figureEdges.map(edge => <button key={edge} type="button" className={'figure-handle ' + edge}
+                data-figure-edge={edge} aria-label={'Resize figure ' + edge.replace('-', ' ')}
+                title={'Resize figure ' + edge.replace('-', ' ')} />)}
+            </>}
+          </div>;
+        })}
+        {(() => {
+          const pending = props.pendingFigure;
+          if (!pending) return null;
+          const cursorBox = figureCursor?.ownerId === pending.ownerId
+            ? { x: figureCursor.x, y: figureCursor.y, width: 480,
+              height: 480 * pending.figure.height / Math.max(1, pending.figure.width) }
+            : undefined;
+          const activeBox = figureDraft?.ownerId === pending.ownerId && !figureDraft.placementId
+            ? figureDraft.box : cursorBox;
+          const draftPlacement = activeBox && figurePlacementFromRect('figure-preview', sheet.id, activeBox, rows, columns, scale);
+          const preview = draftPlacement && figureScreenRect(draftPlacement, rows, columns, scale, view.x, view.y, left, top);
+          return <>
+            {preview && <div aria-hidden="true" className="figure-placement-preview" style={{
+              left: preview.x, top: preview.y, width: preview.width, height: preview.height,
+            }}><img src={`data:image/png;base64,${pending.figure.pngBase64}`} alt="" /></div>}
+            <div className="figure-placement-capture" aria-label="Place Python Figure on worksheet"
+              style={{ left, top, width: bodyWidth, height: bodyHeight }}
+              onPointerDown={event => {
+                if (event.button !== 0 || !event.isPrimary) return;
+                beginFigureDrag(event, 'place', pending.ownerId, pending.figure);
+              }}
+              onPointerMove={event => {
+                if (figureDrag.current) updateFigureDraft(event);
+                else setFigureCursor({ ownerId: pending.ownerId, ...figurePoint(event.clientX, event.clientY) });
+              }}
+              onPointerUp={finishFigureDrag} onPointerCancel={cancelFigureDrag}
+              onLostPointerCapture={cancelFigureDrag} onPointerLeave={() => { if (!figureDrag.current) setFigureCursor(undefined); }} />
+          </>;
+        })()}
+      </div>
       {guide && <div aria-hidden="true" className={'dimension-guide ' + guide.axis}
         style={guide.axis === 'row' ? { top: guide.offset } : { left: guide.offset }} />}
       {editRow && editColumn && <div className="inline-editor-layer" style={{

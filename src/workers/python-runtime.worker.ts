@@ -5,7 +5,7 @@ import { pythonRuntimeProtocolVersion, type PythonRuntimeReply, type PythonRunti
 type Pyodide = {
   loadPackage(packages: string[]): Promise<unknown>;
   runPython(source: string): unknown;
-  globals: { set(name: string, value: string): void; delete(name: string): void };
+  globals: { set(name: string, value: string | number): void; delete(name: string): void };
 };
 type Loader = { loadPyodide(options: { indexURL: string }): Promise<Pyodide> };
 
@@ -33,6 +33,24 @@ self.addEventListener('message', async (event: MessageEvent<PythonRuntimeRequest
     }
 
     if (!runtime) throw new Error('Python runtime is not initialized.');
+    if (request.kind === 'render-figure') {
+      runtime.globals.set('_excellite_figure_id', request.figureId);
+      runtime.globals.set('_excellite_figure_width', request.width);
+      runtime.globals.set('_excellite_figure_height', request.height);
+      runtime.globals.set('_excellite_figure_dpi', request.dpi);
+      try {
+        const json = runtime.runPython('render_figure(_excellite_figure_id, _excellite_figure_width, _excellite_figure_height, _excellite_figure_dpi)') as string;
+        const output = JSON.parse(json);
+        send({ kind: 'result', protocolVersion: pythonRuntimeProtocolVersion, requestId: request.requestId, output });
+      } finally {
+        runtime.globals.delete('_excellite_figure_id');
+        runtime.globals.delete('_excellite_figure_width');
+        runtime.globals.delete('_excellite_figure_height');
+        runtime.globals.delete('_excellite_figure_dpi');
+      }
+      return;
+    }
+
     runtime.globals.set('_excellite_source', request.source);
     runtime.globals.set('_excellite_input', JSON.stringify(request.input));
     try {
