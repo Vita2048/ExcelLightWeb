@@ -60,6 +60,29 @@ function services(run: (source: string, input: PythonRuntimeInput) => Promise<Py
 }
 
 describe('S22 mixed recalculation', () => {
+  it('does not mark Python stale when only its cached Figure placements change', () => {
+    const { session, at, block } = fixture();
+    const pythonBlock = block('');
+    addCells(session, [{ target: at(1, 1), content: { kind: 'python', blockId: pythonBlock.id,
+      source: pythonBlock.source, block: pythonBlock } }]);
+    const before = session.active;
+    const anchor = findCell(before.sheets[0]!, at(1, 1))!;
+    if (anchor.content.kind !== 'python' || !anchor.content.block) throw new Error('Expected the Python anchor.');
+    const placement = { id: 'placement', sheetId: 'sheet', row: 3, column: 3, rows: 4, columns: 5,
+      width: 200, height: 120 };
+    const after = { ...before, sheets: before.sheets.map(sheet => ({ ...sheet, cells: sheet.cells.map(cell =>
+      cell.id === anchor.id && cell.content.kind === 'python' && cell.content.block
+        ? { ...cell, content: { ...cell.content, block: { ...cell.content.block, placements: [placement] } } }
+        : cell) })) };
+    expect(new MixedGraph(after).affectedPython(before, after)).toEqual(new Set());
+
+    const changedSource = { ...after, sheets: after.sheets.map(sheet => ({ ...sheet, cells: sheet.cells.map(cell =>
+      cell.id === anchor.id && cell.content.kind === 'python'
+        ? { ...cell, content: { ...cell.content, source: '40 + 2', block: { ...cell.content.block!, source: '40 + 2' } } }
+        : cell) })) };
+    expect(new MixedGraph(changedSource).affectedPython(before, changedSource)).toEqual(new Set([anchor.id]));
+  });
+
   it('refreshes native prerequisites and commits native-to-Python-to-native chains as one history generation', async () => {
     const { session, at, block } = fixture();
     const a = block('xl("B1") + 1');

@@ -17,7 +17,7 @@
     "prepare:python-probe": "node scripts/prepare-python-probe.mjs",
     "prepare:python-runtime": "node scripts/prepare-python-probe.mjs",
     "test:python-probe": "vite build --config vite.python-probe.config.ts && playwright test --config playwright.python-probe.config.ts",
-    "build": "npm run prepare:python-runtime && npm run typecheck && vite build",
+    "build": "npm run prepare:python-runtime && npm run typecheck && vite build && node scripts/finalize-static-build.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "check": "npm run typecheck && npm test && npm run build",
     "test:worksheet": "vite build --config vite.worksheet.config.ts && playwright test --config playwright.worksheet.config.ts"

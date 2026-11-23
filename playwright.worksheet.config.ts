@@ -1,6 +1,8 @@
 import { defineConfig } from '@playwright/test';
 import baseline from './playwright.config';
 
+const testPort = process.env.PLAYWRIGHT_TEST_PORT ?? '4173';
+
 export default defineConfig({
   ...baseline,
   testDir: './tests/worksheet-browser',
@@ -8,6 +10,6 @@ export default defineConfig({
   webServer: {
     ...baseline.webServer,
     command: 'node scripts/serve-test-build.mjs test-results/worksheet-build',
-    url: 'http://127.0.0.1:4173',
+    url: `http://127.0.0.1:${testPort}`,
   },
 });

@@ -46,6 +46,7 @@ import { extentContains, lastColumn, lastRow, ownsTableFilter, tableDesign, tabl
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
 import type { FigurePlacement, PythonFigure, TableDesign, WorkbookName } from '../core/workbook';
 import { putFigurePlacement, removeFigurePlacement } from '../application/figure-commands';
+import { OfflineStatus } from '../offline/OfflineStatus';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
 import { NativeScheduler, type CalculationMode, type CalculationStatus } from '../calculation/native-scheduler';
@@ -2340,6 +2341,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     (calculation.pending ? calculation.pending === 'observe' ? 'Checking calculation status…' : 'Calculating…' :
       calculation.stale.size ? 'Calculation needed' : '');
 
+  async function saveRecoveryBeforeUpdate(): Promise<boolean> {
+    if (!session.isDirty) return true;
+    if (!preferencesReady || pendingRecovery || workspaceConflict || !python.barrier() || !editing.commit()) return false;
+    const captured = session.capture();
+    const lease = workspaceLease.current;
+    if (!lease || lease.activeId !== captured.document.id) throw new LocalWorkspaceError('The workbook recovery lease is not active.');
+    const packageBlob = await saveNativePackage(captured.document);
+    if (!session.isCurrent(captured) || !session.isDirty) return false;
+    await localStore.writeRecovery({
+      id: 'recovery:' + captured.document.id,
+      workbookId: captured.document.id,
+      name: activeFile.name,
+      package: packageBlob,
+      savedAt: Date.now(),
+      revision: captured.authoredRevision,
+    }, lease.owner);
+    recoveryEpoch.current++;
+    setRecoveryStatus('Local recovery copy updated before the app update.');
+    return true;
+  }
+
   return (
     <div className="app-shell" ref={root} onKeyDownCapture={event => {
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !(event.target instanceof Element && event.target.closest('dialog[open]'))) {
@@ -2362,6 +2384,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         editing.clearStatus();
       }
     }}>
+      <OfflineStatus dirty={session.isDirty} onSaveRecovery={saveRecoveryBeforeUpdate} />
       <header className="title-bar" inert={backstageOpen || !!workspaceConflict}>
         <span className="brand-mark" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" fill="none"
           stroke="currentColor" strokeWidth="1.4"><rect x="3" y="3" width="14" height="14" rx="1" /><path d="M3 8h14M3 12h14M8 3v14" /></svg></span>

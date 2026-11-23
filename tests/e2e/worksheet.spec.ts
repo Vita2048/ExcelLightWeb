@@ -146,10 +146,11 @@ test('ribbon operates by keyboard, changes view independently of chrome, and exp
 
 test('semantic worksheet and command controls pass axe on a narrow viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 640 });
+  // The test runner injects axe as a pre-document init script; production CSP stays restrictive.
+  await page.context().addInitScript(axe.source);
   await page.goto(path);
   await page.getByRole('tab', { name: 'View' }).click();
   await page.getByRole('grid').focus();
-  await page.addScriptTag({ content: axe.source });
   const result = await page.evaluate(async () => (await (window as Window & { axe?: typeof axe }).axe!.run({
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
   })).violations.map(({ id, nodes }) => ({ id, targets: nodes.map(node => node.target) })));

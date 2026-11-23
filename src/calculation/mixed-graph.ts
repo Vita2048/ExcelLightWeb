@@ -1,4 +1,4 @@
-import { cellKey, documentLimits, type CellDocument, type CellExtent, type CellReference, type WorkbookDocument } from '../core/workbook';
+import { cellKey, documentLimits, type CellContent, type CellDocument, type CellExtent, type CellReference, type WorkbookDocument } from '../core/workbook';
 import { equalDto } from '../core/workbook-delta';
 import { pythonInputRanges } from '../python/python-inputs';
 import { prepareNativeGraph } from './native-calculator';
@@ -37,6 +37,11 @@ function sortedIds(ids: Iterable<string>, nodes: ReadonlyMap<string, MixedNode>)
     const a = nodes.get(left)!.target, b = nodes.get(right)!.target;
     return a.sheetId.localeCompare(b.sheetId) || cellKey(a) - cellKey(b);
   });
+}
+
+function samePythonSource(left: CellContent | undefined, right: CellContent | undefined): boolean {
+  return left?.kind === 'python' && right?.kind === 'python' && left.blockId === right.blockId &&
+    left.source === right.source && equalDto(left.block?.bindings, right.block?.bindings);
 }
 
 /** Formula and Python inputs share one graph; spill cells point back to their owner. */
@@ -170,11 +175,8 @@ export class MixedGraph {
       const right = new Map(next.cells.map(cell => [cellKey(cell), cell]));
       for (const key of new Set([...left.keys(), ...right.keys()])) {
         const oldCell = left.get(key), newCell = right.get(key);
-        const oldPython = oldCell?.content.kind === 'python' ? oldCell.content : undefined;
-        const newPython = newCell?.content.kind === 'python' ? newCell.content : undefined;
-        const samePythonSource = oldPython && newPython && oldPython.blockId === newPython.blockId &&
-          oldPython.source === newPython.source && equalDto(oldPython.block?.bindings, newPython.block?.bindings);
-        const changedInput = !samePythonSource && !equalDto(oldCell?.content, newCell?.content) ||
+        const stablePython = samePythonSource(oldCell?.content, newCell?.content);
+        const changedInput = !stablePython && !equalDto(oldCell?.content, newCell?.content) ||
           oldCell?.style?.numberFormat !== newCell?.style?.numberFormat || oldCell?.spillOwner !== newCell?.spillOwner;
         if (changedInput) {
           let points = changed.get(sheet.id);
@@ -195,7 +197,8 @@ export class MixedGraph {
     const roots = new Set<string>();
     for (const node of this.nodes.values()) {
       const oldCell = before.sheets.flatMap(sheet => sheet.cells).find(cell => cell.id === node.id);
-      if (!oldCell || !equalDto(oldCell.content, node.cell.content) ||
+      const stablePython = samePythonSource(oldCell?.content, node.cell.content);
+      if (!oldCell || (!stablePython && !equalDto(oldCell.content, node.cell.content)) ||
           oldCell.style?.numberFormat !== node.cell.style?.numberFormat) {
         roots.add(node.id);
         continue;

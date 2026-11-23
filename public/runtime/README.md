@@ -1,3 +1,3 @@
-# runtime
+# Runtime staging
 
-S02 keeps its pinned assets in the dedicated test build under `tests/python-browser/public/runtime/`. S24 will package the verified package closure and license notices for production. [Runtime lock](../../src/python/runtime-lock.json)
+The runtime lock and its SHA-256 hashes are maintained in [runtime-lock.json](../../src/python/runtime-lock.json). `npm run prepare:python-runtime` stages the exact pinned Pyodide assets under `public/runtime/pyodide/<version>/` and `tests/python-browser/public/runtime/pyodide/<version>/`, verifies every asset, fetches the pinned Pyodide license, and extracts the license texts supplied by each wheel. It regenerates `LICENSES.md` and the package license directory from those locked files. The production runtime and generated notices are ignored build inputs and are not committed; `npm run build` stages them before building the static site.

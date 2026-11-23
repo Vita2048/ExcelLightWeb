@@ -27,11 +27,12 @@ function fixture() {
 }
 
 describe('S20 typed Python anchors', () => {
-  it('creates one inert anchor for =PY or =PY() and preserves an existing block', () => {
+  it('creates one empty, inert anchor for =PY or =PY() and preserves an existing block', () => {
     const { makeId } = fixture();
     const created = parseEntry(' =Py() ', undefined, 'en-US', { makeId });
     expect(created).toMatchObject({ kind: 'python', source: defaultPythonSource, block: {
       source: defaultPythonSource, bindings: [], status: 'never' } });
+    expect(created.kind === 'python' && created.source).toBe('');
     expect(created.kind === 'python' && created.block?.id).toBe(created.kind === 'python' && created.blockId);
     expect(parseEntry('=PY', undefined, 'en-US', { makeId, existing: created })).toBe(created);
     expect(parseEntry('=PY()', { numberFormat: '@' })).toEqual({ kind: 'text', value: '=PY()' });

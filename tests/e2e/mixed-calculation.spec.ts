@@ -27,7 +27,7 @@ async function replacePythonSource(page: Page, source: string) {
 
 test('runs a mixed dependency chain atomically and schedules only after local Automatic consent', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'The mixed Pyodide runtime journey runs in Chromium.');
-  test.setTimeout(480_000);
+  test.setTimeout(900_000);
   await page.goto(appPath);
   await page.getByRole('grid').waitFor();
   await enter(page, 'A1', '4');

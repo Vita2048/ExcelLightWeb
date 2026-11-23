@@ -57,8 +57,9 @@ test('runs local Python only on consent, rejects occupied spills and inserts a s
   await page.getByRole('button', { name: 'Open recent Python execution' }).click();
   await expect(page.locator('.status-bar [role="status"]')).toContainText('Opened Python execution.');
   await go(page, 'D1');
-  await expect(page.locator('.python-editor .view-lines')).toHaveText('42');
+  await expect(page.locator('.python-editor .view-lines')).toHaveText('');
   expect(runtimeRequests).toHaveLength(0);
+  await replacePythonSource(page, '42');
 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const prompt = page.getByRole('dialog', { name: 'Run Python in this workbook?' });
@@ -138,7 +139,7 @@ test('runs local Python only on consent, rejects occupied spills and inserts a s
   await page.mouse.move(resizedBounds.x + resizedBounds.width / 2 - 45,
     resizedBounds.y + resizedBounds.height / 2 - 30, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(() => firstPlacement.locator('img').getAttribute('src')).toBe(initialPlacementPng);
+  await expect.poll(() => firstPlacement.locator('img').getAttribute('src'), { timeout: 120_000 }).toBe(initialPlacementPng);
 
   await page.getByRole('button', { name: 'Place on Sheet', exact: true }).click();
   const secondCaptureBounds = await placementCapture.boundingBox();

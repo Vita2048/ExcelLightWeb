@@ -47,6 +47,7 @@ async function createAnchor(page: Page, source = '=PY') {
   await go(page, 'A1');
   await expect(page.locator('.python-panel')).toBeVisible();
   await expect(page.locator('.python-editor .monaco-editor')).toBeVisible();
+  await expect(editor(page)).toHaveText('');
 }
 
 test('=PY opens a lazy local Monaco panel, commits through a selection barrier and clears on ordinary cells', async ({ page }) => {
@@ -60,7 +61,7 @@ test('=PY opens a lazy local Monaco panel, commits through a selection barrier a
   origin = new URL(page.url()).origin;
   await ready(page);
   await createAnchor(page);
-  await expect(editor(page)).toHaveText('42');
+  await expect(editor(page)).toHaveText('');
   await expect(page.getByRole('gridcell', { name: 'A1, blank', exact: true })).toBeAttached();
   await page.getByRole('tab', { name: 'Formulas' }).click();
   const showFormulas = page.getByRole('button', { name: 'Show Formulas' });

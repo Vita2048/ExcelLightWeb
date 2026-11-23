@@ -216,6 +216,27 @@ button:disabled { cursor: default; opacity: .5; }
 .app-shell:has(.worksheet-scroll:focus-visible) .grid-keyboard-hint { display: inline; }
 .edit-status { overflow-wrap: anywhere; }
 .selection-stats { margin-left: auto; display: flex; gap: 12px; flex-wrap: wrap; }
+.offline-menu { position: absolute; z-index: 12; right: 9px; bottom: 38px; }
+.offline-status-button { min-height: 25px; padding: 2px 8px; color: var(--muted); background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; }
+.offline-status-button:hover { color: var(--text); border-color: var(--accent); }
+.offline-panel { position: absolute; right: 0; bottom: 31px; width: min(370px, calc(100vw - 20px)); padding: 12px; color: var(--text); background: var(--sheet); border: 1px solid var(--border); border-radius: 5px; box-shadow: 0 8px 28px #0009; }
+.offline-panel h2 { margin: 0 0 8px; font-size: 14px; }
+.offline-panel p { margin: 6px 0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.offline-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.offline-actions a, .offline-retry { color: var(--accent); font-size: 12px; }
+.offline-retry { margin-top: 8px; padding: 0; background: transparent; border: 0; text-decoration: underline; }
+.offline-error { color: #ffb4ab; }
+.offline-update { position: absolute; z-index: 13; top: 44px; right: 9px; display: flex; align-items: center; gap: 8px; width: min(600px, calc(100vw - 18px)); padding: 9px 10px; color: var(--text); background: var(--sheet); border: 1px solid var(--accent); border-radius: 5px; box-shadow: 0 8px 28px #0009; font-size: 12px; }
+.offline-update span { flex: 1; }
+.offline-update button { min-height: 28px; padding: 3px 8px; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; white-space: nowrap; }
+.offline-update button:not(:disabled):hover { border-color: var(--accent); }
+.offline-update .offline-dismiss { color: var(--muted); }
+@media (forced-colors: active) {
+  .offline-status-button, .offline-panel, .offline-update, .offline-update button { border: 1px solid ButtonText; }
+  .offline-update { outline: 1px solid Highlight; }
+  .offline-actions a, .offline-retry { color: LinkText; }
+  .offline-error { color: Mark; }
+}
 .zoom-controls { display: flex; align-items: center; flex: none; gap: 4px; }
 .zoom-controls input { width: 94px; margin: 0; }
 .zoom-controls button { font-size: 17px; }
