@@ -29,7 +29,7 @@ export function BorderRibbon({ action, style, color, mode, onAction, onStyle, on
   function close() { if (menu.current?.matches(':popover-open')) menu.current.hidePopover(); }
   return <div className="border-ribbon ribbon-split">
     <button type="button" aria-label={'Repeat ' + label} title={label} aria-pressed={mode !== undefined} onClick={() => onAction(action)}><RibbonGlyph name={'border:' + action} /></button>
-    <button type="button" ref={trigger} aria-label="Borders menu" popoverTarget={id}><span className="ribbon-chevron" aria-hidden="true" /></button>
+    <button type="button" ref={trigger} className="ribbon-command" aria-label="Borders menu" popoverTarget={id}><span className="ribbon-chevron" aria-hidden="true" /></button>
     {createPortal(<div className="border-menu" id={id} ref={menu} popover="auto" role="group" aria-label="Borders actions">
         <div className="ribbon-flyout-heading">Borders</div>
         {Object.entries(borderPresets).map(([action, name], index) => <div key={action}

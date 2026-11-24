@@ -74,7 +74,8 @@ test('ribbon tabs, groups and flyout commands follow the captured desktop order'
   // Split controls keep the desktop's primary command next to its options trigger.
   await openTab(page, 'Home');
   for (const [primary, options] of [['Paste', 'Paste options'], ['AutoSum', 'AutoSum options'],
-    ['Merge & Center', 'Merge options'], ['Format Painter', 'Lock Format Painter']] as const) {
+    ['Merge & Center', 'Merge options'], ['Underline', 'Underline options'],
+    ['Format Painter', 'Lock Format Painter']] as const) {
     const button = page.getByRole('button', { name: primary, exact: true }).first();
     expect(await button.evaluate((node, label) =>
       !!node.parentElement?.querySelector('button[aria-label="' + label + '"]'), options), primary).toBe(true);

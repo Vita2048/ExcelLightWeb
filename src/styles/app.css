@@ -528,8 +528,8 @@ button:disabled { cursor: default; opacity: .5; }
 .ribbon-panel .ribbon-stack > .ribbon-command:not(.ribbon-large) { justify-content: start; }
 .ribbon-panel .ribbon-stack > .ribbon-large + button { min-height: 14px; justify-content: center; }
 .clipboard-ribbon .ribbon-stack:first-of-type .ribbon-large { min-height: 51px; }
-.ribbon-split { display: inline-flex; align-items: center; gap: 1px; }
-.ribbon-split .ribbon-command:has(> .ribbon-chevron:only-child) { min-width: 15px; padding: 0 3px; }
+.ribbon-split, .ribbon-tools { display: inline-flex; align-items: center; gap: 1px; }
+.ribbon-split .ribbon-command:has(> .ribbon-chevron:only-child), .ribbon-split button:has(> .ribbon-chevron:only-child) { min-width: 15px; padding: 0 3px; }
 .ribbon-chevron, .ribbon-submenu-chevron {
   display: inline-block; width: 6px; height: 6px; border: solid currentColor; border-width: 0 1px 1px 0;
   transform: translateY(-2px) rotate(45deg); flex: none;
@@ -558,6 +558,7 @@ button:disabled { cursor: default; opacity: .5; }
   position: fixed; inset: auto; margin: 0; max-width: calc(100vw - 8px); max-height: calc(100dvh - 8px);
 }
 .ribbon-flyout { z-index: 15; min-width: min(176px, calc(100vw - 8px)); overflow: auto; }
+.ribbon-flyout[aria-label='Font size options'] { min-width: 72px; }
 .ribbon-flyout button, .border-menu button, .border-menu summary, .ribbon-palette-action {
   width: 100%; min-height: 32px; text-align: start; padding: 4px 8px; display: flex; align-items: center; gap: 7px;
   background: transparent; border: 1px solid transparent; border-radius: 4px;

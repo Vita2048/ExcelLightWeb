@@ -19,7 +19,7 @@ export function NumberRibbon({ cell, onFormat, onDialog }: {
           select: () => onFormat({ code }) })),
         { label: 'More Number Formats…', select: onDialog },
       ]} />
-      <div className="ribbon-split">
+      <div className="ribbon-tools">
         <RibbonFlyout label="Currency" caption="" icon="Currency" items={currencies.map(currency => ({
           label: currencyChoices[currency], icon: 'Currency', select: () => onFormat({ code: currencyFormat(currency) }),
         }))} />

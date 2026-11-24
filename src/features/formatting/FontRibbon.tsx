@@ -60,19 +60,25 @@ export function FontRibbon({ style, onApply, onDialog, onInvalid, borders }: {
     <div className="font-ribbon-row">
       <button type="button" aria-label="Bold" aria-pressed={!!style?.bold} onClick={() => onApply({ bold: style?.bold ? undefined : true })}><RibbonGlyph name="bold" /></button>
       <button type="button" aria-label="Italic" aria-pressed={!!style?.italic} onClick={() => onApply({ italic: style?.italic ? undefined : true })}><RibbonGlyph name="italic" /></button>
-      <button type="button" aria-label="Underline" aria-pressed={underline !== 'None'} onClick={() =>
-        onApply(underlinePatch(underline === 'None' ? lastUnderline : 'None'))}><RibbonGlyph name={underline === 'Double' ? 'doubleUnderline' : 'underline'} /></button>
-      <RibbonFlyout label="Underline options" caption="" items={underlineOptions.map(choice => ({
-        label: choice, icon: choice.includes('Double') ? 'doubleUnderline' : 'underline', checked: underline === choice, select: () => {
-          if (choice !== 'None') setLastUnderline(choice);
-          onApply(underlinePatch(choice));
-        },
-      }))} />
+      <div className="ribbon-split">
+        <button type="button" aria-label="Underline" aria-pressed={underline !== 'None'} onClick={() =>
+          onApply(underlinePatch(underline === 'None' ? lastUnderline : 'None'))}><RibbonGlyph name={underline === 'Double' ? 'doubleUnderline' : 'underline'} /></button>
+        <RibbonFlyout label="Underline options" caption="" items={underlineOptions.map(choice => ({
+          label: choice, icon: choice.includes('Double') ? 'doubleUnderline' : 'underline', checked: underline === choice, select: () => {
+            if (choice !== 'None') setLastUnderline(choice);
+            onApply(underlinePatch(choice));
+          },
+        }))} />
+      </div>
       {borders}
-      <button type="button" aria-label="Apply last fill color" title="Apply last fill color" onClick={() => onApply({ fillRgb: fill, fillDetails: undefined })}><span className="ribbon-color-icon" style={{ borderColor: fill ? '#' + fill : 'transparent' }}><RibbonGlyph name="fillColor" /></span></button>
-      <ColorControl label="Fill Color" value={fill} ribbon onChange={color => { setFill(color); onApply({ fillRgb: color, fillDetails: undefined }); }} />
-      <button type="button" aria-label="Apply last font color" title="Apply last font color" onClick={() => onApply({ textRgb: text })}><span className="ribbon-color-icon" style={{ borderColor: text ? '#' + text : 'currentColor' }}><RibbonGlyph name="fontColor" /></span></button>
-      <ColorControl label="Font Color" value={text} ribbon automatic onChange={color => { setText(color); onApply({ textRgb: color }); }} />
+      <div className="ribbon-split">
+        <button type="button" aria-label="Apply last fill color" title="Apply last fill color" onClick={() => onApply({ fillRgb: fill, fillDetails: undefined })}><span className="ribbon-color-icon" style={{ borderColor: fill ? '#' + fill : 'transparent' }}><RibbonGlyph name="fillColor" /></span></button>
+        <ColorControl label="Fill Color" value={fill} ribbon onChange={color => { setFill(color); onApply({ fillRgb: color, fillDetails: undefined }); }} />
+      </div>
+      <div className="ribbon-split">
+        <button type="button" aria-label="Apply last font color" title="Apply last font color" onClick={() => onApply({ textRgb: text })}><span className="ribbon-color-icon" style={{ borderColor: text ? '#' + text : 'currentColor' }}><RibbonGlyph name="fontColor" /></span></button>
+        <ColorControl label="Font Color" value={text} ribbon automatic onChange={color => { setText(color); onApply({ textRgb: color }); }} />
+      </div>
     </div>
   </fieldset>;
 }

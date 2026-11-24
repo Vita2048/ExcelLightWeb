@@ -9,7 +9,8 @@ export function RibbonGlyph({ name, size = 20 }: { name: string; size?: number }
 }
 
 export function positionRibbonPopup(anchor: HTMLElement, panel: HTMLElement, beside = false) {
-  const rect = anchor.getBoundingClientRect();
+  const box = (!beside && (anchor.closest('.ribbon-split, .ribbon-font-input') as HTMLElement)) || anchor;
+  const rect = box.getBoundingClientRect();
   const gap = 4;
   const width = panel.offsetWidth;
   const below = innerHeight - rect.bottom - gap;

@@ -47,3 +47,89 @@ test('shows the full Borders menu when it fits and scrolls it only in a shorter 
   await menu.getByRole('button', { name: 'More Borders…' }).click();
   await expect(page.getByRole('tab', { name: 'Border', selected: true })).toBeVisible();
 });
+
+test('ribbon combo boxes (AutoSum, Merge & Center, Font, Font size, Underline, Borders, Fill Color, Font Color) expand aligned with their control', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/ExcelLightWeb/');
+
+  const cases: {
+    name: string;
+    comboSelector: string;
+    triggerRole: 'button';
+    triggerName: string | RegExp;
+    menuSelector: string;
+  }[] = [
+    {
+      name: 'Font family',
+      comboSelector: '.ribbon-font-input:has(input[aria-label="Font family"])',
+      triggerRole: 'button',
+      triggerName: 'Font family options',
+      menuSelector: '.ribbon-flyout[role="menu"][aria-label="Font family options"]',
+    },
+    {
+      name: 'Font size',
+      comboSelector: '.ribbon-font-input:has(input[aria-label="Font size"])',
+      triggerRole: 'button',
+      triggerName: 'Font size options',
+      menuSelector: '.ribbon-flyout[role="menu"][aria-label="Font size options"]',
+    },
+    {
+      name: 'Underline',
+      comboSelector: '.ribbon-split:has(button[aria-label="Underline"])',
+      triggerRole: 'button',
+      triggerName: 'Underline options',
+      menuSelector: '.ribbon-flyout[role="menu"][aria-label="Underline options"]',
+    },
+    {
+      name: 'Borders',
+      comboSelector: '.border-ribbon.ribbon-split',
+      triggerRole: 'button',
+      triggerName: 'Borders menu',
+      menuSelector: '.border-menu[aria-label="Borders actions"]',
+    },
+    {
+      name: 'Fill Color',
+      comboSelector: '.ribbon-split:has(button[aria-label="Apply last fill color"])',
+      triggerRole: 'button',
+      triggerName: 'Fill Color',
+      menuSelector: '.ribbon-palette[aria-label="Fill Color"]',
+    },
+    {
+      name: 'Font Color',
+      comboSelector: '.ribbon-split:has(button[aria-label="Apply last font color"])',
+      triggerRole: 'button',
+      triggerName: 'Font Color',
+      menuSelector: '.ribbon-palette[aria-label="Font Color"]',
+    },
+    {
+      name: 'Merge & Center',
+      comboSelector: '.ribbon-split:has(button:has-text("Merge & Center"))',
+      triggerRole: 'button',
+      triggerName: 'Merge options',
+      menuSelector: '.ribbon-flyout[role="menu"][aria-label="Merge options"]',
+    },
+    {
+      name: 'AutoSum',
+      comboSelector: '.ribbon-split:has(button:text-is("AutoSum"))',
+      triggerRole: 'button',
+      triggerName: 'AutoSum options',
+      menuSelector: '.ribbon-flyout[role="menu"][aria-label="AutoSum options"]',
+    },
+  ];
+
+  for (const item of cases) {
+    const combo = page.locator(item.comboSelector).first();
+    const trigger = page.getByRole(item.triggerRole, { name: item.triggerName, exact: true }).first();
+    await trigger.click();
+    const menu = page.locator(item.menuSelector);
+    await expect(menu).toBeVisible();
+
+    const comboRect = (await combo.boundingBox())!;
+    const menuRect = (await menu.boundingBox())!;
+    expect(Math.abs(menuRect.x - comboRect.x), `${item.name} aligned with combo box`).toBeLessThanOrEqual(1.5);
+    expect(menuRect.y, `${item.name} opens below combo box`).toBeGreaterThanOrEqual(comboRect.y + comboRect.height - 1);
+
+    await page.keyboard.press('Escape');
+    await expect(menu).not.toBeVisible();
+  }
+});
