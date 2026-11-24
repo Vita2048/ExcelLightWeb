@@ -20,7 +20,7 @@
     { "tab": "Home", "trigger": "Insert", "items": ["Insert Cells…", "Insert Sheet Rows", "Insert Sheet Columns", "Insert Sheet"] },
     { "tab": "Home", "trigger": "Delete", "items": ["Delete Cells…", "Delete Sheet Rows", "Delete Sheet Columns", "Delete Sheet"] },
     { "tab": "Home", "trigger": "Format", "items": ["Row Height…", "AutoFit Row Height", "Column Width…", "AutoFit Column Width", "Hide & Unhide", "Rename Sheet", "Move or Copy Sheet…", "Format Cells…"] },
-    { "tab": "Home", "trigger": "AutoSum options", "items": ["Sum", "Average", "Count Numbers", "Max", "Min"] },
+    { "tab": "Home", "trigger": "AutoSum options", "iconlessItems": ["Average", "Count Numbers", "Max", "Min"], "items": ["Sum", "Average", "Count Numbers", "Max", "Min"] },
     { "tab": "Home", "trigger": "Fill", "items": ["Down", "Right", "Up", "Left"] },
     { "tab": "Home", "trigger": "Clear", "items": ["Clear All", "Clear Formats", "Clear Contents"] },
     { "tab": "Home", "trigger": "Sort & Filter", "items": ["Sort A to Z", "Sort Z to A", "Custom Sort...", "Filter", "Clear", "Reapply"] },

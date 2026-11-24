@@ -6,7 +6,7 @@ interface RibbonManifest {
   readonly tabs: readonly string[];
   readonly panels: Readonly<Record<string, readonly string[]>>;
   readonly menus: readonly { readonly tab: string; readonly trigger: string; readonly items: readonly string[];
-    readonly choices?: boolean; readonly textOnly?: boolean }[];
+    readonly choices?: boolean; readonly textOnly?: boolean; readonly iconlessItems?: readonly string[] }[];
   readonly nested: readonly { readonly tab: string; readonly trigger: string; readonly item: string;
     readonly items: readonly string[] }[];
 }
@@ -89,9 +89,14 @@ test('ribbon tabs, groups and flyout commands follow the captured desktop order'
     for (let index = 0; index < await rows.count(); index++) {
       const row = rows.nth(index);
       if (entry.choices || entry.textOnly) continue;
+      const label = (await row.textContent())!.trim();
       const visual = await row.locator('.ribbon-flyout-glyph svg, .ribbon-flyout-check, .ribbon-submenu-chevron').count();
+      if (entry.iconlessItems?.includes(label)) {
+        expect(visual, entry.trigger + ' row ' + index).toBe(0);
+        continue;
+      }
       // The Number Format dialog action has no swatch, matching the desktop menu row.
-      if (!(await row.textContent())!.startsWith('More Number Formats')) {
+      if (!label.startsWith('More Number Formats')) {
         expect(visual, entry.trigger + ' row ' + index).toBeGreaterThan(0);
       }
     }
