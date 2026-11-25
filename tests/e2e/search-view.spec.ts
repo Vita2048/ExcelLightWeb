@@ -306,7 +306,10 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await expect(page.getByRole('menuitem', { name: 'Unfreeze Panes', exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
 
-  await page.setViewportSize({ width: 420, height: 320 });
+  // Keep the mobile-width layout while leaving enough height for the worksheet
+  // canvas below the ribbon and status bars. The 320px viewport can clip the
+  // sampled A1 pixel outside the canvas instead of testing its frozen position.
+  await page.setViewportSize({ width: 420, height: 640 });
   await go(page, 'B2');
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await freeze.click();
