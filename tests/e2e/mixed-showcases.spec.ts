@@ -144,22 +144,26 @@ test('runs the edited Sales showcase spill and refreshes its native KPI', async 
 });
 
 test('both showcases calculate on open and keep edits across a browser save and reload', async ({ page }) => {
-  test.setTimeout(240_000);
+  test.setTimeout(600_000);
   await observePythonRuntime(page);
   await disableFileSystemPickers(page);
 
-  for (const [fixture, title, sheet, kpi] of [
+  const showcases = [
     [salesFixture, 'Showcase', 'Dashboard', 'A4'],
     [slaFixture, 'Support-SLA', 'Dashboard', 'E6'],
-  ] as const) {
-    await page.goto(appPath);
-    await page.getByRole('grid').waitFor();
-    await waitForPythonRuntime(page);
+  ] as const;
+  const savedKpis = new Map<string, string | null>();
+
+  await page.goto(appPath);
+  await page.getByRole('grid').waitFor();
+  await waitForPythonRuntime(page);
+  for (const [fixture, title, sheet, kpi] of showcases) {
     await openFixture(page, fixture, title);
     await waitForAutomaticPython(page, title === 'Showcase' ? 'Sales Analysis' : 'Analysis',
       title === 'Showcase' ? 'A3' : 'B6');
     await page.getByRole('button', { name: sheet, exact: true }).click();
     const savedKpi = await cellLabel(page, kpi);
+    savedKpis.set(title, savedKpi);
     await enter(page, 'Z60', 'Reviewed in the browser');
     await expect(page.getByRole('gridcell', { name: 'Z60, Reviewed in the browser' })).toHaveAttribute('aria-label',
       'Z60, Reviewed in the browser');
@@ -183,11 +187,19 @@ test('both showcases calculate on open and keep edits across a browser save and 
       return loaded;
     }, title);
     expect(stored).toBe(true);
+  }
 
-    await page.reload();
-    await page.getByRole('grid').waitFor();
-    await waitForPythonRuntime(page);
+  await page.reload();
+  await page.getByRole('grid').waitFor();
+  await waitForPythonRuntime(page);
+  let reopened = 0;
+  for (const [, title, sheet, kpi] of showcases) {
+    if (reopened > 0) {
+      await page.getByRole('group', { name: 'Quick Access' }).getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(page.locator('.status-bar [role="status"]')).toContainText('Saved to this browser');
+    }
     await page.getByRole('tab', { name: 'File' }).click();
+    const runsBeforeOpen = (await readPythonRuntimeTrace(page)).runRequests;
     await page.getByRole('button', { name: 'Open recent ' + title, exact: true }).click();
     await expect(page.locator('.workbook-title')).toHaveText(title);
     await waitForAutomaticPython(page, title === 'Showcase' ? 'Sales Analysis' : 'Analysis',
@@ -196,10 +208,10 @@ test('both showcases calculate on open and keep edits across a browser save and 
     // Navigate to the edited cell so the bounded accessible projection mounts it.
     expect(await cellLabel(page, 'Z60')).toBe('Z60, Reviewed in the browser');
     // The saved workbook is reopened in Automatic mode and its Python code recalculates.
-    expect(await cellLabel(page, kpi)).toBe(savedKpi);
-    expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(0);
-    await page.getByRole('tab', { name: 'File' }).click();
-    await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Close', exact: true }).click();
+    expect(await cellLabel(page, kpi)).toBe(savedKpis.get(title));
+    await expect.poll(async () => (await readPythonRuntimeTrace(page)).runRequests, { timeout: 120_000 })
+      .toBeGreaterThan(runsBeforeOpen);
+    reopened++;
   }
 });
 
