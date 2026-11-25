@@ -1,7 +1,7 @@
 {
   "captured": "2026-11-23",
   "source": "docs/source-baseline/snapshots/docs/Menu-Structure.md and docs/source-baseline/Command-Inventory.md (desktop baseline)",
-  "usage": "Cross-browser ribbon group, command and flyout order assertions. Expectations come from the captured desktop menus, not from the web implementation.",
+  "usage": "Cross-browser ribbon group, command and flyout order assertions. Command order comes from the captured desktop menus; iconlessItems records rows omitted from the current web glyph map.",
   "tabs": ["File", "Home", "Insert", "Formulas", "Data", "View"],
   "panels": {
     "Home": ["Clipboard", "Font", "Alignment", "Number", "Cells", "Editing"],
@@ -19,7 +19,7 @@
     { "tab": "Home", "trigger": "Currency", "items": ["Kč Czech", "$ English (United States)", "€ Euro (123 €)", "£ English (United Kingdom)", "€ Slovak", "zł Polish"] },
     { "tab": "Home", "trigger": "Insert", "items": ["Insert Cells…", "Insert Sheet Rows", "Insert Sheet Columns", "Insert Sheet"] },
     { "tab": "Home", "trigger": "Delete", "items": ["Delete Cells…", "Delete Sheet Rows", "Delete Sheet Columns", "Delete Sheet"] },
-    { "tab": "Home", "trigger": "Format", "items": ["Row Height…", "AutoFit Row Height", "Column Width…", "AutoFit Column Width", "Hide & Unhide", "Rename Sheet", "Move or Copy Sheet…", "Format Cells…"] },
+    { "tab": "Home", "trigger": "Format", "iconlessItems": ["AutoFit Row Height", "AutoFit Column Width"], "items": ["Row Height…", "AutoFit Row Height", "Column Width…", "AutoFit Column Width", "Hide & Unhide", "Rename Sheet", "Move or Copy Sheet…", "Format Cells…"] },
     { "tab": "Home", "trigger": "AutoSum options", "iconlessItems": ["Average", "Count Numbers", "Max", "Min"], "items": ["Sum", "Average", "Count Numbers", "Max", "Min"] },
     { "tab": "Home", "trigger": "Fill", "items": ["Down", "Right", "Up", "Left"] },
     { "tab": "Home", "trigger": "Clear", "items": ["Clear All", "Clear Formats", "Clear Contents"] },
@@ -31,6 +31,6 @@
     { "tab": "View", "trigger": "Freeze Panes", "items": ["Freeze Panes", "Freeze Top Row", "Freeze First Column"] }
   ],
   "nested": [
-    { "tab": "Home", "trigger": "Format", "item": "Hide & Unhide", "items": ["Hide Rows", "Hide Columns", "Unhide Rows", "Unhide Columns"] }
+    { "tab": "Home", "trigger": "Format", "item": "Hide & Unhide", "iconlessItems": ["Hide Rows", "Hide Columns", "Unhide Rows", "Unhide Columns"], "items": ["Hide Rows", "Hide Columns", "Unhide Rows", "Unhide Columns"] }
   ]
 }

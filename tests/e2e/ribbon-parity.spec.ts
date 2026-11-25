@@ -8,7 +8,7 @@ interface RibbonManifest {
   readonly menus: readonly { readonly tab: string; readonly trigger: string; readonly items: readonly string[];
     readonly choices?: boolean; readonly textOnly?: boolean; readonly iconlessItems?: readonly string[] }[];
   readonly nested: readonly { readonly tab: string; readonly trigger: string; readonly item: string;
-    readonly items: readonly string[] }[];
+    readonly items: readonly string[]; readonly iconlessItems?: readonly string[] }[];
 }
 const ribbon: RibbonManifest = JSON.parse(readFileSync(new URL('../fixtures/parity/ribbon-order.json', import.meta.url), 'utf8'));
 
@@ -116,7 +116,19 @@ test('nested Format > Hide & Unhide opens beside its parent and navigates by key
   await hide.click();
   const child = page.getByRole('menu', { name: 'Hide & Unhide', exact: true });
   await expect(child).toBeVisible();
-  expect(await itemLabels(child)).toEqual(ribbon.nested[0]!.items);
+  const entry = ribbon.nested[0]!;
+  expect(await itemLabels(child)).toEqual(entry.items);
+  const rows = child.getByRole('menuitem');
+  for (let index = 0; index < await rows.count(); index++) {
+    const row = rows.nth(index);
+    const label = (await row.textContent())!.trim();
+    const visual = await row.locator('.ribbon-flyout-glyph svg, .ribbon-flyout-check, .ribbon-submenu-chevron').count();
+    if (entry.iconlessItems?.includes(label)) {
+      expect(visual, entry.item + ' row ' + index).toBe(0);
+    } else {
+      expect(visual, entry.item + ' row ' + index).toBeGreaterThan(0);
+    }
+  }
   const submenu = (await child.boundingBox())!;
   const anchor = (await hide.boundingBox())!;
   // The child opens beside the owning row, flipping left when the viewport has no room on the right.
