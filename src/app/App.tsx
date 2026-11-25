@@ -78,6 +78,7 @@ const defaultSelection = singleSelection();
 const defaultView: SheetView = { zoom: 100, headings: true, gridlines: true, formulaBar: true, showFormulas: false };
 const statisticsFormat = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 10, useGrouping: false });
 const makeId = () => crypto.randomUUID();
+const supportSlaTemplateUrl = new URL('../../tests/fixtures/sla/Support-SLA.exlt', import.meta.url).href;
 async function acquireRecoveryLease(lease: WorkspaceLease, workbookId: string): Promise<boolean> {
   // A reload can race the previous page's asynchronous pagehide lease release.
   // Give that transaction time to commit while still refusing a workbook held by another tab.
@@ -566,6 +567,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function resetWorkbookUi(document: WorkbookDocument) {
     setSnapshot(session.capture());
+    setRecoveryStatus('');
     setActiveSheetId(document.sheets[0]!.id);
     setSelections(new Map());
     setMenu(undefined);
@@ -849,6 +851,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     setFileStatus(keepBackstage ? 'Workbook closed.' : 'New blank workbook.');
   }
 
+  async function createSupportSlaWorkbook() {
+    const response = await fetch(supportSlaTemplateUrl);
+    if (!response.ok) throw new LocalWorkspaceError('The Support SLA template could not be loaded.');
+    const template = await loadNativePackage(await response.blob());
+    const document = { ...template, id: makeId() };
+    const previousId = session.active.id;
+    if (!await confirmReplacement()) return;
+    const lease = workspaceLease.current!;
+    if (!await lease.switchTo(document.id)) throw new WorkspaceConflictError(document.id);
+    const basis = session.capture();
+    if (!session.tryAdopt(basis, document, false)) {
+      await lease.switchTo(previousId);
+      throw new LocalWorkspaceError('Workbook changed while creating this template copy. Your current workbook was kept; try again.');
+    }
+    pythonExecution.adopted();
+    setActiveFile({ name: 'Book1', source: 'untitled' });
+    resetWorkbookUi(document);
+    setBackstageOpen(false);
+    setFileStatus('New workbook from Support SLA Dashboard.');
+  }
+
   async function exportWorkbook() {
     if (activeFile.importedXlsx || activeFile.source === 'xlsx') return exportXlsxWorkbook();
     const captured = session.capture();
@@ -940,6 +963,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     await runFileOperation(action === 'saveAs' ? 'Save As' : action[0]!.toUpperCase() + action.slice(1), async () => {
       switch (action) {
         case 'new': await createBlankWorkbook(); break;
+        case 'example': await createSupportSlaWorkbook(); break;
         case 'open': await openExternalWorkbook(); break;
         case 'save':
           await saveCurrentWithName();
@@ -947,7 +971,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         case 'saveAs':
           if (hasNativeSavePicker()) {
             const handle = await pickNativeSaveFile(activeFile.name + '.exlt');
-            if (!handle) { setFileStatus('Save As cancelled.'); return; }
+            if (!handle) { setFileStatus(''); return; }
             await saveAsToHandle(handle);
           } else {
             const name = await askSaveAsName('local-save-as');
@@ -2582,12 +2606,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       </main>
 
       <footer className="status-bar" aria-label="Worksheet status" inert={backstageOpen || !!workspaceConflict}>
-        <span className={editing.status || fileStatus || calculationMessage ? 'edit-status' : 'ready'} role="status"
+        <span className={editing.status || fileStatus || recoveryStatus || calculationMessage ? 'edit-status' : 'ready'} role="status"
           data-calculating={pythonExecutionState?.running || calculation.pending === 'calculate' ? 'true' : undefined}>
-          {[editing.status, fileStatus, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
+          {[editing.status, fileStatus, recoveryStatus, painter && (painter.locked ? 'Format Painter locked' : 'Format Painter active') +
             ' · Select a destination or press Enter · Esc cancels', borderTool && borderModes[borderTool.mode] + ' · Esc exits', calculationMessage].filter(Boolean).join(' · ') || 'Ready'}
         </span>
-        {!editing.status && !fileStatus && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
+        {!editing.status && !fileStatus && !recoveryStatus && !calculationMessage && <span className="grid-keyboard-hint" aria-hidden="true">F2 to edit · Esc, then Tab to leave</span>}
         <output className="selection-stats" aria-label="Selection statistics" aria-live="off">
           <span>Sum: {statisticsFormat.format(stats.sum)}</span>
           <span>Average: {stats.average === undefined ? '—' : statisticsFormat.format(stats.average)}</span>
@@ -2605,7 +2629,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         </div>
       </footer>
       <FileBackstage open={backstageOpen} busy={fileBusy || !preferencesReady || !!workspaceConflict}
-        recent={recentWorkbooks} activeWorkspaceId={session.active.id} status={fileStatus} recoveryStatus={recoveryStatus} onBack={() => setBackstageOpen(false)}
+        recent={recentWorkbooks} activeWorkspaceId={session.active.id} onBack={() => setBackstageOpen(false)}
         onAction={action => { void runFileAction(action); }}
         onRecent={record => { void runFileOperation('Open', () => openRecentWorkbook(record)); }}
         onRemoveRecent={record => setWorkspaceToRemove(record)}

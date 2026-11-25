@@ -57,7 +57,6 @@ export function OptionsDialog({ preferences, onApply, onCancel }: {
   readonly onCancel: () => void;
 }) {
   const dialog = useModalDialog();
-  const [category, setCategory] = useState<'general' | 'formulas'>('general');
   const [mode, setMode] = useState<CalculationMode>(preferences.nativeCalculation);
   const [pythonAutomatic, setPythonAutomatic] = useState(preferences.pythonAutomaticConsent);
   return <dialog ref={dialog} className="paste-dialog file-modal options-dialog" aria-labelledby="options-title"
@@ -67,38 +66,23 @@ export function OptionsDialog({ preferences, onApply, onCancel }: {
         <button type="button" className="format-dialog-close" aria-label="Close Excel-Lite Options" onClick={onCancel}>×</button>
       </DialogTitleBar>
       <div className="options-body">
-        <div className="options-categories" role="tablist" aria-label="Options category" aria-orientation="vertical">
-          {(['general', 'formulas'] as const).map(item => <button type="button" role="tab" key={item}
-            aria-selected={category === item} onClick={() => setCategory(item)}>
-            {item === 'general' ? 'General' : 'Formulas'}
-          </button>)}
-        </div>
-        <section className="options-pane" role="tabpanel" aria-label={category === 'general' ? 'General' : 'Formulas'}>
-          {category === 'general' ? <>
-            <h3>Personalize your copy of Excel-Lite</h3>
-            <label htmlFor="office-theme">Office Theme</label>
-            <select id="office-theme" value="dark" disabled>
-              <option value="dark">Dark</option>
-            </select>
-            <p>ExcelLight uses a dark-only theme.</p>
-          </> : <>
-            <h3>Calculation options</h3>
-            <fieldset className="option-group">
-              <legend>Workbook Calculation</legend>
-              <label><input type="radio" name="native-calculation" value="automatic"
-                checked={mode === 'automatic'} onChange={() => setMode('automatic')} /> Automatic</label>
-              <label><input type="radio" name="native-calculation" value="manual"
-                checked={mode === 'manual'} onChange={() => setMode('manual')} /> Manual</label>
-            </fieldset>
-            <fieldset className="option-group python-option-group">
-              <legend>Python Calculation</legend>
-              <label><input type="radio" value="automatic" checked={pythonAutomatic} name="python-calculation"
-                onChange={() => setPythonAutomatic(true)} /> Automatic</label>
-              <label><input type="radio" value="manual" checked={!pythonAutomatic} name="python-calculation"
-                onChange={() => setPythonAutomatic(false)} /> Manual</label>
-            </fieldset>
-            <p>Automatic is a local preference for this browser. With it enabled, Python scripts run after relevant edits and when you open or import a workbook. Scripts run locally and can access the network if their code requests it. Choose Manual to run code only when you select Run.</p>
-          </>}
+        <section className="options-pane" aria-label="Calculation options">
+          <h3>Calculation options</h3>
+          <fieldset className="option-group">
+            <legend>Workbook Calculation</legend>
+            <label><input type="radio" name="native-calculation" value="automatic"
+              checked={mode === 'automatic'} onChange={() => setMode('automatic')} /> Automatic</label>
+            <label><input type="radio" name="native-calculation" value="manual"
+              checked={mode === 'manual'} onChange={() => setMode('manual')} /> Manual</label>
+          </fieldset>
+          <fieldset className="option-group python-option-group">
+            <legend>Python Calculation</legend>
+            <label><input type="radio" value="automatic" checked={pythonAutomatic} name="python-calculation"
+              onChange={() => setPythonAutomatic(true)} /> Automatic</label>
+            <label><input type="radio" value="manual" checked={!pythonAutomatic} name="python-calculation"
+              onChange={() => setPythonAutomatic(false)} /> Manual</label>
+          </fieldset>
+          <p>Automatic is a local preference for this browser. With it enabled, Python scripts run after relevant edits and when you open or import a workbook. Scripts run locally and can access the network if their code requests it. Choose Manual to run code only when you select Run.</p>
         </section>
       </div>
       <DialogActions onCancel={onCancel} />

@@ -57,7 +57,6 @@ test('runs a mixed dependency chain atomically and schedules only after local Au
   await page.getByRole('tab', { name: 'File' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   const options = page.getByRole('dialog', { name: 'Excel-Lite Options' });
-  await options.getByRole('tab', { name: 'Formulas' }).click();
   await options.locator('input[name="python-calculation"][value="automatic"]').check();
   await options.getByRole('button', { name: 'OK' }).click();
   await page.getByRole('button', { name: /Back/u }).click();
@@ -69,7 +68,6 @@ test('runs a mixed dependency chain atomically and schedules only after local Au
   await page.getByRole('tab', { name: 'File' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   const manualOptions = page.getByRole('dialog', { name: 'Excel-Lite Options' });
-  await manualOptions.getByRole('tab', { name: 'Formulas' }).click();
   await manualOptions.locator('input[name="python-calculation"][value="manual"]').check();
   await manualOptions.getByRole('button', { name: 'OK' }).click();
   await page.getByRole('button', { name: /Back/u }).click();
@@ -91,7 +89,6 @@ test('runs a mixed dependency chain atomically and schedules only after local Au
   await page.getByRole('tab', { name: 'File' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   const automaticOptions = page.getByRole('dialog', { name: 'Excel-Lite Options' });
-  await automaticOptions.getByRole('tab', { name: 'Formulas' }).click();
   await automaticOptions.locator('input[name="python-calculation"][value="automatic"]').check();
   await automaticOptions.getByRole('button', { name: 'OK' }).click();
   await page.getByRole('button', { name: 'Open recent Mixed Automatic Stale' }).click();

@@ -195,7 +195,10 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await expect(page.getByRole('heading', { name: 'New' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Recent' })).toBeVisible();
   await expect(backstage.locator('.file-home-page')).toHaveCSS('padding-left', '32px');
-  await expect(backstage.getByRole('button', { name: 'Blank workbook' })).toHaveCSS('min-height', '32px');
+  await expect(backstage.getByRole('button', { name: 'Blank workbook' })).toBeVisible();
+  await expect(backstage.getByRole('button', { name: 'Example: Support SLA Dashboard' })).toBeVisible();
+  await expect(backstage.locator('.file-new-gallery')).toHaveCSS('display', 'flex');
+  await expect(backstage.locator('.file-template-preview')).toHaveCount(2);
   await expect(page.getByText('No recent workbooks')).toBeVisible();
   await expect(backstage.locator('.file-backstage-nav button')).toHaveText([
     '‹ Back', 'Home', 'New', 'Open', 'Save', 'Save As', 'Export', 'Close', 'Options',
@@ -205,11 +208,10 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   const options = page.getByRole('dialog', { name: 'Excel-Lite Options' });
   await expect(options).toBeVisible();
   expect((await options.boundingBox())?.width).toBe(520);
-  await expect(options.locator('.options-categories')).toHaveCSS('width', '140px');
-  await expect(options.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
-  await expect(options.getByLabel('Office Theme')).toHaveValue('dark');
-  await expect(options.getByLabel('Office Theme')).toBeDisabled();
-  await options.getByRole('tab', { name: 'Formulas' }).click();
+  await expect(options.locator('.options-categories')).toHaveCount(0);
+  await expect(options.getByRole('tab', { name: 'General' })).toHaveCount(0);
+  await expect(options.getByLabel('Office Theme')).toHaveCount(0);
+  await expect(options.getByRole('heading', { name: 'Calculation options' })).toBeVisible();
   await expect(options.locator('.python-option-group input[name="python-calculation"]').first()).toBeEnabled();
   await expect(options.getByText(/Automatic is a local preference for this browser/u)).toBeVisible();
   await expect(options.locator('input[name="native-calculation"][value="automatic"]')).toBeChecked();
@@ -222,7 +224,6 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await expect(page.getByRole('grid')).toBeVisible();
   await openFileBackstage(page);
   await page.getByRole('button', { name: 'Options', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Excel-Lite Options' }).getByRole('tab', { name: 'Formulas' }).click();
   await expect(page.locator('input[name="native-calculation"][value="manual"]')).toBeChecked();
   await expect(page.locator('input[name="python-calculation"][value="automatic"]')).toBeChecked();
 });
@@ -301,7 +302,7 @@ test('flushes an editor before New and honors Save, Don’t Save and Cancel', as
   await grid.focus();
   await page.keyboard.type('Draft text');
   await page.getByRole('tab', { name: 'File' }).click();
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'Blank workbook' }).click();
   const prompt = page.getByRole('dialog', { name: 'Save changes to Book1?' });
   await expect(prompt).toBeVisible();
   await prompt.getByRole('button', { name: 'Cancel' }).click();
@@ -353,6 +354,75 @@ test('cancels local Save As without changing the draft and saves a named Recent 
   await expect(page.getByRole('button', { name: 'Open recent Quarterly' })).toBeVisible();
 });
 
+test('creates an unsaved, independent Support SLA workbook and Save As stores that copy', async ({ page }) => {
+  await disableFileSystemPickers(page);
+  await page.goto(appPath);
+  await expect(page.getByRole('grid')).toBeVisible();
+  await openFileBackstage(page);
+  await page.getByRole('button', { name: 'Example: Support SLA Dashboard' }).click();
+
+  await expect(page.locator('.workbook-title')).toHaveText('Book1 *');
+  await expect(page.getByRole('button', { name: 'Dashboard', exact: true })).toHaveAttribute('aria-current', 'true');
+  const nameBox = page.getByRole('textbox', { name: 'Name box' });
+  await nameBox.fill('B3');
+  await nameBox.press('Enter');
+  await expect(page.locator('[role="gridcell"][id$="-B3"]')).toHaveAttribute('aria-label', /Support ticket SLA/u);
+  await nameBox.fill('B6');
+  await nameBox.press('Enter');
+  await expect(page.locator('[role="gridcell"][id$="-B6"]')).toHaveAttribute('aria-label', /610/u);
+
+  await openFileBackstage(page);
+  const backstage = page.getByRole('dialog', { name: 'File Home' });
+  await expect(backstage.getByText('No recent workbooks')).toBeVisible();
+  await expect(backstage.locator('[role="status"]')).toHaveCount(0);
+  await expect(backstage.getByText('New workbook from Support SLA Dashboard.')).toHaveCount(0);
+  await backstage.getByRole('button', { name: 'Save As', exact: true }).click();
+  const saveAs = page.getByRole('dialog', { name: 'Save As' });
+  await expect(saveAs.getByRole('textbox', { name: 'Workbook name' })).toHaveValue('Book1');
+  await saveAs.getByRole('textbox', { name: 'Workbook name' }).fill('Support SLA Copy');
+  await saveAs.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.locator('.workbook-title')).toHaveText('Support SLA Copy');
+  await expect.poll(() => readLocalWorkbook(page, 'Support SLA Copy')).toBe(true);
+  await openFileBackstage(page);
+  await expect(page.getByRole('button', { name: 'Open recent Support SLA Copy' })).toBeVisible();
+});
+
+test('Save on a Support SLA template uses the normal first-save naming flow', async ({ page }) => {
+  await disableFileSystemPickers(page);
+  await page.goto(appPath);
+  await expect(page.getByRole('grid')).toBeVisible();
+  await openFileBackstage(page);
+  await page.getByRole('button', { name: 'Example: Support SLA Dashboard' }).click();
+  await expect(page.locator('.workbook-title')).toHaveText('Book1 *');
+
+  await openFileBackstage(page);
+  await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
+  const saveDialog = page.getByRole('dialog', { name: 'Save to this browser' });
+  await expect(saveDialog.getByRole('textbox', { name: 'Workbook name' })).toHaveValue('Book1');
+  await saveDialog.getByRole('textbox', { name: 'Workbook name' }).fill('Support SLA Saved');
+  await saveDialog.getByRole('button', { name: 'Save', exact: true }).click();
+
+  await expect(page.locator('.workbook-title')).toHaveText('Support SLA Saved');
+  await expect.poll(() => readLocalWorkbook(page, 'Support SLA Saved')).toBe(true);
+});
+
+test('hides the blue Home status after native Save As is cancelled', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'showSaveFilePicker', {
+      configurable: true,
+      value: async () => { throw new DOMException('User cancelled the picker.', 'AbortError'); },
+    });
+  });
+  await page.goto(appPath);
+  await expect(page.getByRole('grid')).toBeVisible();
+  await openFileBackstage(page);
+  await page.getByRole('button', { name: 'Save As', exact: true }).click();
+  await expect(page.getByText('Save As cancelled.', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'File Home' }).locator('[role="status"]')).toHaveCount(0);
+  await expect(page.locator('.status-bar [role="status"]')).not.toContainText('Save As cancelled.');
+});
+
 test('keeps imported-source provenance when a Recent workbook is locally saved', async ({ page }) => {
   await disableFileSystemPickers(page);
   await page.goto(appPath);
@@ -378,8 +448,10 @@ test('offers explicit reload recovery for an unsaved native snapshot', async ({ 
   await page.keyboard.press('Enter');
   await expect.poll(() => readLocalRecoveryCount(page)).toBe(1);
   await openFileBackstage(page);
-  await expect(page.locator('.file-recovery-status')).toHaveText('Local recovery copy updated.');
+  const backstage = page.getByRole('dialog', { name: 'File Home' });
+  await expect(backstage.locator('[role="status"]')).toHaveCount(0);
   await page.getByRole('button', { name: /Back/ }).click();
+  await expect(page.locator('.status-bar [role="status"]')).toContainText('Local recovery copy updated.');
   await page.reload();
   const recovery = page.getByRole('dialog', { name: 'Recover your workbook?' });
   await expect.poll(() => readLocalRecoveryCount(page)).toBe(1);
@@ -460,7 +532,6 @@ test('migrates v1 local settings and retains workspaces', async ({ page }) => {
   await openFileBackstage(page);
   await expect(page.getByRole('button', { name: 'Open recent Retained v1 workspace' })).toBeVisible();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Excel-Lite Options' }).getByRole('tab', { name: 'Formulas' }).click();
   await expect(page.locator('input[name="native-calculation"][value="manual"]')).toBeChecked();
   await expect(page.locator('input[name="python-calculation"]:checked')).toBeChecked();
 });
