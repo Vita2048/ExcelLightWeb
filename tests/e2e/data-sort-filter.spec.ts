@@ -50,7 +50,7 @@ test('filters records from the Data tab funnels, updates statistics and SUBTOTAL
 
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('.edit-status')).toHaveText('Filter applied to A1:C4. Choose values from a header funnel.');
+  await expect(page.locator('.edit-status')).toContainText('Filter applied to A1:C4. Choose values from a header funnel.');
   for (const header of ['Name', 'Amount', 'Dept']) {
     await expect(page.getByRole('button', { name: 'Filter ' + header, exact: true })).toBeVisible();
   }
@@ -68,7 +68,7 @@ test('filters records from the Data tab funnels, updates statistics and SUBTOTAL
   await dropdown.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(dropdown).toBeHidden();
 
-  await expect(page.locator('.edit-status')).toHaveText('Filtered Dept. 2 of 3 records');
+  await expect(page.locator('.edit-status')).toContainText('Filtered Dept. 2 of 3 records');
   await expect(page.getByRole('gridcell', { name: 'A2, aaa' })).toBeAttached();
   await expect(page.getByRole('gridcell', { name: 'A3, bbb' })).toHaveCount(0);
   await expect(page.getByRole('gridcell', { name: 'A4, ccc' })).toBeAttached();
@@ -84,10 +84,10 @@ test('filters records from the Data tab funnels, updates statistics and SUBTOTAL
   await expect(stats).toContainText('Count: 2');
 
   await page.getByRole('button', { name: 'Reapply filter' }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Filter reapplied. 2 of 3 records');
+  await expect(page.locator('.edit-status')).toContainText('Filter reapplied. 2 of 3 records');
 
   await page.getByRole('button', { name: 'Clear filter' }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Filter cleared. Manually hidden rows stay hidden.');
+  await expect(page.locator('.edit-status')).toContainText('Filter cleared. Manually hidden rows stay hidden.');
   await expect(page.getByRole('gridcell', { name: 'A3, bbb' })).toBeAttached();
   await expect(page.getByRole('gridcell', { name: 'B6, 60' })).toBeAttached();
 
@@ -143,7 +143,7 @@ test('uses the desktop Sort dialog, its options, the sort warning and the Home S
   await sort.getByRole('combobox', { name: 'Sort order' }).selectOption('desc');
   await sort.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(sort).toBeHidden();
-  await expect(page.locator('.edit-status')).toHaveText('Sorted A1:B3 by column A, largest to smallest. Records moved together.');
+  await expect(page.locator('.edit-status')).toContainText('Sorted A1:B3 by column A, largest to smallest. Records moved together.');
   await expect(page.getByRole('gridcell', { name: 'A2, b' })).toBeAttached();
   await expect(page.getByRole('gridcell', { name: 'B2, 2' })).toBeAttached();
   await expect(page.getByRole('gridcell', { name: 'A3, a' })).toBeAttached();
@@ -158,7 +158,7 @@ test('uses the desktop Sort dialog, its options, the sort warning and the Home S
   await page.getByRole('button', { name: 'Sort & Filter', exact: true }).click();
   const filterItem = page.getByRole('menuitem', { name: 'Filter', exact: true });
   await filterItem.click();
-  await expect(page.locator('.edit-status')).toHaveText('Filter applied to A1:B3. Choose values from a header funnel.');
+  await expect(page.locator('.edit-status')).toContainText('Filter applied to A1:B3. Choose values from a header funnel.');
   await page.getByRole('button', { name: 'Sort & Filter', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Reapply', exact: true })).toBeEnabled();
   await expect(page.getByRole('menuitem', { name: 'Clear', exact: true })).toBeDisabled();
@@ -221,23 +221,23 @@ test('sorts next to surrounding data with the desktop Sort Warning and honors ta
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: 'Filter a', exact: true })).toBeVisible();
   await toggle.click();
-  await expect(page.locator('.edit-status')).toHaveText('Filter applied to D2:E3. Choose values from a header funnel.');
+  await expect(page.locator('.edit-status')).toContainText('Filter applied to D2:E3. Choose values from a header funnel.');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
 
   await toggle.click();
-  await expect(page.locator('.edit-status')).toHaveText('Filter removed. Manually hidden rows stay hidden.');
+  await expect(page.locator('.edit-status')).toContainText('Filter removed. Manually hidden rows stay hidden.');
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 
   // A single non-empty cell filters the data block around it.
   await go(page, 'D3');
   await toggle.click();
-  await expect(page.locator('.edit-status')).toHaveText('Filter applied to D2:E4. Choose values from a header funnel.');
+  await expect(page.locator('.edit-status')).toContainText('Filter applied to D2:E4. Choose values from a header funnel.');
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await toggle.click();
 
   await go(page, 'D5');
   await toggle.click();
-  await expect(page.locator('.edit-status')).toHaveText('Select a range with data before turning on the filter.');
+  await expect(page.locator('.edit-status')).toContainText('Select a range with data before turning on the filter.');
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
 });
 

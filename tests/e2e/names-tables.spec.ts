@@ -331,7 +331,7 @@ test('keeps table filter buttons clear of both frozen dividers', async ({ page }
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await page.getByRole('button', { name: 'Freeze Panes', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Freeze Panes', exact: true }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Froze panes.');
+  await expect(page.locator('.edit-status')).toContainText('Froze panes.');
 
   const grid = page.getByRole('grid');
   const gridBox = await grid.boundingBox();

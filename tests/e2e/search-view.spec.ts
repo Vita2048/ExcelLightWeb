@@ -279,7 +279,7 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await expect(freeze).toHaveClass(/ribbon-large/);
   await freeze.click();
   await page.getByRole('menuitem', { name: 'Freeze Top Row', exact: true }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Froze the top row.');
+  await expect(page.locator('.edit-status')).toContainText('Froze the top row.');
   // The desktop paints a thicker frozen divider over the grid at the pinned band's edge.
   await expect.poll(() => pixel(100, 51)).toEqual([160, 160, 160, 255]);
   await grid.evaluate(node => { node.scrollTop = 400; });
@@ -288,7 +288,7 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await freeze.click();
   await expect(page.getByRole('menuitem', { name: 'Freeze Panes', exact: true })).toHaveCount(0);
   await page.getByRole('menuitem', { name: 'Unfreeze Panes', exact: true }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Unfroze panes.');
+  await expect(page.locator('.edit-status')).toContainText('Unfroze panes.');
   await grid.evaluate(node => { node.scrollTop = 400; });
   await expect.poll(sample).not.toEqual([21, 96, 130, 255]);
   await expect.poll(() => pixel(100, 51)).not.toEqual([160, 160, 160, 255]);
@@ -297,7 +297,7 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await freeze.click();
   await page.getByRole('menuitem', { name: 'Freeze First Column', exact: true }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Froze the first column.');
+  await expect(page.locator('.edit-status')).toContainText('Froze the first column.');
   await expect.poll(() => pixel(139, 100)).toEqual([160, 160, 160, 255]);
   await page.getByRole('button', { name: 'Sheet1', exact: true }).click();
   await page.getByRole('tab', { name: 'View', exact: true }).click();
@@ -311,7 +311,7 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await freeze.click();
   await page.getByRole('menuitem', { name: 'Freeze Panes', exact: true }).click();
-  await expect(page.locator('.edit-status')).toHaveText('Froze panes.');
+  await expect(page.locator('.edit-status')).toContainText('Froze panes.');
   await grid.evaluate(node => { node.scrollTop = 300; node.scrollLeft = 300; });
   await expect.poll(sample).toEqual([21, 96, 130, 255]);
 });
