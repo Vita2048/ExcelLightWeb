@@ -124,6 +124,12 @@ test('a checksum-complete runtime executes real Pyodide after reload with the br
   const sourceLine = page.locator('.python-editor .view-line').first();
   await sourceLine.click();
   await page.keyboard.insertText('42');
+  // Python editor text remains a local draft until selection changes; committing it creates the authored source command.
+  await name.fill('B1');
+  await name.press('Enter');
+  await name.fill('A1');
+  await name.press('Enter');
+  await expect(page.locator('.python-editor .view-lines')).toHaveText('42');
   await expect(page.locator('.python-scalar-result')).toHaveText('42', { timeout: 180_000 });
   expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(0);
   await expect(page.getByRole('dialog', { name: 'Run Python in this workbook?' })).toHaveCount(0);

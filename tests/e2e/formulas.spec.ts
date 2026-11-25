@@ -135,9 +135,13 @@ test('the production worker calculates a 1,000-formula chain and drops a reply s
     const probe: WorkerProbe = { urls: [], sent: [], finished: [], held: [], replaying: false };
     (window as unknown as ProbedWindow).probe = probe;
     const BrowserWorker = window.Worker;
+    const nativeWorkers = new WeakSet<Worker>();
     window.Worker = class extends BrowserWorker {
       constructor(url: URL | string, options?: WorkerOptions) {
         super(url, options);
+        const nativeWorker = String(url).includes('/native-calculation.worker-');
+        if (!nativeWorker) return;
+        nativeWorkers.add(this);
         probe.urls.push(String(url));
         this.addEventListener('message', event => {
           if (probe.replaying || event.data.kind !== 'native-calculated') return;
@@ -153,7 +157,7 @@ test('the production worker calculates a 1,000-formula chain and drops a reply s
       }
 
       postMessage(message: unknown) {
-        probe.sent.push(performance.now());
+        if (nativeWorkers.has(this)) probe.sent.push(performance.now());
         super.postMessage(message);
       }
     };
