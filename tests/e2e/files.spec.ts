@@ -213,8 +213,9 @@ test('uses the desktop File backstage and persists the Formulas calculation choi
   await expect(options.getByLabel('Office Theme')).toHaveCount(0);
   await expect(options.getByRole('heading', { name: 'Calculation options' })).toBeVisible();
   await expect(options.locator('.python-option-group input[name="python-calculation"]').first()).toBeEnabled();
-  await expect(options.getByText(/Automatic is a local preference for this browser/u)).toBeVisible();
+  await expect(options.getByText(/Automatic runs Python cells when a workbook opens/u)).toBeVisible();
   await expect(options.locator('input[name="native-calculation"][value="automatic"]')).toBeChecked();
+  await expect(options.locator('input[name="python-calculation"][value="automatic"]')).toBeChecked();
   await options.locator('input[name="native-calculation"][value="manual"]').check();
   await options.locator('input[name="python-calculation"][value="automatic"]').check();
   await options.getByRole('button', { name: 'OK' }).click();
@@ -533,7 +534,7 @@ test('migrates v1 local settings and retains workspaces', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Open recent Retained v1 workspace' })).toBeVisible();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   await expect(page.locator('input[name="native-calculation"][value="manual"]')).toBeChecked();
-  await expect(page.locator('input[name="python-calculation"]:checked')).toBeChecked();
+  await expect(page.locator('input[name="python-calculation"][value="manual"]')).toBeChecked();
 });
 
 test('aborts an invalid settings migration without deleting existing local data', async ({ page }) => {

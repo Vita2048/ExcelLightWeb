@@ -2,24 +2,28 @@ import { describe, expect, it, vi } from 'vitest';
 import { defaultWorkspacePreferences, LocalWorkspaceError, LocalWorkspaceStore, migrateLegacyPreferences, WorkspaceLease } from '../../src/persistence/local';
 
 describe('local workspace preference migration', () => {
-  it('starts in Automatic native mode while keeping Python automatic consent off', () => {
+  it('starts native and Python calculation in Automatic mode', () => {
     expect(defaultWorkspacePreferences.nativeCalculation).toBe('automatic');
-    expect(defaultWorkspacePreferences.pythonAutomaticConsent).toBe(false);
+    expect(defaultWorkspacePreferences.pythonCalculation).toBe('automatic');
   });
 
-  it('migrates the desktop settings fields without turning an absent Python choice on', () => {
+  it('migrates desktop settings fields with both calculation modes defaulting to Automatic', () => {
     const migrated = migrateLegacyPreferences({
       id: 'user', version: 1, manual: true, findHistory: ['SLA'], replacementHistory: ['Open'],
     });
     expect(migrated.nativeCalculation).toBe('manual');
-    expect(migrated.pythonAutomaticConsent).toBe(false);
+    expect(migrated.pythonCalculation).toBe('automatic');
     expect(migrated.searchHistory).toEqual({ find: ['SLA'], replace: ['Open'] });
     expect(migrated.view).toEqual(defaultWorkspacePreferences.view);
   });
 
-  it('preserves only an explicit stored Python Automatic choice', () => {
-    expect(migrateLegacyPreferences({ manual: false, pythonAutomatic: true }).pythonAutomaticConsent).toBe(true);
-    expect(migrateLegacyPreferences({ manual: false }).pythonAutomaticConsent).toBe(false);
+  it('migrates old Python Automatic consent and mode values', () => {
+    expect(migrateLegacyPreferences({ schemaVersion: 1, id: 'user', nativeCalculation: 'automatic',
+      pythonAutomaticConsent: true }).pythonCalculation).toBe('automatic');
+    expect(migrateLegacyPreferences({ schemaVersion: 1, id: 'user', nativeCalculation: 'automatic',
+      pythonAutomaticConsent: false }).pythonCalculation).toBe('automatic');
+    expect(migrateLegacyPreferences({ manual: false, pythonAutomatic: true }).pythonCalculation).toBe('automatic');
+    expect(migrateLegacyPreferences({ manual: false, pythonAutomatic: false }).pythonCalculation).toBe('manual');
   });
 
   it.each([

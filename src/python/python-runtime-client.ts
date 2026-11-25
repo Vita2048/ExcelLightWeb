@@ -20,7 +20,8 @@ export class PythonRuntimeClient {
   get isReady() { return !!this.worker && !!this.ready; }
 
   start(signal?: AbortSignal, onProgress?: (message: string) => void): Promise<string> {
-    if (this.ready) return this.ready;
+    if (signal?.aborted) return Promise.reject(new PythonRuntimeError('Python run stopped.', 'cancelled'));
+    if (this.ready) return waitForReady(this.ready, signal);
     const worker = new Worker(new URL('../workers/python-runtime.worker.ts', import.meta.url), { type: 'module' });
     this.worker = worker;
     this.workerGeneration++;
@@ -38,7 +39,7 @@ export class PythonRuntimeClient {
       this.terminate(error instanceof PythonRuntimeError ? error : new PythonRuntimeError(message(error), 'workerExited'));
       throw error;
     });
-    return this.ready;
+    return waitForReady(this.ready, signal);
   }
 
   async run(source: string, input: PythonRuntimeInput, signal?: AbortSignal, timeoutMs = 30_000,
@@ -48,6 +49,7 @@ export class PythonRuntimeClient {
   }> {
     if (new TextEncoder().encode(source).length > 1024 * 1024) throw new PythonRuntimeError('Source exceeds 1 MiB.');
     const runtimeFingerprint = await this.start(signal, onProgress);
+    if (signal?.aborted) throw new PythonRuntimeError('Python run stopped.', 'cancelled');
     onProgress?.('Running Python calculation…');
     const worker = this.worker;
     if (!worker) throw new PythonRuntimeError('Python runtime is stopped.', 'workerExited');
@@ -164,4 +166,22 @@ export class PythonRuntimeClient {
 
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function waitForReady(ready: Promise<string>, signal?: AbortSignal): Promise<string> {
+  if (!signal) return ready;
+  if (signal.aborted) return Promise.reject(new PythonRuntimeError('Python run stopped.', 'cancelled'));
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error?: unknown, value?: string) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', abort);
+      if (error !== undefined) reject(error);
+      else resolve(value!);
+    };
+    const abort = () => finish(new PythonRuntimeError('Python run stopped.', 'cancelled'));
+    signal.addEventListener('abort', abort, { once: true });
+    ready.then(value => finish(undefined, value), error => finish(error));
+  });
 }

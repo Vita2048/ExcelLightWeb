@@ -20,11 +20,10 @@ export interface PersistedView {
 }
 
 export interface LocalWorkspacePreferences {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly id: typeof preferencesKey;
   readonly nativeCalculation: 'automatic' | 'manual';
-  /** Remains opt-in; loading a workbook never enables Python execution. */
-  readonly pythonAutomaticConsent: boolean;
+  readonly pythonCalculation: 'automatic' | 'manual';
   readonly view: PersistedView;
   readonly searchHistory: { readonly find: readonly string[]; readonly replace: readonly string[] };
   readonly searchLook: SearchLook;
@@ -88,10 +87,10 @@ export class WorkspaceConflictError extends LocalWorkspaceError {
 }
 
 export const defaultWorkspacePreferences: LocalWorkspacePreferences = Object.freeze({
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: preferencesKey,
   nativeCalculation: 'automatic',
-  pythonAutomaticConsent: false,
+  pythonCalculation: 'automatic',
   view: Object.freeze({ zoom: 100, headings: true, gridlines: true, formulaBar: true, showFormulas: false }),
   searchHistory: Object.freeze({ find: Object.freeze([]), replace: Object.freeze([]) }),
   searchLook: 'values',
@@ -109,33 +108,47 @@ function validHistory(value: unknown): value is readonly string[] {
 export function migrateLegacyPreferences(value: unknown): LocalWorkspacePreferences {
   if (value === undefined) return defaultWorkspacePreferences;
   if (!isRecord(value)) throw new LocalWorkspaceError('Local settings are malformed; existing workspace data was kept.');
+  if (value.schemaVersion === 2) return validatePreferences(value);
 
   const nativeCalculation = value.nativeCalculation ?? (value.manual === true ? 'manual' :
     value.manual === false || value.manual === undefined ? 'automatic' : undefined);
   if (nativeCalculation !== 'automatic' && nativeCalculation !== 'manual') {
     throw new LocalWorkspaceError('Local calculation preference is invalid; existing workspace data was kept.');
   }
-  const pythonAutomaticConsent = value.pythonAutomaticConsent ?? value.pythonAutomatic ?? false;
-  if (typeof pythonAutomaticConsent !== 'boolean') {
+  // Older records stored an explicit consent bit, not a calculation mode. A false consent bit
+  // was also the old default, so migrate those records to the new Automatic default.
+  const legacyPythonChoice = value.pythonAutomatic;
+  if (legacyPythonChoice !== undefined && typeof legacyPythonChoice !== 'boolean') {
     throw new LocalWorkspaceError('Local Python preference is invalid; existing workspace data was kept.');
   }
-  const find = value.findHistory ?? [];
-  const replace = value.replacementHistory ?? [];
+  if (value.pythonAutomaticConsent !== undefined && typeof value.pythonAutomaticConsent !== 'boolean') {
+    throw new LocalWorkspaceError('Local Python preference is invalid; existing workspace data was kept.');
+  }
+  const pythonCalculation = value.pythonCalculation ?? (legacyPythonChoice === false ? 'manual' :
+    legacyPythonChoice === true ? 'automatic' : 'automatic');
+  if (pythonCalculation !== 'automatic' && pythonCalculation !== 'manual') {
+    throw new LocalWorkspaceError('Local Python preference is invalid; existing workspace data was kept.');
+  }
+  const oldSearchHistory = isRecord(value.searchHistory) ? value.searchHistory : undefined;
+  const find = oldSearchHistory?.find ?? value.findHistory ?? [];
+  const replace = oldSearchHistory?.replace ?? value.replacementHistory ?? [];
   if (!validHistory(find) || !validHistory(replace)) {
     throw new LocalWorkspaceError('Local search history is invalid; existing workspace data was kept.');
   }
-  return {
+  return validatePreferences({
     ...defaultWorkspacePreferences,
     nativeCalculation,
-    pythonAutomaticConsent,
+    pythonCalculation,
+    view: value.view ?? defaultWorkspacePreferences.view,
     searchHistory: { find, replace },
-  };
+    searchLook: value.searchLook ?? defaultWorkspacePreferences.searchLook,
+  });
 }
 
 function validatePreferences(value: unknown): LocalWorkspacePreferences {
-  if (!isRecord(value) || value.schemaVersion !== 1 || value.id !== preferencesKey ||
+  if (!isRecord(value) || value.schemaVersion !== 2 || value.id !== preferencesKey ||
       (value.nativeCalculation !== 'automatic' && value.nativeCalculation !== 'manual') ||
-      typeof value.pythonAutomaticConsent !== 'boolean' ||
+      (value.pythonCalculation !== 'automatic' && value.pythonCalculation !== 'manual') ||
       (value.searchLook !== 'values' && value.searchLook !== 'formulas') || !isRecord(value.view) ||
       !Number.isInteger(value.view.zoom) || (value.view.zoom as number) < 10 || (value.view.zoom as number) > 400 ||
       typeof value.view.headings !== 'boolean' || typeof value.view.gridlines !== 'boolean' ||
@@ -246,7 +259,7 @@ export class LocalWorkspaceStore {
     const done = transactionDone(transaction);
     const value = await requestResult(transaction.objectStore('preferences').get(preferencesKey));
     await done;
-    return value === undefined ? defaultWorkspacePreferences : validatePreferences(value);
+    return migrateLegacyPreferences(value);
   }
 
   async savePreferences(value: LocalWorkspacePreferences): Promise<void> {

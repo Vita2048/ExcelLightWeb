@@ -193,7 +193,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [replacementPrompt, setReplacementPrompt] = useState(false);
   const replacementResolver = useRef<((choice: ReplacementChoice) => void) | undefined>(undefined);
   const [optionsOpen, setOptionsOpen] = useState(false);
-  const optionsResolver = useRef<((options: { readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean } | null) => void) | undefined>(undefined);
+  const optionsResolver = useRef<((options: { readonly nativeCalculation: CalculationMode; readonly pythonCalculation: CalculationMode } | null) => void) | undefined>(undefined);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [saveNamePurpose, setSaveNamePurpose] = useState<'browser-save' | 'local-save-as'>('local-save-as');
   const saveAsResolver = useRef<((name: string | null) => void) | undefined>(undefined);
@@ -418,8 +418,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }, [localStore, preferences, preferencesReady]);
 
   useEffect(() => {
-    if (preferencesReady) pythonExecution.setAutomatic(preferences.pythonAutomaticConsent);
-  }, [preferencesReady, preferences.pythonAutomaticConsent, pythonExecution.setAutomatic]);
+    if (preferencesReady) pythonExecution.setAutomatic(preferences.pythonCalculation === 'automatic');
+  }, [preferencesReady, preferences.pythonCalculation, pythonExecution.setAutomatic]);
 
   useEffect(() => {
     if (!preferencesReady || preferences.view === view) return;
@@ -515,14 +515,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     resolve?.(name);
   }
 
-  function askOptions(): Promise<{ readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean } | null> {
+  function askOptions(): Promise<{ readonly nativeCalculation: CalculationMode; readonly pythonCalculation: CalculationMode } | null> {
     return new Promise(resolve => {
       optionsResolver.current = resolve;
       setOptionsOpen(true);
     });
   }
 
-  function finishOptions(options: { readonly nativeCalculation: CalculationMode; readonly pythonAutomaticConsent: boolean } | null) {
+  function finishOptions(options: { readonly nativeCalculation: CalculationMode; readonly pythonCalculation: CalculationMode } | null) {
     const resolve = optionsResolver.current;
     optionsResolver.current = undefined;
     setOptionsOpen(false);
@@ -954,7 +954,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const options = await askOptions();
       if (options) {
         scheduler.current?.setMode(options.nativeCalculation);
-        pythonExecution.setAutomatic(options.pythonAutomaticConsent);
+        pythonExecution.setAutomatic(options.pythonCalculation === 'automatic');
         setPreferences(current => ({ ...current, ...options }));
         setFileStatus('Calculation preferences saved.');
       }
@@ -2552,7 +2552,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
               placingFigure={!!pythonBlock && pendingFigureOwner === pythonBlock.id}
               {...(panelFigureStatus && { figureStatus: panelFigureStatus })}
               onDraft={python.receiveDraft} onPickable={python.setPickable}
-              automatic={preferences.pythonAutomaticConsent} onHide={hidePython} onRun={requestPythonRun}
+              automatic={preferences.pythonCalculation === 'automatic'} onHide={hidePython} onRun={requestPythonRun}
               onRunAll={requestPythonRunAll} onStop={pythonExecution.stop}
               onCopy={() => { void copyPythonResult(); }} onInsertValues={insertPythonValues}
               onPlaceFigure={requestFigurePlacement} onSaveImage={() => { void saveFigureImage(); }}

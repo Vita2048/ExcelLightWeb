@@ -28,6 +28,7 @@ export function usePythonExecution(session: WorkbookSession, locale: string,
     const instance = new MixedPythonScheduler(session, locale, setState,
       snapshot => callbacks.current.onSnapshot(snapshot), paused => callbacks.current.pauseNative(paused));
     scheduler.current = instance;
+    void instance.preloadRuntime();
     return () => {
       instance.dispose();
       if (scheduler.current === instance) scheduler.current = undefined;

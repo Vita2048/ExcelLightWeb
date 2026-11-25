@@ -204,7 +204,7 @@ export const PythonPanel = forwardRef<PythonEditorHandle, PythonPanelProps>(func
         onSaveImage={props.onSaveImage} onRebuildFigure={props.onRebuildFigure} />}
       <div className="python-panel-footer">
         {!props.context && <span className="python-status" role="status">{props.status}</span>}
-        <span className="python-note">{props.automatic ? 'Automatic runs after relevant edits and when a workbook is opened, using this browser’s saved consent.' :
+        <span className="python-note">{props.automatic ? 'Automatic runs Python cells when a workbook opens and after relevant edits.' :
           'Manual runs only when you choose Run. Opening a workbook never executes its Python source.'}</span>
       </div>
     </aside>

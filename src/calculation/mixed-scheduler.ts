@@ -76,9 +76,11 @@ export class MixedPythonScheduler {
   #automatic = false;
   #timer: ReturnType<typeof setTimeout> | undefined;
   #queued = new Set<string>();
+  #queuedForced = new Set<string>();
   #controller: AbortController | undefined;
   #nativeWorker: NativePassClient | undefined;
   #activeRoots: Set<string> | undefined;
+  #activeForced = new Set<string>();
   #activeAutomatic = false;
   #serial = 0;
   #displayId: string | undefined;
@@ -92,12 +94,19 @@ export class MixedPythonScheduler {
     this.#graph = new MixedGraph(this.#observed);
   }
 
+  /** Loads the pinned runtime and calculation packages without running workbook Python. */
+  preloadRuntime(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
+    return this.#runtime.start().then(() => undefined, () => undefined);
+  }
+
   changed(compound: boolean): boolean {
     if (this.#disposed) return false;
     const current = this.session.active;
     const before = this.#observed;
     const coalescing = this.#timer !== undefined || this.#controller !== undefined;
     const priorAutomaticRoots = this.#activeAutomatic ? this.#activeRoots : undefined;
+    const priorAutomaticForced = this.#activeAutomatic ? new Set(this.#activeForced) : undefined;
     this.#observed = current;
     this.#graph = new MixedGraph(current);
     const affected = this.#graph.affectedPython(before, current);
@@ -106,6 +115,7 @@ export class MixedPythonScheduler {
         this.#cancel(false);
         if (priorAutomaticRoots?.size && this.#automatic) {
           this.#queued = new Set([...this.#queued, ...priorAutomaticRoots]);
+          this.#queuedForced = new Set([...this.#queuedForced, ...(priorAutomaticForced ?? [])]);
           this.pauseNative(true);
           this.#schedule(true);
           return true;
@@ -122,6 +132,7 @@ export class MixedPythonScheduler {
       return false;
     }
     this.#queued = new Set([...this.#queued, ...affected, ...(priorAutomaticRoots ?? [])]);
+    this.#queuedForced = new Set([...this.#queuedForced, ...(priorAutomaticForced ?? [])]);
     this.pauseNative(true);
     this.#schedule(compound || coalescing);
     return true;
@@ -133,6 +144,7 @@ export class MixedPythonScheduler {
     if (!automatic) {
       this.#cancel(true);
       this.#queued.clear();
+      this.#queuedForced.clear();
       this.pauseNative(false);
       this.publish({ key: '', running: false, stdout: '', stderr: '', outputTruncated: false,
         message: 'Manual · Run Python to refresh results.' });
@@ -143,6 +155,7 @@ export class MixedPythonScheduler {
     const all = pythonIds(this.#observed);
     if (all.length) {
       this.#queued = new Set(all);
+      this.#queuedForced = new Set(all);
       this.pauseNative(true);
       this.#schedule(true);
     }
@@ -154,6 +167,7 @@ export class MixedPythonScheduler {
     this.#graph = new MixedGraph(this.#observed);
     if (this.#automatic) {
       this.#queued = new Set(pythonIds(this.#observed));
+      this.#queuedForced = new Set(this.#queued);
       if (this.#queued.size) { this.pauseNative(true); this.#schedule(true); }
     } else this.publish({ key: '', running: false, stdout: '', stderr: '', outputTruncated: false,
       message: 'Manual · opening a workbook never runs Python.' });
@@ -162,6 +176,7 @@ export class MixedPythonScheduler {
   historyRestored() {
     this.#cancel(true);
     this.#queued.clear();
+    this.#queuedForced.clear();
     this.#observed = this.session.active;
     this.#graph = new MixedGraph(this.#observed);
     this.pauseNative(false);
@@ -211,6 +226,7 @@ export class MixedPythonScheduler {
   stop() {
     this.#cancel(true);
     this.#queued.clear();
+    this.#queuedForced.clear();
     this.pauseNative(false);
     this.publish({ key: this.#displayId ? targetKey(this.session.active, this.#displayId) ?? '' : '', running: false,
       stdout: '', stderr: '', outputTruncated: false, message: 'Python run stopped.' });
@@ -231,8 +247,10 @@ export class MixedPythonScheduler {
     this.#timer = setTimeout(() => {
       this.#timer = undefined;
       const roots = new Set(this.#queued);
+      const forced = new Set([...this.#queuedForced].filter(id => roots.has(id)));
       this.#queued.clear();
-      void this.#run(roots, new Set(), true);
+      this.#queuedForced.clear();
+      void this.#run(roots, forced, true);
     }, delay);
     this.publish({ key: targetKey(this.session.active, [...this.#queued][0]) ?? '', running: false,
       stdout: '', stderr: '', outputTruncated: false, message: 'Automatic · Python refresh queued.' });
@@ -247,6 +265,7 @@ export class MixedPythonScheduler {
     this.#nativeWorker?.dispose();
     this.#nativeWorker = undefined;
     this.#activeRoots = undefined;
+    this.#activeForced.clear();
     this.#activeAutomatic = false;
     if (publishStopped && !this.#disposed) this.publish({ key: '', running: false, stdout: '', stderr: '',
       outputTruncated: false, message: 'Python stopped.' });
@@ -262,6 +281,7 @@ export class MixedPythonScheduler {
     const controller = new AbortController();
     this.#controller = controller;
     this.#activeRoots = new Set(roots);
+    this.#activeForced = new Set(forced);
     this.#activeAutomatic = automatic;
     this.#displayId = displayId;
     let stdout = '', stderr = '', outputTruncated = false;
@@ -374,6 +394,7 @@ export class MixedPythonScheduler {
       if (serial === this.#serial) {
         this.#controller = undefined;
         this.#activeRoots = undefined;
+        this.#activeForced.clear();
         this.#activeAutomatic = false;
         this.pauseNative(false);
       }

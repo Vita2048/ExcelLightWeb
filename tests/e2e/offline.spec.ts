@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { observePythonRuntime, readPythonRuntimeTrace, waitForPythonRuntime } from './python-runtime-observer';
 
 const appPath = '/ExcelLightWeb/';
 
@@ -90,6 +91,7 @@ test('a checksum-complete runtime executes real Pyodide after reload with the br
   test.setTimeout(480_000);
   const origin = new URL(test.info().project.use.baseURL as string).origin;
   const external: string[] = [];
+  await observePythonRuntime(page);
   page.on('request', request => {
     const url = request.url();
     if (url.startsWith('http') && new URL(url).origin !== origin) external.push(url);
@@ -108,6 +110,7 @@ test('a checksum-complete runtime executes real Pyodide after reload with the br
   await page.context().setOffline(true);
   await page.reload();
   await expect(page.getByRole('grid')).toBeVisible();
+  await waitForPythonRuntime(page);
   const offlineButton = page.getByRole('button', { name: 'Offline' });
   await expect(offlineButton).toBeVisible();
   await offlineButton.click();
@@ -121,10 +124,9 @@ test('a checksum-complete runtime executes real Pyodide after reload with the br
   const sourceLine = page.locator('.python-editor .view-line').first();
   await sourceLine.click();
   await page.keyboard.insertText('42');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Run Python in this workbook?' })
-    .getByRole('button', { name: 'Trust this session and Run' }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Python run completed.' })).toBeVisible({ timeout: 180_000 });
+  await expect(page.locator('.python-scalar-result')).toHaveText('42', { timeout: 180_000 });
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(0);
+  await expect(page.getByRole('dialog', { name: 'Run Python in this workbook?' })).toHaveCount(0);
   await expect(page.locator('.python-scalar-result')).toHaveText('42');
   expect(external).toEqual([]);
 });

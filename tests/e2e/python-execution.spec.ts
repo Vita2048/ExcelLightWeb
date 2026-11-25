@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { observePythonRuntime, readPythonRuntimeTrace, waitForPythonRuntime } from './python-runtime-observer';
 
 const path = '/ExcelLightWeb/';
 
@@ -22,20 +23,27 @@ async function replacePythonSource(page: Page, text: string) {
   await page.keyboard.insertText(text);
 }
 
-test('runs local Python only on consent, rejects occupied spills and inserts a successful table as values', async ({ page, browserName }) => {
+test('preloads Python without running workbook code and keeps explicit Manual Run consent', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'The full real-Pyodide journey runs in Chromium via npm run test:python-execution.');
   test.setTimeout(900_000);
   const origin = new URL(test.info().project.use.baseURL as string).origin;
-  const runtimeRequests: string[] = [];
   const externalRequests: string[] = [];
+  await observePythonRuntime(page);
   page.on('request', request => {
     const url = request.url();
-    if (url.includes('/runtime/pyodide/')) runtimeRequests.push(url);
     if (!url.startsWith(origin) && !url.startsWith('blob:') && !url.startsWith('data:')) externalRequests.push(url);
   });
 
   await page.goto(path);
   await page.getByRole('grid').waitFor();
+  await waitForPythonRuntime(page);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBe(0);
+  await page.getByRole('tab', { name: 'File' }).click();
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  const options = page.getByRole('dialog', { name: 'Excel-Lite Options' });
+  await options.locator('input[name="python-calculation"][value="manual"]').check();
+  await options.getByRole('button', { name: 'OK' }).click();
+  await page.getByRole('button', { name: /Back/u }).click();
   await enter(page, 'B1', '5');
   await enter(page, 'B2', '8');
   await enter(page, 'D2', '99');
@@ -43,7 +51,7 @@ test('runs local Python only on consent, rejects occupied spills and inserts a s
   await go(page, 'D1');
   await expect(page.locator('.python-panel')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeEnabled();
-  await expect.poll(() => runtimeRequests).toHaveLength(0);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBe(0);
 
   await page.getByRole('group', { name: 'Quick Access' }).getByRole('button', { name: 'Save', exact: true }).click();
   const nameDialog = page.getByRole('dialog', { name: 'Save to this browser' });
@@ -53,26 +61,27 @@ test('runs local Python only on consent, rejects occupied spills and inserts a s
   await expect(page.locator('.status-bar [role="status"]')).toContainText('Saved to this browser as Python execution.');
   await page.reload();
   await page.getByRole('grid').waitFor();
+  await waitForPythonRuntime(page);
   await page.getByRole('tab', { name: 'File' }).click();
   await page.getByRole('button', { name: 'Open recent Python execution' }).click();
   await expect(page.locator('.status-bar [role="status"]')).toContainText('Opened Python execution.');
   await go(page, 'D1');
   await expect(page.locator('.python-editor .view-lines')).toHaveText('');
-  expect(runtimeRequests).toHaveLength(0);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBe(0);
   await replacePythonSource(page, '42');
 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   const prompt = page.getByRole('dialog', { name: 'Run Python in this workbook?' });
   await expect(prompt).toBeVisible();
   await prompt.getByRole('button', { name: 'Cancel' }).click();
-  expect(runtimeRequests).toHaveLength(0);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBe(0);
 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await page.getByRole('dialog', { name: 'Run Python in this workbook?' })
     .getByRole('button', { name: 'Trust this session and Run' }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Python run completed.' })).toBeVisible({ timeout: 420_000 });
   await expect(page.locator('.python-scalar-result')).toHaveText('42');
-  expect(runtimeRequests.length).toBeGreaterThan(0);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(0);
 
   await replacePythonSource(page, 'xl("B1:B2")');
   await page.getByRole('button', { name: 'Run', exact: true }).click();

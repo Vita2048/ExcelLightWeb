@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { observePythonRuntime, readPythonRuntimeTrace, waitForPythonRuntime } from './python-runtime-observer';
 
 const appPath = '/ExcelLightWeb/';
 
@@ -25,11 +26,21 @@ async function replacePythonSource(page: Page, source: string) {
   await page.keyboard.insertText(source);
 }
 
-test('runs a mixed dependency chain atomically and schedules only after local Automatic consent', async ({ page, browserName }) => {
+test('defaults Python to Automatic, recalculates opened workbooks and preserves Manual mode', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'The mixed Pyodide runtime journey runs in Chromium.');
   test.setTimeout(900_000);
+  await observePythonRuntime(page);
   await page.goto(appPath);
   await page.getByRole('grid').waitFor();
+  await waitForPythonRuntime(page);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBe(0);
+  await page.getByRole('tab', { name: 'File' }).click();
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  const defaultOptions = page.getByRole('dialog', { name: 'Excel-Lite Options' });
+  await expect(defaultOptions.locator('input[name="native-calculation"][value="automatic"]')).toBeChecked();
+  await expect(defaultOptions.locator('input[name="python-calculation"][value="automatic"]')).toBeChecked();
+  await defaultOptions.getByRole('button', { name: 'Cancel' }).click();
+  await page.getByRole('button', { name: /Back/u }).click();
   await enter(page, 'A1', '4');
   await enter(page, 'B1', '=A1*2');
   await enter(page, 'C1', '=PY');
@@ -38,22 +49,13 @@ test('runs a mixed dependency chain atomically and schedules only after local Au
   await replacePythonSource(page, 'xl("B1") + 1');
   await enter(page, 'D1', '=C1*2');
   await go(page, 'C1');
-
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
-  await page.getByRole('dialog', { name: 'Run Python in this workbook?' })
-    .getByRole('button', { name: 'Run once' }).click();
-  await expect(page.locator('.python-run-controls [role="status"]')).toHaveText('Python run completed.', { timeout: 420_000 });
+  await expect(page.locator('.python-scalar-result')).toHaveText('9', { timeout: 420_000 });
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(0);
+  await expect(page.getByRole('dialog', { name: 'Run Python in this workbook?' })).toHaveCount(0);
   await expect(page.locator('.python-scalar-result')).toHaveText('9');
   await expect(page.getByRole('gridcell', { name: 'D1, 18', exact: true })).toBeAttached();
 
-  // One Undo removes the mixed Python/formula result generation but keeps authored source.
-  await page.getByRole('group', { name: 'Quick Access' }).getByRole('button', { name: 'Undo' }).click();
-  await expect(page.locator('.python-empty-result')).toHaveText('Run Python to see its result.');
-  await expect(page.locator('.python-editor .view-lines')).toHaveText('xl("B1") + 1');
-  await page.getByRole('group', { name: 'Quick Access' }).getByRole('button', { name: 'Redo' }).click();
-  await expect(page.locator('.python-scalar-result')).toHaveText('9');
-
-  // The browser-local Automatic choice is consent; the next edit runs the mixed chain.
+  // Automatic mode recalculates a mixed chain after edits.
   await page.getByRole('tab', { name: 'File' }).click();
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   const options = page.getByRole('dialog', { name: 'Excel-Lite Options' });
@@ -91,12 +93,15 @@ test('runs a mixed dependency chain atomically and schedules only after local Au
   const automaticOptions = page.getByRole('dialog', { name: 'Excel-Lite Options' });
   await automaticOptions.locator('input[name="python-calculation"][value="automatic"]').check();
   await automaticOptions.getByRole('button', { name: 'OK' }).click();
+  const runsBeforeReopen = (await readPythonRuntimeTrace(page)).runRequests;
   await page.getByRole('button', { name: 'Open recent Mixed Automatic Stale' }).click();
   await expect(page.locator('.status-bar [role="status"]')).toContainText('Opened Mixed Automatic Stale.');
   await expect(page.locator('.workbook-title')).toHaveText('Mixed Automatic Stale');
   await go(page, 'C1');
   await expect(page.getByRole('grid')).toHaveAttribute('aria-activedescendant', /-C1$/u);
   await expect(page.locator('.python-scalar-result')).toHaveText('13', { timeout: 120_000 });
+  await expect.poll(async () => (await readPythonRuntimeTrace(page)).runRequests, { timeout: 120_000 })
+    .toBeGreaterThan(runsBeforeReopen);
   await expect(page.getByRole('gridcell', { name: 'D1, 26', exact: true })).toBeAttached();
   await expect(page.getByRole('dialog', { name: 'Run Python in this workbook?' })).toHaveCount(0);
 });

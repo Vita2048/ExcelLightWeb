@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
+import { observePythonRuntime, readPythonRuntimeTrace, waitForPythonRuntime } from './python-runtime-observer';
 
 const appPath = '/ExcelLightWeb/';
 const salesFixture = fileURLToPath(new URL('../fixtures/sales/Showcase.exlt', import.meta.url));
@@ -50,6 +51,15 @@ async function runOnce(page: Page, anchor: string) {
   }
 }
 
+async function waitForAutomaticPython(page: Page, sheet: string, anchor: string) {
+  await page.getByRole('button', { name: sheet, exact: true }).click();
+  const name = page.getByRole('textbox', { name: 'Name box' });
+  await name.fill(anchor);
+  await name.press('Enter');
+  await expect(page.locator('.python-run-controls [role="status"]'))
+    .toHaveText('Automatic · Python results are current.', { timeout: 420_000 });
+}
+
 async function cellLabel(page: Page, address: string) {
   const name = page.getByRole('textbox', { name: 'Name box' });
   await name.fill(address);
@@ -98,22 +108,24 @@ async function placeOnDashboard(page: Page, sourceLabel: string) {
 test('runs the edited Sales showcase spill and refreshes its native KPI', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'S22 showcase chains execute the real Pyodide worker in Chromium.');
   test.setTimeout(480_000);
-  const runtimeRequests: string[] = [];
-  page.on('request', request => {
-    if (request.url().includes('/runtime/pyodide/')) runtimeRequests.push(request.url());
-  });
+  await observePythonRuntime(page);
 
   await disableFileSystemPickers(page);
   await page.goto(appPath);
   await page.getByRole('grid').waitFor();
+  await waitForPythonRuntime(page);
   await openFixture(page, salesFixture, 'Showcase');
-  expect(runtimeRequests).toEqual([]);
+  await waitForAutomaticPython(page, 'Sales Analysis', 'A3');
+  const initialRuns = (await readPythonRuntimeTrace(page)).runRequests;
+  expect(initialRuns).toBeGreaterThan(0);
 
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
   const initialRevenue = await cellLabel(page, 'A4');
   await page.getByRole('button', { name: 'Sales', exact: true }).click();
   await enter(page, 'D4', '6');
-  expect(runtimeRequests).toEqual([]);
+  await expect.poll(async () => (await readPythonRuntimeTrace(page)).runRequests, { timeout: 120_000 })
+    .toBeGreaterThan(initialRuns);
+  await waitForAutomaticPython(page, 'Sales Analysis', 'A3');
 
   await page.getByRole('button', { name: 'Sales Analysis', exact: true }).click();
   await runOnce(page, 'A3');
@@ -128,15 +140,12 @@ test('runs the edited Sales showcase spill and refreshes its native KPI', async 
   await runOnce(page, 'E22');
   expect(await cellLabel(page, 'E22')).toContain('[plot]');
   await placeOnDashboard(page, 'Charts!E22');
-  expect(runtimeRequests.length).toBeGreaterThan(0);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(initialRuns);
 });
 
-test('both showcases keep an edit and their saved Python results across a browser save and reload', async ({ page }) => {
+test('both showcases calculate on open and keep edits across a browser save and reload', async ({ page }) => {
   test.setTimeout(240_000);
-  const runtimeRequests: string[] = [];
-  page.on('request', request => {
-    if (request.url().includes('/runtime/pyodide/')) runtimeRequests.push(request.url());
-  });
+  await observePythonRuntime(page);
   await disableFileSystemPickers(page);
 
   for (const [fixture, title, sheet, kpi] of [
@@ -145,7 +154,10 @@ test('both showcases keep an edit and their saved Python results across a browse
   ] as const) {
     await page.goto(appPath);
     await page.getByRole('grid').waitFor();
+    await waitForPythonRuntime(page);
     await openFixture(page, fixture, title);
+    await waitForAutomaticPython(page, title === 'Showcase' ? 'Sales Analysis' : 'Analysis',
+      title === 'Showcase' ? 'A3' : 'B6');
     await page.getByRole('button', { name: sheet, exact: true }).click();
     const savedKpi = await cellLabel(page, kpi);
     await enter(page, 'Z60', 'Reviewed in the browser');
@@ -174,15 +186,18 @@ test('both showcases keep an edit and their saved Python results across a browse
 
     await page.reload();
     await page.getByRole('grid').waitFor();
+    await waitForPythonRuntime(page);
     await page.getByRole('tab', { name: 'File' }).click();
     await page.getByRole('button', { name: 'Open recent ' + title, exact: true }).click();
     await expect(page.locator('.workbook-title')).toHaveText(title);
+    await waitForAutomaticPython(page, title === 'Showcase' ? 'Sales Analysis' : 'Analysis',
+      title === 'Showcase' ? 'A3' : 'B6');
     await page.getByRole('button', { name: sheet, exact: true }).click();
     // Navigate to the edited cell so the bounded accessible projection mounts it.
     expect(await cellLabel(page, 'Z60')).toBe('Z60, Reviewed in the browser');
-    // Saved Python caches and Figures are restored without executing workbook code.
+    // The saved workbook is reopened in Automatic mode and its Python code recalculates.
     expect(await cellLabel(page, kpi)).toBe(savedKpi);
-    expect(runtimeRequests).toEqual([]);
+    expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(0);
     await page.getByRole('tab', { name: 'File' }).click();
     await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Close', exact: true }).click();
   }
@@ -191,20 +206,24 @@ test('both showcases keep an edit and their saved Python results across a browse
 test('runs the edited SLA showcase spill and refreshes its native breach KPI', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'S22 showcase chains execute the real Pyodide worker in Chromium.');
   test.setTimeout(480_000);
-  const runtimeRequests: string[] = [];
-  page.on('request', request => {
-    if (request.url().includes('/runtime/pyodide/')) runtimeRequests.push(request.url());
-  });
+  await observePythonRuntime(page);
 
   await disableFileSystemPickers(page);
   await page.goto(appPath);
   await page.getByRole('grid').waitFor();
+  const runtime = await waitForPythonRuntime(page);
+  expect(runtime.progressMessages.some(message => message.includes('Loading NumPy (1 of 3)'))).toBe(true);
+  expect(runtime.progressMessages.some(message => message.includes('Loading pandas (2 of 3)'))).toBe(true);
+  expect(runtime.progressMessages.some(message => message.includes('Loading Matplotlib (3 of 3)'))).toBe(true);
   await openFixture(page, slaFixture, 'Support-SLA');
-  expect(runtimeRequests).toEqual([]);
+  await waitForAutomaticPython(page, 'Analysis', 'B6');
 
   await page.getByRole('button', { name: 'Dashboard', exact: true }).click();
+  const runsBeforeEdit = (await readPythonRuntimeTrace(page)).runRequests;
   await enter(page, 'P9', '2');
-  expect(runtimeRequests).toEqual([]);
+  await expect.poll(async () => (await readPythonRuntimeTrace(page)).runRequests, { timeout: 120_000 })
+    .toBeGreaterThan(runsBeforeEdit);
+  await waitForAutomaticPython(page, 'Analysis', 'B6');
   const initialRate = await cellLabel(page, 'E6');
   await page.getByRole('button', { name: 'Analysis', exact: true }).click();
   await page.evaluate(() => {
@@ -226,9 +245,6 @@ test('runs the edited SLA showcase spill and refreshes its native breach KPI', a
   const progress = await page.evaluate(() => (window as Window & { calculationProgressProbe?: {
     messages: string[]; sawCalculatingCell: boolean;
   } }).calculationProgressProbe);
-  expect(progress?.messages.some(message => message.includes('Loading NumPy (1 of 3)'))).toBe(true);
-  expect(progress?.messages.some(message => message.includes('Loading pandas (2 of 3)'))).toBe(true);
-  expect(progress?.messages.some(message => message.includes('Loading Matplotlib (3 of 3)'))).toBe(true);
   expect(progress?.messages.some(message => message.includes('Calculating Analysis!B6'))).toBe(true);
   expect(progress?.sawCalculatingCell).toBe(true);
   await page.evaluate(() => (window as Window & { calculationProgressObserver?: MutationObserver })
@@ -243,5 +259,5 @@ test('runs the edited SLA showcase spill and refreshes its native breach KPI', a
   await runOnce(page, 'B52');
   expect(await cellLabel(page, 'B52')).toContain('[plot]');
   await placeOnDashboard(page, 'Analysis!B52');
-  expect(runtimeRequests.length).toBeGreaterThan(0);
+  expect((await readPythonRuntimeTrace(page)).runRequests).toBeGreaterThan(runsBeforeEdit);
 });
