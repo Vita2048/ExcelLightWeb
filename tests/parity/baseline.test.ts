@@ -6,21 +6,19 @@ import manifest from '../fixtures/manifest.json';
 import sales from '../fixtures/sales/Expected-values.json';
 import sla from '../fixtures/sla/Expected-values.json';
 import formula from '../fixtures/formulas/Expected-values.json';
-import source from '../../docs/source-baseline/source-manifest.json';
 
-const fixtureRoot = new URL('../fixtures/', import.meta.url);
-const baselineRoot = new URL('../../docs/source-baseline/', import.meta.url);
+const repoRoot = new URL('../../', import.meta.url);
 
 function sha256(bytes: Buffer): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-describe('desktop baseline assets', () => {
+describe('fixture integrity and provenance', () => {
   it('preserves exact fixture bytes and provenance across checkouts', () => {
     expect(new Set(manifest.files.map(file => file.path)).size).toBe(manifest.files.length);
     expect(manifest.files.length).toBeGreaterThan(0);
     for (const file of manifest.files) {
-      const bytes = readFileSync(new URL(file.path, fixtureRoot));
+      const bytes = readFileSync(new URL(file.path, repoRoot));
       expect(bytes.length, file.path).toBe(file.bytes);
       expect(sha256(bytes), file.path).toBe(file.sha256);
       expect(file.sourcePath, file.path).toBeTruthy();
@@ -28,17 +26,8 @@ describe('desktop baseline assets', () => {
     }
   });
 
-  it('preserves frozen desktop source snapshots', () => {
-    const snapshots = source.files.filter(file => file.snapshot !== undefined);
-    expect(snapshots.length).toBeGreaterThan(0);
-    for (const file of snapshots) {
-      const bytes = readFileSync(new URL(file.snapshot!, baselineRoot));
-      expect(sha256(bytes), file.path).toBe(file.sha256);
-    }
-  });
-
   it('loads independent sales expectations tied to the source XLSX', () => {
-    expect(sales.source_sha256).toBe(sha256(readFileSync(new URL('sales/showcase_data.xlsx', fixtureRoot))));
+    expect(sales.source_sha256).toBe(sha256(readFileSync(new URL('tests/fixtures/sales/showcase_data.xlsx', repoRoot))));
     const coordinates = sales.cells.map(({ sheet, row, column }) => JSON.stringify([sheet, row, column]));
     expect(coordinates).toHaveLength(342);
     expect(new Set(coordinates).size).toBe(coordinates.length);
@@ -46,7 +35,7 @@ describe('desktop baseline assets', () => {
   });
 
   it('loads SLA inputs, exact baseline KPIs and the P2 edit expectations', () => {
-    expect(sla.workbookSha256).toBe(sha256(readFileSync(new URL('sla/Support-SLA.exlt', fixtureRoot))));
+    expect(sla.workbookSha256).toBe(sha256(readFileSync(new URL('docs/showcase/Support-SLA.exlt', repoRoot))));
     expect(sla.scenarios.map(scenario => scenario.p2TargetHours)).toEqual([4, 2]);
     expect(sla.scenarios.map(scenario => scenario.kpis.opened)).toEqual([610, 610]);
     expect(sla.scenarios.map(scenario => scenario.kpis.open)).toEqual([8, 8]);

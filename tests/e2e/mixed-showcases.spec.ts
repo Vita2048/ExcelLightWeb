@@ -3,8 +3,8 @@ import { fileURLToPath } from 'node:url';
 import { observePythonRuntime, readPythonRuntimeTrace, waitForPythonRuntime } from './python-runtime-observer';
 
 const appPath = '/ExcelLightWeb/';
-const salesFixture = fileURLToPath(new URL('../fixtures/sales/Showcase.exlt', import.meta.url));
-const slaFixture = fileURLToPath(new URL('../fixtures/sla/Support-SLA.exlt', import.meta.url));
+const salesFixture = fileURLToPath(new URL('../../docs/showcase/Showcase.exlt', import.meta.url));
+const slaFixture = fileURLToPath(new URL('../../docs/showcase/Support-SLA.exlt', import.meta.url));
 
 test.afterEach(async ({ page }) => {
   if (!page.isClosed()) await page.close({ runBeforeUnload: false });

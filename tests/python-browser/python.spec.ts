@@ -67,7 +67,7 @@ function script(data: Fixture, key: string): string {
 
 test('executes all six unmodified sales scripts with the fixture snapshots', async ({ page }) => {
   const unexpected = await start(page);
-  const sales = fixture('sales/Showcase.exlt');
+  const sales = fixture('docs/showcase/Showcase.exlt');
   const locations = [
     ['Sales Analysis', 3, 1], ['Rankings', 3, 1], ['Rankings', 3, 5], ['Charts', 3, 1],
   ] as const;
@@ -97,7 +97,7 @@ test('executes all six unmodified sales scripts with the fixture snapshots', asy
 
 test('executes the unchanged SLA analysis and charts for both scenarios', async ({ page }) => {
   const unexpected = await start(page);
-  const sla = fixture('sla/Support-SLA.exlt');
+  const sla = fixture('docs/showcase/Support-SLA.exlt');
   for (const [path, key] of [['analysis', 'Analysis!6:2'], ['trend', 'Analysis!52:2'], ['heatmap', 'Analysis!53:2']] as const) {
     const file = readFileSync(new URL(`../fixtures/sla/${path}.py`, import.meta.url), 'utf8');
     expect(script(sla, key).replaceAll('\r\n', '\n').trimEnd()).toBe(file.replaceAll('\r\n', '\n').trimEnd());
@@ -188,7 +188,7 @@ test('reports cold runtime startup and warm sales-script runs', async ({ page })
   const coldStart = performance.now();
   const unexpected = await start(page);
   const coldMs = performance.now() - coldStart;
-  const sales = fixture('sales/Showcase.exlt');
+  const sales = fixture('docs/showcase/Showcase.exlt');
   const source = script(sales, 'Sales Analysis!3:1');
   const warm: number[] = [];
   for (let index = 0; index < 20; index++) {
@@ -205,7 +205,7 @@ test('reports cold runtime startup and warm sales-script runs', async ({ page })
   };
   await test.info().attach('python-timings', { body: JSON.stringify(measurement, null, 2), contentType: 'application/json' });
   mkdirSync('test-results/performance', { recursive: true });
-  writeFileSync('test-results/performance/S25-python-timings.json', JSON.stringify(measurement, null, 2) + '\n');
+  writeFileSync('test-results/performance/python-timings.json', JSON.stringify(measurement, null, 2) + '\n');
   expect(unexpected).toEqual([]);
 });
 

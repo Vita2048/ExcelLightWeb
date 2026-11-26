@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
 const appPath = '/ExcelLightWeb/';
-const nativeFixture = fileURLToPath(new URL('../fixtures/sales/Showcase.exlt', import.meta.url));
+const nativeFixture = fileURLToPath(new URL('../../docs/showcase/Showcase.exlt', import.meta.url));
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', dialog => { void dialog.accept(); });

@@ -1,8 +1,4 @@
-import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { BlobWriter, TextReader, ZipWriter } from '@zip.js/zip.js';
 import { WorkbookSession } from '../../src/application/workbook-session';
@@ -17,20 +13,7 @@ import {
   SaveFault,
 } from '../../src/persistence/native';
 
-const readFixture = async (name: string) => new Blob([await readFile(new URL(`../fixtures/${name}`, import.meta.url))]);
-const desktopBin = process.env.DESKTOP_BIN ? resolve(process.env.DESKTOP_BIN) : process.platform === 'win32' ?
-  'C:/Temp/ExcelLight/tests/ExcelLite.Tests/bin/Release/net10.0' : undefined;
-const desktopInteropAvailable = !!desktopBin &&
-  ['ExcelLite.Core.dll', 'ExcelLite.Persistence.dll'].every(name => existsSync(join(desktopBin, name)));
-const desktopIt = desktopInteropAvailable ? it : it.skip;
-const runDesktopInterop = (args: string[], timeout = 120000) => execFileSync('dotnet', [
-  'run', '--project', 'tests/desktop-interchange/Interchange.csproj',
-  ...(desktopBin ? [`-p:DesktopBin=${desktopBin}`] : []), '--', ...args,
-], {
-  encoding: 'utf-8',
-  timeout,
-  env: { ...process.env, DOTNET_CLI_TELEMETRY_OPTOUT: '1', DOTNET_NOLOGO: '1' },
-});
+const readFixture = async (name: string) => new Blob([await readFile(new URL(`../../${name}`, import.meta.url))]);
 
 function storedZip(entries: readonly (readonly [string, string])[]): Blob {
   const encoder = new TextEncoder();
@@ -98,11 +81,11 @@ function storedZip(entries: readonly (readonly [string, string])[]): Blob {
   return new Blob(parts, { type: 'application/zip' });
 }
 
-describe('NativePackage round-trip and desktop equivalence', () => {
+describe('NativePackage round-trip', () => {
   it.each([
-    'interchange/DesktopStyles.exlt',
-    'sales/Showcase.exlt',
-    'sla/Support-SLA.exlt',
+    'tests/fixtures/interchange/DesktopStyles.exlt',
+    'docs/showcase/Showcase.exlt',
+    'docs/showcase/Support-SLA.exlt',
   ])('round-trips all JSON parts, styles, and Python metadata from %s', async fixtureName => {
     const originalBlob = await readFixture(fixtureName);
     const doc = await NativePackage.load(originalBlob);
@@ -120,60 +103,8 @@ describe('NativePackage round-trip and desktop equivalence', () => {
     expect(equalDto(doc, reloaded)).toBe(true);
   });
 
-  desktopIt('proves desktop C# NativePackage.Load accepts web-saved DesktopStyles.exlt', async () => {
-    const originalBlob = await readFixture('interchange/DesktopStyles.exlt');
-    const doc = await loadNativePackage(originalBlob);
-    const savedBlob = await saveNativePackage(doc);
-
-    const tempDir = await mkdtemp(join(tmpdir(), 'exlt-interchange-'));
-    try {
-      const bytes = new Uint8Array(await savedBlob.arrayBuffer());
-      await writeFile(join(tempDir, 'DesktopStyles.exlt'), bytes);
-
-      // Also copy DesktopStyles.xlsx for the full interchange check
-      const xlsxBlob = await readFixture('interchange/DesktopStyles.xlsx');
-      await writeFile(join(tempDir, 'DesktopStyles.xlsx'), new Uint8Array(await xlsxBlob.arrayBuffer()));
-
-      const output = runDesktopInterop([
-        'check',
-        tempDir,
-      ]);
-
-      expect(output).toContain('Desktop native equality and XLSX style reimport passed.');
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  }, 120000);
-
-  desktopIt('compares every native field with the desktop after web round-trips of representative fixtures', async () => {
-    const fixtureNames = [
-      'interchange/DesktopStyles.exlt',
-      'sales/Showcase.exlt',
-      'sla/Support-SLA.exlt',
-    ];
-    const tempDir = await mkdtemp(join(tmpdir(), 'exlt-desktop-equality-'));
-    try {
-      const args = ['compare'];
-      for (const [index, fixtureName] of fixtureNames.entries()) {
-        const originalBlob = await readFixture(fixtureName);
-        const original = await loadNativePackage(originalBlob);
-        const rewritten = await saveNativePackage(original);
-        const originalPath = join(tempDir, `original-${index}.exlt`);
-        const rewrittenPath = join(tempDir, `rewritten-${index}.exlt`);
-        await writeFile(originalPath, new Uint8Array(await originalBlob.arrayBuffer()));
-        await writeFile(rewrittenPath, new Uint8Array(await rewritten.arrayBuffer()));
-        args.push(originalPath, rewrittenPath);
-      }
-
-      const output = runDesktopInterop(args);
-      expect(output).toContain('Desktop native round-trip equality passed for 3 fixtures.');
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  }, 120000);
-
   it('keeps formula source and its derived cache distinct in the native package', async () => {
-    const original = await loadNativePackage(await readFixture('sales/Showcase.exlt'));
+    const original = await loadNativePackage(await readFixture('docs/showcase/Showcase.exlt'));
     const formula = original.sheets.flatMap(sheet => sheet.cells)
       .find(cell => cell.content.kind === 'formula' && cell.cache !== undefined);
     expect(formula?.content.kind).toBe('formula');
@@ -188,7 +119,7 @@ describe('NativePackage round-trip and desktop equivalence', () => {
   });
 
   it('preserves empty text, caches, styles, and distinct missing cells', async () => {
-    const originalBlob = await readFixture('interchange/DesktopStyles.exlt');
+    const originalBlob = await readFixture('tests/fixtures/interchange/DesktopStyles.exlt');
     const doc = await loadNativePackage(originalBlob);
     const sheet = doc.sheets[0]!;
 
@@ -502,7 +433,7 @@ describe('NativePackage hostile rejection and budget enforcement', () => {
 
 describe('WorkbookSession adoption and save safety', () => {
   it('preserves existing session document on failed package parse', async () => {
-    const initialBlob = await readFixture('interchange/DesktopStyles.exlt');
+    const initialBlob = await readFixture('tests/fixtures/interchange/DesktopStyles.exlt');
     const doc = await loadNativePackage(initialBlob);
 
     const session = new WorkbookSession(doc, { makeId: () => crypto.randomUUID() });
@@ -522,7 +453,7 @@ describe('WorkbookSession adoption and save safety', () => {
   });
 
   it('enforces atomic save safety with fault injection', async () => {
-    const doc = await loadNativePackage(await readFixture('interchange/DesktopStyles.exlt'));
+    const doc = await loadNativePackage(await readFixture('tests/fixtures/interchange/DesktopStyles.exlt'));
 
     await expect(saveNativePackage(doc, { fault: SaveFault.DuringWrite })).rejects.toThrow('Injected write failure.');
 

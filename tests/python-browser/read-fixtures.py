@@ -5,7 +5,7 @@ import json
 import sys
 from zipfile import ZipFile
 
-ROOT = Path(__file__).resolve().parents[1] / "fixtures"
+ROOT = Path(__file__).resolve().parents[2]
 EXCEL_EPOCH = datetime(1899, 12, 30)
 
 
@@ -56,7 +56,7 @@ def load_fixture(path):
             rows.append(values)
         snapshots[table["Name"] + "[#Data]"] = {"headers": headers, "rows": rows}
 
-    if path.startswith("sla/"):
+    if "Support-SLA" in path:
         by_name = dict(sheets.values())
         snapshots["Dashboard!P4"] = {"value": iso(by_name["Dashboard"][4, 16])}
         analysis = by_name["Analysis"]

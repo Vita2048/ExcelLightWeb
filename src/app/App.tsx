@@ -78,7 +78,7 @@ const defaultSelection = singleSelection();
 const defaultView: SheetView = { zoom: 100, headings: true, gridlines: true, formulaBar: true, showFormulas: false };
 const statisticsFormat = new Intl.NumberFormat('en-US', { maximumSignificantDigits: 10, useGrouping: false });
 const makeId = () => crypto.randomUUID();
-const supportSlaTemplateUrl = new URL('../../tests/fixtures/sla/Support-SLA.exlt', import.meta.url).href;
+const supportSlaTemplateUrl = new URL('../../docs/showcase/Support-SLA.exlt', import.meta.url).href;
 async function acquireRecoveryLease(lease: WorkspaceLease, workbookId: string): Promise<boolean> {
   // A reload can race the previous page's asynchronous pagehide lease release.
   // Give that transaction time to commit while still refusing a workbook held by another tab.

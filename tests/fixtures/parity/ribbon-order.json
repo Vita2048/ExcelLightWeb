@@ -1,6 +1,6 @@
 {
   "captured": "2026-11-23",
-  "source": "docs/source-baseline/snapshots/docs/Menu-Structure.md and docs/source-baseline/Command-Inventory.md (desktop baseline)",
+  "source": "Desktop ExcelLight Menu-Structure.md and ribbon command inventory, captured during the port",
   "usage": "Cross-browser ribbon group, command and flyout order assertions. Command order comes from the captured desktop menus; iconlessItems records rows omitted from the current web glyph map.",
   "tabs": ["File", "Home", "Insert", "Formulas", "Data", "View"],
   "panels": {

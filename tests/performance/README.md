@@ -10,4 +10,4 @@ Run `npm run test:performance`. The separate `vitest.performance.config.ts` keep
 | Fixed dependency chain | 1,000-formula chain (`A2:A1000` plus `SUM`) | warm recalculation p50/p95 for the Development under-500 ms target |
 | Browser responsiveness | production build, playlist of typing and scrolling interactions on a populated worksheet | typing/selection p95 and dropped scroll frames in `tests/e2e/performance.spec.ts` |
 
-Results are written to `test-results/performance/*.json` (ignored by Git) and reported in `docs/handovers/S25.md` with the recorded machine. A measurement on different hardware is not a substitute for the recorded baseline: re-run and record the new environment instead of comparing unlabelled numbers.
+Results are written to `test-results/performance/*.json` (ignored by Git). The recorded reference measurements and their machines are summarized in [Development](../../docs/Development.md#cross-browser-parity-and-performance). A measurement on different hardware is not a substitute for the recorded baseline: re-run and record the new environment instead of comparing unlabelled numbers.

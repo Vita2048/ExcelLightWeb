@@ -6,9 +6,9 @@ import { ExpansionBudget, probeZipBudget, readProbeParts, visitZip, writeProbePa
 import { freezeSplit, openNativeProbe } from '../../src/persistence/native-probe';
 import { rewriteXlsxProbe, roundTripStyles } from '../../src/persistence/xlsx-style-probe';
 
-const readFixture = async (name: string) => new Blob([await readFile(new URL(`../fixtures/${name}`, import.meta.url))]);
+const readFixture = async (name: string) => new Blob([await readFile(new URL(`../../${name}`, import.meta.url))]);
 
-it.each(['sales/Showcase.exlt', 'sla/Support-SLA.exlt', 'interchange/DesktopStyles.exlt'])(
+it.each(['docs/showcase/Showcase.exlt', 'docs/showcase/Support-SLA.exlt', 'tests/fixtures/interchange/DesktopStyles.exlt'])(
   'round-trips all JSON parts and identities from %s', async name => {
     const original = await readFixture(name);
     const workbook = await openNativeProbe(original);
@@ -33,7 +33,7 @@ it.each(['sales/Showcase.exlt', 'sla/Support-SLA.exlt', 'interchange/DesktopStyl
 );
 
 it('reads legacy and extended freeze fields and rejects invalid coordinates', async () => {
-  const workbook = await openNativeProbe(await readFixture('interchange/DesktopStyles.exlt'));
+  const workbook = await openNativeProbe(await readFixture('tests/fixtures/interchange/DesktopStyles.exlt'));
   expect(workbook.sheets[0]).toMatchObject({ id: 'b71420c7-ad56-4000-8000-000000000001', freeze: [1, 0] });
   expect(freezeSplit('firstColumn')).toEqual([0, 1]);
   expect(freezeSplit({ rows: 2, columns: 3 })).toEqual([2, 3]);
@@ -42,7 +42,7 @@ it('reads legacy and extended freeze fields and rejects invalid coordinates', as
 });
 
 it('rejects future native versions and mismatched workbook GUIDs', async () => {
-  const parts = await readProbeParts(await readFixture('interchange/DesktopStyles.exlt'));
+  const parts = await readProbeParts(await readFixture('tests/fixtures/interchange/DesktopStyles.exlt'));
   const original = new TextDecoder().decode(parts.get('manifest.json'));
   const manifest = JSON.parse(original);
   const setManifest = (value: object) => parts.set('manifest.json', new TextEncoder().encode(JSON.stringify(value)));
@@ -84,7 +84,7 @@ it('enforces the byte budget on real decoded data even with understated ZIP meta
 });
 
 it('preserves extended styles from a desktop XLSX across ZIP and OOXML serialization', async () => {
-  const fixture = await readFixture('interchange/DesktopStyles.xlsx');
+  const fixture = await readFixture('tests/fixtures/interchange/DesktopStyles.xlsx');
   const output = await rewriteXlsxProbe(fixture);
   expect(output.borders).toContainEqual({
     up: true, down: true,

@@ -1,16 +1,23 @@
 # ExcelLight Web
 
-Browser-only port of `C:\Temp\ExcelLight` with a dark UI and GitHub Pages hosting. The current build opens a blank workbook with a virtual worksheet, inline and formula-bar editing, clipboard commands, Fill, Clear, and AutoSum. It also supports sheet management, cell shifts, and row and column sizing. File handling and in-workbook Python execution are scheduled for later sprints.
+Browser-only port of the ExcelLight desktop workbook application: React and Canvas in a dark-only shell, with workbook model, calculation, file adapters and Python all running in the browser. It ships as static files on GitHub Pages with no application backend, telemetry or cloud workbook storage.
 
-## Start here
+Live site: <https://vita2048.github.io/ExcelLightWeb/>
 
-- [Implementation plan and sprint sequence](docs/Implementation-Plan.md)
-- [Architecture and technology decisions](docs/Architecture.md)
-- [Feature parity matrix](docs/Feature-Parity.md)
-- [Development and test strategy](docs/Development.md)
-- [GitHub deployment](docs/Deployment.md)
-- [Sprint handover template](docs/templates/Sprint-Handover.md)
-- [Agent instructions](AGENTS.md)
+Implemented behavior includes the File backstage (New, Open, Save, Save As, Export, Close, Recent and local recovery), worksheet editing with clipboard, Fill, Clear and AutoSum, sheet and axis structure edits, the 31-function native calculator with Automatic/Manual modes, number formats, fonts, fills, borders, alignment and merges, workbook names and tables, sort and filter with SUBTOTAL, Find/Replace, zoom and freeze panes, native `.exlt` and reviewed XLSX import/export, browser-local Python through Pyodide with `=PY` anchors, spills and Matplotlib figure placements, and offline runtime caching with a user-controlled update flow.
+
+## Documentation
+
+- [Architecture](docs/Architecture.md): components, contracts and browser adaptations.
+- [Features](docs/Features.md): the implemented behavior inventory with test evidence.
+- [Development](docs/Development.md): commands, test layers and performance budgets.
+- [Deployment](docs/Deployment.md): GitHub Pages publishing and runtime packaging.
+- [Known issues](docs/Known-Issues.md): open limitations and unverified checks.
+- [Runtime dependencies](docs/dependencies.md): pinned Python packages and notices.
+- [ADR-003](docs/decisions/ADR-003-formula-and-file-adapters.md): formula and file adapter decisions.
+- [Agent instructions](AGENTS.md).
+
+The two sample workbooks are in [docs/showcase](docs/showcase). Only `Support-SLA.exlt` is bundled in the production build.
 
 ## Local commands
 
@@ -25,10 +32,4 @@ npm run test:e2e
 npm run test:worksheet
 ```
 
-`test:e2e` requires the production build from `check`. It starts and stops its own local static server. `npm run preview` serves the production build for manual inspection. No backend, database service, API keys, or cloud account is needed for local development.
-
-## Agent starting prompt
-
-> For the next approved sprint, read AGENTS.md, the architecture, parity, development and deployment docs, and the latest handover. Implement the approved sprint, run its acceptance checks, update the parity matrix, and write its handover.
-
-The latest handover covers worksheet structure and dimensions. [S07 handover](docs/handovers/S07.md)
+`npm run check` runs the model and app typechecks, the Vitest suites and the production build. `test:e2e` serves the existing `dist`, so run `check` or `build` first. `npm run preview` serves the production build for manual inspection. No backend, database service, API keys or cloud account is needed for local development.

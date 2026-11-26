@@ -2,13 +2,6 @@ node_modules/
 dist/
 coverage/
 test-results/
-tests/desktop-interchange/obj/
-tests/desktop-formulas/obj/
-tests/desktop-formats/obj/
-tests/desktop-appearance/obj/
-tests/desktop-borders/obj/
-tests/desktop-alignment/obj/
-tests/desktop-xlsx/obj/
 playwright-report/
 .env*
 !.env.example
