@@ -33,6 +33,7 @@
       "sha256": "6a4e1258701b2be5c72bb14e710bbf92edc6f279f1241ac386313fb258d98c02",
       "bytes": 403579,
       "purpose": "Synthetic SLA tickets, workbook links and saved charts",
+      "rights": "Authored for this repository by the project owner; no third-party redistribution rights apply to this bundled example.",
       "expectedValues": "sla/Expected-values.json"
     },
     {

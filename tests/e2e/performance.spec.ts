@@ -189,6 +189,10 @@ test('scrolling the A1:Z1000 projection sustains animation frames', async ({ pag
   // renders in software at 2x device pixels, so its frame time is recorded as an environment
   // limitation with a stall ceiling instead of an accelerated-Safari claim.
   const ceiling = browserName === 'webkit' ? 350 : 60;
+  // Print the cadence so every local and CI run records the numbers behind the
+  // environment ceiling, instead of leaving only a pass/fail behind.
+  console.log(`[scroll] ${browserName} ${metrics.frames} frames: p50 ${metrics.p50} ms, p95 ${metrics.p95} ms, ` +
+    `max ${metrics.max} ms, idle p95 ${metrics.idleP95} ms, ${metrics.stalls} stalls; ceiling ${ceiling} ms`);
   expect(metrics.p95, `scroll p95 ${metrics.p95.toFixed(1)} ms; idle p95 ${metrics.idleP95.toFixed(1)} ms`).toBeLessThan(ceiling);
   expect(metrics.max, 'no frame blocks for half a second').toBeLessThan(500);
 });
