@@ -62,7 +62,7 @@ Use one slice as one sprint. S01 freezes the observable baseline; S02/S03 retire
 
 ```text
 ExcelLightWeb/
-  .github/workflows/      # CI and manually triggered Pages release
+  .github/workflows/      # CI and Pages deployment on main pushes
   config/                # build/deployment configuration helpers
   docs/
     Architecture.md      # decisions, contracts, browser adaptations
