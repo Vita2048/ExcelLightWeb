@@ -1,0 +1,1160 @@
+{
+    "id":  "shaping-excel",
+    "sourceSpec":  "tests/fixtures/formulas/specs/shaping.spec.json",
+    "excelVersion":  "16.0",
+    "excelBuild":  "17932",
+    "capturedAt":  "2026-11-27T13:33:36.7421256+01:00",
+    "cells":  [
+                  [
+                      1,
+                      1,
+                      "b"
+                  ],
+                  [
+                      1,
+                      2,
+                      20
+                  ],
+                  [
+                      1,
+                      3,
+                      "east"
+                  ],
+                  [
+                      2,
+                      1,
+                      "a"
+                  ],
+                  [
+                      2,
+                      2,
+                      10
+                  ],
+                  [
+                      2,
+                      3,
+                      "west"
+                  ],
+                  [
+                      3,
+                      1,
+                      "c"
+                  ],
+                  [
+                      3,
+                      2,
+                      30
+                  ],
+                  [
+                      3,
+                      3,
+                      "east"
+                  ],
+                  [
+                      4,
+                      1,
+                      "a"
+                  ],
+                  [
+                      4,
+                      2,
+                      10
+                  ],
+                  [
+                      4,
+                      3,
+                      "west"
+                  ],
+                  [
+                      5,
+                      1,
+                      "d"
+                  ],
+                  [
+                      5,
+                      2,
+                      10
+                  ],
+                  [
+                      5,
+                      3,
+                      "north"
+                  ]
+              ],
+    "other":  [
+
+              ],
+    "cases":  [
+                  {
+                      "expression":  "=FILTER(A1:B5,C1:C5=\"east\")",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=FILTER(A1:B5,A1:A5=\"zzz\",\"none\")",
+                      "kind":  "text",
+                      "value":  "none"
+                  },
+                  {
+                      "expression":  "=FILTER(A1:B5,A1:A5=\"zzz\")",
+                      "kind":  "error",
+                      "value":  "#CALC!"
+                  },
+                  {
+                      "expression":  "=SORT(A1:C5,2,-1)",
+                      "kind":  "array",
+                      "rows":  5,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "north"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=SORT({3,1,2},,,TRUE)",
+                      "kind":  "array",
+                      "rows":  1,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=SORT(A1:C5,10)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=SORTBY(A1:C5,B1:B5,1,A1:A5,-1)",
+                      "kind":  "array",
+                      "rows":  5,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "north"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=SORTBY(A1:C5,B1:B2,1)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=UNIQUE(A1:B5)",
+                      "kind":  "array",
+                      "rows":  4,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=UNIQUE(A1:A5,,TRUE)",
+                      "kind":  "array",
+                      "rows":  3,
+                      "columns":  1,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=UNIQUE({\"x\";\"x\"},,TRUE)",
+                      "kind":  "error",
+                      "value":  "#CALC!"
+                  },
+                  {
+                      "expression":  "=SEQUENCE(2,3,10,5)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "15"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "25"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "35"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=SEQUENCE(0)",
+                      "kind":  "error",
+                      "value":  "#CALC!"
+                  },
+                  {
+                      "expression":  "=SEQUENCE(-1)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=RANDARRAY(2,2,7,7,TRUE)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "7"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "7"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "7"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "7"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=AND(RANDARRAY(3,2)\u003e=0,RANDARRAY(3,2)\u003c1)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=RANDARRAY(0)",
+                      "kind":  "error",
+                      "value":  "#CALC!"
+                  },
+                  {
+                      "expression":  "=VSTACK({1,2},{3,4,5})",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "error",
+                                             "value":  "#N/A"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "5"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=IF(ROWS(VSTACK(1,2))=2,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=HSTACK({1;2},{3,4})",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "error",
+                                             "value":  "#N/A"
+                                         },
+                                         {
+                                             "kind":  "error",
+                                             "value":  "#N/A"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=IF(COLUMNS(HSTACK(1,2))=2,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=TOROW({1,2;3,4})",
+                      "kind":  "array",
+                      "rows":  1,
+                      "columns":  4,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TOROW({1,\"\";3,4},1,TRUE)",
+                      "kind":  "array",
+                      "rows":  1,
+                      "columns":  4,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  ""
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TOROW(A1:B2,9)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=TOCOL({1,2;3,4},0,TRUE)",
+                      "kind":  "array",
+                      "rows":  4,
+                      "columns":  1,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TOCOL({1,2;3,4},9)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=WRAPROWS({1,2,3,4,5},2,\"x\")",
+                      "kind":  "array",
+                      "rows":  3,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "5"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "x"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=WRAPROWS({1,2,3},2)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "error",
+                                             "value":  "#N/A"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=WRAPROWS({1,2},0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=WRAPCOLS({1,2,3,4,5},2,\"x\")",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "5"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "x"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=WRAPCOLS({1,2},0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=TAKE(A1:C5,2,2)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TAKE(A1:C5,-2,-1)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  1,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "north"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TAKE(A1:C5,0)",
+                      "kind":  "error",
+                      "value":  "#CALC!"
+                  },
+                  {
+                      "expression":  "=DROP(A1:C5,2,1)",
+                      "kind":  "array",
+                      "rows":  3,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "north"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=DROP(A1:C5,-2,-1)",
+                      "kind":  "array",
+                      "rows":  3,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "30"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=DROP(A1:C5,5)",
+                      "kind":  "error",
+                      "value":  "#CALC!"
+                  },
+                  {
+                      "expression":  "=CHOOSEROWS(A1:C5,1,-1,2)",
+                      "kind":  "array",
+                      "rows":  3,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "20"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "north"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=CHOOSEROWS(A1:C5,10)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=CHOOSECOLS(A1:C5,3,1)",
+                      "kind":  "array",
+                      "rows":  5,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "east"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "west"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "north"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=CHOOSECOLS(A1:C5,0)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=EXPAND({1,2;3,4},3,3,\".\")",
+                      "kind":  "array",
+                      "rows":  3,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "."
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "."
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "."
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "."
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "."
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=EXPAND({1,2;3,4},1,2)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=TEXTSPLIT(\"a,b;c,d,e\",\",\",\";\")",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  3,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         },
+                                         {
+                                             "kind":  "error",
+                                             "value":  "#N/A"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "d"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "e"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TEXTSPLIT(\"a,,b;c\",\",\",\";\",TRUE,0,\"-\")",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "a"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "b"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "c"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "-"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TEXTSPLIT(\"A x B\",\" X \",,FALSE,1)",
+                      "kind":  "array",
+                      "rows":  1,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "text",
+                                             "value":  "A"
+                                         },
+                                         {
+                                             "kind":  "text",
+                                             "value":  "B"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=TEXTSPLIT(\"abc\",\"\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  }
+              ]
+}

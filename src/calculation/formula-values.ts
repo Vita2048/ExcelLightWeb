@@ -29,7 +29,7 @@ export type FormulaValue = Scalar | readonly Range[] | FormulaArray | FormulaOmi
 
 export const omitted: FormulaOmitted = Object.freeze({ kind: 'omitted' });
 export const error = (value: FormulaError['value']): FormulaError => ({ kind: 'error', value });
-export const isError = (value: FormulaValue): value is FormulaError =>
+export const isError = (value: unknown): value is FormulaError =>
   typeof value === 'object' && value !== null && !Array.isArray(value) && 'kind' in value && value.kind === 'error';
 export const isRange = (value: FormulaValue): value is readonly Range[] => Array.isArray(value);
 export const isArray = (value: FormulaValue): value is FormulaArray =>

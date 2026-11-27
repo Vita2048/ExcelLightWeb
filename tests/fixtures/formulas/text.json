@@ -1,0 +1,329 @@
+{
+    "id":  "text-excel",
+    "sourceSpec":  "tests/fixtures/formulas/specs/text.spec.json",
+    "excelVersion":  "16.0",
+    "excelBuild":  "17932",
+    "capturedAt":  "2026-11-27T14:04:55.1683590+01:00",
+    "cells":  [
+                  [
+                      1,
+                      1,
+                      "hello"
+                  ],
+                  [
+                      1,
+                      2,
+                      "world"
+                  ]
+              ],
+    "other":  [
+
+              ],
+    "cases":  [
+                  {
+                      "expression":  "=CONCAT(A1:B1,\"!\")",
+                      "kind":  "text",
+                      "value":  "helloworld!"
+                  },
+                  {
+                      "expression":  "=CONCAT(\"a\",1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=CONCATENATE(\"hi\",\" \",\"there\")",
+                      "kind":  "text",
+                      "value":  "hi there"
+                  },
+                  {
+                      "expression":  "=CONCATENATE(\"hi\",1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=TEXTJOIN(\"-\",TRUE,\"a\",\"\",\"b\",5)",
+                      "kind":  "text",
+                      "value":  "a-b-5"
+                  },
+                  {
+                      "expression":  "=TEXTJOIN(\"-\",FALSE,\"a\",\"\",\"b\")",
+                      "kind":  "text",
+                      "value":  "a--b"
+                  },
+                  {
+                      "expression":  "=TEXTJOIN(\"-\",TRUE,1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=TEXT(1234.6,\"0\")",
+                      "kind":  "text",
+                      "value":  "1235"
+                  },
+                  {
+                      "expression":  "=TEXT(45306,\"dd-mm\")",
+                      "kind":  "text",
+                      "value":  "15-01"
+                  },
+                  {
+                      "expression":  "=TEXT(1/0,\"0\")",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=VALUE(\"12,50\")",
+                      "kind":  "number",
+                      "value":  "12.5"
+                  },
+                  {
+                      "expression":  "=VALUE(\"50%\")",
+                      "kind":  "number",
+                      "value":  "0.5"
+                  },
+                  {
+                      "expression":  "=VALUE(\"notnum\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=NUMBERVALUE(\"1 234,56\",\",\",\" \")",
+                      "kind":  "number",
+                      "value":  "1234.5599999999999"
+                  },
+                  {
+                      "expression":  "=NUMBERVALUE(\"25%%\")",
+                      "kind":  "number",
+                      "value":  "0.0025000000000000001"
+                  },
+                  {
+                      "expression":  "=NUMBERVALUE(\"abc\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=FIND(\"n\",\"banana\",4)",
+                      "kind":  "number",
+                      "value":  "5"
+                  },
+                  {
+                      "expression":  "=FIND(\"Z\",\"banana\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=SEARCH(\"N*a\",\"banana\")",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=SEARCH(\"z\",\"banana\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=SUBSTITUTE(\"foo bar foo\",\"foo\",\"baz\",2)",
+                      "kind":  "text",
+                      "value":  "foo bar baz"
+                  },
+                  {
+                      "expression":  "=SUBSTITUTE(\"foo\",\"f\",\"b\",0)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=REPLACE(\"abcdef\",3,2,\"ZZ\")",
+                      "kind":  "text",
+                      "value":  "abZZef"
+                  },
+                  {
+                      "expression":  "=REPLACE(\"abc\",0,1,\"x\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=REPT(\"ab\",3)",
+                      "kind":  "text",
+                      "value":  "ababab"
+                  },
+                  {
+                      "expression":  "=REPT(\"ab\",-1)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=PROPER(\"hello WORLD 2go\")",
+                      "kind":  "text",
+                      "value":  "Hello World 2Go"
+                  },
+                  {
+                      "expression":  "=PROPER(1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=EXACT(\"Abc\",\"abc\")",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=EXACT(\"Abc\",\"Abc\")",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=EXACT(1/0,\"a\")",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=LEN(CLEAN(\"a\"\u0026CHAR(10)\u0026\"b\"))",
+                      "kind":  "number",
+                      "value":  "2"
+                  },
+                  {
+                      "expression":  "=CLEAN(1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=CHAR(65)",
+                      "kind":  "text",
+                      "value":  "A"
+                  },
+                  {
+                      "expression":  "=CHAR(128)",
+                      "kind":  "text",
+                      "value":  "€"
+                  },
+                  {
+                      "expression":  "=CHAR(0)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=CODE(\"Alphabet\")",
+                      "kind":  "number",
+                      "value":  "65"
+                  },
+                  {
+                      "expression":  "=CODE(\"\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=UNICODE(\"A\")",
+                      "kind":  "number",
+                      "value":  "65"
+                  },
+                  {
+                      "expression":  "=UNICODE(\"\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=UNICHAR(937)",
+                      "kind":  "text",
+                      "value":  "Ω"
+                  },
+                  {
+                      "expression":  "=UNICHAR(0)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=T(\"hello\")",
+                      "kind":  "text",
+                      "value":  "hello"
+                  },
+                  {
+                      "expression":  "=T(123)",
+                      "kind":  "text",
+                      "value":  ""
+                  },
+                  {
+                      "expression":  "=T(1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=TEXTBEFORE(\"a-b-c\",\"-\",-1)",
+                      "kind":  "text",
+                      "value":  "a-b"
+                  },
+                  {
+                      "expression":  "=TEXTBEFORE(\"abc\",\"-\",1)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=TEXTAFTER(\"a-b-c\",\"-\",2)",
+                      "kind":  "text",
+                      "value":  "c"
+                  },
+                  {
+                      "expression":  "=TEXTAFTER(\"abc\",\"-\",1)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=VALUETOTEXT(\"hi\",1)",
+                      "kind":  "text",
+                      "value":  "\"hi\""
+                  },
+                  {
+                      "expression":  "=VALUETOTEXT(123,0)",
+                      "kind":  "text",
+                      "value":  "123"
+                  },
+                  {
+                      "expression":  "=VALUETOTEXT(\"hi\",9)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=ARRAYTOTEXT({1},1)",
+                      "kind":  "text",
+                      "value":  "{1}"
+                  },
+                  {
+                      "expression":  "=ARRAYTOTEXT(A1:A1,0)",
+                      "kind":  "text",
+                      "value":  "hello"
+                  },
+                  {
+                      "expression":  "=ARRAYTOTEXT({1,2},9)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=FIXED(1234.567,1,FALSE)",
+                      "kind":  "text",
+                      "value":  "1 234,6"
+                  },
+                  {
+                      "expression":  "=FIXED(1234.5,0,TRUE)",
+                      "kind":  "text",
+                      "value":  "1235"
+                  },
+                  {
+                      "expression":  "=FIXED(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=DOLLAR(1234.567,2)",
+                      "kind":  "text",
+                      "value":  "1 234,57 Kč"
+                  },
+                  {
+                      "expression":  "=DOLLAR(-1234.5,0)",
+                      "kind":  "text",
+                      "value":  "-1 235 Kč"
+                  },
+                  {
+                      "expression":  "=DOLLAR(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  }
+              ]
+}

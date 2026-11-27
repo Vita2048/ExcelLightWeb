@@ -11,6 +11,7 @@ import { filteredRows, headerLabel } from '../application/data-commands';
 import { totalFunction } from '../application/table-commands';
 import { TotalRowDropdown } from '../features/tables/TotalRowDropdown';
 import type { Axis } from '../core/axis-edit';
+import { RowMask } from '../core/row-mask';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
 import type { FigurePlacement, PythonFigure } from '../core/workbook';
@@ -219,7 +220,12 @@ export function Worksheet(props: WorksheetProps) {
   const left = headings ? rowHeader : 0;
   const top = headings ? gridMetrics.columnHeader * scale : 0;
   // Filter-hidden rows keep their index but leave the projected axis, like the desktop worksheet.
-  const filtered = useMemo(() => filteredRows(sheet), [sheet]);
+  const filteredRef = useRef<RowMask>(RowMask.none());
+  const filtered = useMemo(() => {
+    const next = filteredRows(sheet);
+    if (next.equals(filteredRef.current)) return filteredRef.current;
+    return (filteredRef.current = next);
+  }, [sheet]);
   const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, sheet.rows, scale,
     sheet.frozenPanes.rows, filtered.spans()), [sheet.rows, scale, sheet.frozenPanes.rows, filtered]);
   const columns = useMemo(() => new GridAxis(worksheetViewport.columns, gridMetrics.column, sheet.columns, scale, sheet.frozenPanes.columns), [sheet.columns, scale, sheet.frozenPanes.columns]);

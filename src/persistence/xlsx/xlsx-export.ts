@@ -6,6 +6,7 @@ import { PackageException } from '../native';
 import { createStyleWriter } from './xlsx-styles';
 import { escapeAttribute, escapeText } from './xlsx-xml';
 import { exchangeCodes, XlsxReport } from './xlsx-report';
+import { addXlfnPrefixes } from './xlsx-formulas';
 
 const spreadsheetNamespace = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const relationshipNamespace = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -123,7 +124,8 @@ function cellXml(cell: CellDocument, styleIndex: number, strings: SharedStrings,
   const style = cell.style !== undefined ? ` s="${styleIndex}"` : '';
   const content = cell.content;
   if (content.kind === 'formula') {
-    const formula = `<f>${escapeText(content.source.startsWith('=') ? content.source.slice(1) : content.source)}</f>`;
+    const rawFormula = content.source.startsWith('=') ? content.source.slice(1) : content.source;
+    const formula = `<f>${escapeText(addXlfnPrefixes(rawFormula))}</f>`;
     if (!cell.cache) return `<c r="${reference}"${style}>${formula}</c>`;
     const cache = cacheValue(cell.cache);
     return `<c r="${reference}"${style}${cache.type ? ` t="${cache.type}"` : ''}>${formula}` +

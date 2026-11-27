@@ -192,7 +192,7 @@ function numberSection(value: number, section: FormatSection, culture: Culture):
     implicitExponent + integerMask(exponentTokens, exponentDigits);
 }
 
-export function formatNumber(value: number, code?: string): FormattedCell {
+export function formatNumber(value: number, code?: string, locale?: string): FormattedCell {
   const parsed = code ? formatSections(code) : null;
   if (!parsed || /^general$/iu.test(code ?? '')) return { text: generalNumber(value) };
   // A trailing text section does not change the positive/negative/zero rules.
@@ -204,7 +204,7 @@ export function formatNumber(value: number, code?: string): FormattedCell {
     value < 0 && sections.length > 1 ? 1 : value === 0 && sections.length > 2 ? 2 : 0;
   const section = sections[index];
   if (!section) return { text: generalNumber(value) };
-  const culture = explicitFormatLocale(code) ?? formatLocale();
+  const culture = explicitFormatLocale(code) ?? formatLocale(locale);
   const unsigned = index === 1 || index === 0 && !!section.condition;
   const formatted = numberSection(unsigned ? Math.abs(value) : value, section, culture);
   return { text: formatted, ...(!conditional && section.color && { color: section.color }) };

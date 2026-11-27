@@ -15,6 +15,7 @@ import {
   relationshipNamespace, textOf,
 } from './xlsx-xml';
 import { exchangeCodes, XlsxReport } from './xlsx-report';
+import { stripXlfnPrefixes } from './xlsx-formulas';
 
 const cfbSignature = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const worksheetPart = /^xl\/worksheets\/[^/]+\.xml$/iu;
@@ -180,13 +181,14 @@ function formulaNeedsExternalCalculation(source: string): boolean {
       case 'reference': return node.reference.endSheet !== undefined;
       case 'name':
       case 'structured':
-      case 'spill':
-      case 'invoke':
-      case 'array':
         return true;
+      case 'spill':
+      case 'unary':
+        return visit(node.kind === 'spill' ? node.target : node.value);
+      case 'invoke':
+        return visit(node.callee) || node.args.some(visit);
       case 'union': return node.parts.some(visit);
-      case 'unary': return node.operator === '@' || visit(node.value);
-      case 'binary': return node.operator === ':' || node.operator === ' ' || visit(node.left) || visit(node.right);
+      case 'binary': return node.operator === ' ' || visit(node.left) || visit(node.right);
       default:
         return false;
     }
@@ -368,7 +370,8 @@ function readWorksheet(raw: Element, sheetName: string, shared: readonly string[
       if (text === undefined || text.trim() === '') {
         throw new PackageException(`Formula text at ${sheetName}!${record.address} was empty. It was not replaced with zero.`);
       }
-      const source = '=' + (text.startsWith('=') ? text.slice(1) : text);
+      const normalized = stripXlfnPrefixes(text.startsWith('=') ? text.slice(1) : text);
+      const source = '=' + normalized;
       if (source.length > documentLimits.formulaLength) {
         throw new PackageException(`Formula at ${sheetName}!${record.address} exceeds ${documentLimits.formulaLength} characters. No document was adopted.`);
       }

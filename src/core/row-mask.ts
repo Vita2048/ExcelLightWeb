@@ -34,8 +34,10 @@ export class RowMask {
     this.#rows = rows;
   }
 
+  private static readonly empty = new RowMask('none', 1, 0, []);
+
   static none(): RowMask {
-    return new RowMask('none', 1, 0, []);
+    return RowMask.empty;
   }
 
   /** Rows in `rows` are hidden. Every other row in the span stays visible. */
@@ -144,6 +146,13 @@ export class RowMask {
     }
     const index = upperBound(this.#rows, start) - 1;
     return index >= 0 ? this.#rows[index]! : this.from - 1;
+  }
+
+  equals(other: RowMask): boolean {
+    if (this === other) return true;
+    return this.mode === other.mode && this.from === other.from && this.to === other.to &&
+      this.#rows.length === other.#rows.length &&
+      this.#rows.every((value, index) => value === other.#rows[index]);
   }
 }
 

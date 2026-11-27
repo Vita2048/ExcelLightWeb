@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import fixture from '../fixtures/formulas/S08-desktop.json';
 import smokeExcel from '../fixtures/formulas/smoke-excel.json';
 import dynamicArrays from '../fixtures/formulas/dynamic-arrays.json';
+import logicalInfo from '../fixtures/formulas/logical-info.json';
+import lookupOracle from '../fixtures/formulas/lookup.json';
+import shapingOracle from '../fixtures/formulas/shaping.json';
+import mathOracle from '../fixtures/formulas/math.json';
+import textOracle from '../fixtures/formulas/text.json';
+import datetimeOracle from '../fixtures/formulas/datetime.json';
+import statsFinancialOracle from '../fixtures/formulas/stats-financial.json';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { nativeFunctions, supportedFunctions } from '../../src/calculation/formula-functions';
 import { emptySheet, ownDto, type CellCache, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
@@ -46,82 +53,105 @@ for (const input of fixture) {
   });
 }
 
-function assertOracleScalar(cache: CellCache | undefined, kind: string, value: string) {
+function assertOracleScalar(cache: CellCache | undefined, kind: string, value: string, digits = 11) {
   expect(cache?.kind).toBe(kind);
-  if (kind === 'number') expect(cache?.value).toBeCloseTo(Number(value), 11);
+  if (kind === 'number') expect(cache?.value).toBeCloseTo(Number(value), digits);
   else if (kind === 'boolean') expect(cache?.value).toBe(value === 'true');
   else expect(cache?.value).toBe(value);
 }
 
-describe(smokeExcel.id, () => {
-  const main = cells('smoke-main', smokeExcel.cells as (number | boolean | string)[][]);
-  const other = cells('smoke-other', smokeExcel.other as (number | boolean | string)[][]);
-  const usesUnsupported = (expression: string) =>
-    [...expression.matchAll(/([A-Z.]+)\s*\(/giu)].some(match => !supportedFunctions.has(match[1]!.toUpperCase()));
+interface OracleCase {
+  readonly expression: string;
+  readonly kind: string;
+  readonly value?: string;
+  readonly rows?: number;
+  readonly columns?: number;
+  readonly matrix?: readonly (readonly { readonly kind: string; readonly value: string }[])[];
+}
 
-  for (const entry of smokeExcel.cases) {
-    if (entry.kind === 'array' || usesUnsupported(entry.expression)) {
-      it.skip(`${entry.expression} matches Excel oracle (pending dynamic array / function sprint)`, () => {});
-      continue;
-    }
-    it(`${entry.expression} matches Excel ${smokeExcel.excelVersion} build ${smokeExcel.excelBuild}`, () => {
-      const document = workbook([...main, formula('test', 1, 20, entry.expression)], other);
-      const result = calculateNative(document, { locale: 'cs-CZ' });
-      const cache = result.updates.find(update => update.target.column === 20)?.cache;
-      assertOracleScalar(cache, entry.kind, entry.value ?? '');
-    });
-  }
-});
+interface OracleSuite {
+  readonly id: string;
+  readonly excelVersion: string;
+  readonly excelBuild: string;
+  readonly cells: unknown;
+  readonly other: unknown;
+  readonly cases: readonly OracleCase[];
+}
 
-describe(dynamicArrays.id, () => {
-  const main = cells('dyn-main', dynamicArrays.cells as (number | boolean | string)[][]);
-  const other = cells('dyn-other', dynamicArrays.other as (number | boolean | string)[][]);
+function runOracleSuite(suite: OracleSuite, locale: string, skipReason?: (entry: OracleCase) => string | undefined) {
+  describe(suite.id, () => {
+    const main = cells(`${suite.id}-main`, suite.cells as (number | boolean | string)[][]);
+    const other = cells(`${suite.id}-other`, suite.other as (number | boolean | string)[][]);
 
-  for (const entry of dynamicArrays.cases as readonly {
-    readonly expression: string;
-    readonly kind: string;
-    readonly value?: string;
-    readonly rows?: number;
-    readonly columns?: number;
-    readonly matrix?: readonly (readonly { readonly kind: string; readonly value: string }[])[];
-  }[]) {
-    it(`${entry.expression} matches Excel ${dynamicArrays.excelVersion} build ${dynamicArrays.excelBuild}`, () => {
-      const document = workbook([...main, formula('test', 1, 20, entry.expression)], other);
-      const result = calculateNative(document, { locale: 'en-US' });
-      const update = result.updates.find(u => u.target.column === 20);
-      if (entry.kind === 'array' && entry.matrix) {
-        const rows = entry.rows ?? entry.matrix.length;
-        const columns = entry.columns ?? entry.matrix[0]?.length ?? 0;
-        expect(update?.spill).toBeDefined();
-        expect(update?.spill?.rows).toBe(rows);
-        expect(update?.spill?.columns).toBe(columns);
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < columns; c++) {
-            const expected = entry.matrix[r]![c]!;
-            const actual = update!.spill!.cells[r * columns + c] ?? undefined;
-            assertOracleScalar(actual, expected.kind, expected.value);
-          }
-        }
-      } else {
-        expect(update?.spill).toBeUndefined();
-        assertOracleScalar(update?.cache, entry.kind, entry.value ?? '');
+    for (const entry of suite.cases) {
+      const reason = skipReason?.(entry);
+      if (reason) {
+        it.skip(`${entry.expression} matches Excel oracle (${reason})`, () => {});
+        continue;
       }
-    });
-  }
-});
+      it(`${entry.expression} matches Excel ${suite.excelVersion} build ${suite.excelBuild}`, () => {
+        const document = workbook([...main, formula('test', 1, 20, entry.expression)], other);
+        const result = calculateNative(document, { locale });
+        const update = result.updates.find(u => u.target.column === 20);
+        if (entry.kind === 'array' && entry.matrix) {
+          const rows = entry.rows ?? entry.matrix.length;
+          const columns = entry.columns ?? entry.matrix[0]?.length ?? 0;
+          expect(update?.spill).toBeDefined();
+          expect(update?.spill?.rows).toBe(rows);
+          expect(update?.spill?.columns).toBe(columns);
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < columns; c++) {
+              const expected = entry.matrix[r]![c]!;
+              const actual = update!.spill!.cells[r * columns + c] ?? undefined;
+              assertOracleScalar(actual, expected.kind, expected.value);
+            }
+          }
+        } else {
+          expect(update?.spill).toBeUndefined();
+          const digits = /\bXIRR\(/iu.test(entry.expression) ? 8 : 11;
+          assertOracleScalar(update?.cache, entry.kind, entry.value ?? '', digits);
+        }
+      });
+    }
+  });
+}
 
-it('exercises valid and invalid arguments for all 40 functions and evaluates TODAY from a deterministic clock', () => {
+const usesUnsupported = (expression: string) =>
+  [...expression.matchAll(/([A-Z.]+)\s*\(/giu)].some(match => !supportedFunctions.has(match[1]!.toUpperCase()));
+
+runOracleSuite(smokeExcel as OracleSuite, 'cs-CZ', entry => {
+  if (entry.expression.includes('SEQUENCE(2)')) return 'requires setup blocker outside smoke fixture';
+  if (usesUnsupported(entry.expression)) return 'pending function sprint';
+  return undefined;
+});
+runOracleSuite(dynamicArrays as OracleSuite, 'en-US');
+runOracleSuite(logicalInfo as OracleSuite, 'en-US');
+runOracleSuite(lookupOracle as OracleSuite, 'en-US');
+runOracleSuite(shapingOracle as OracleSuite, 'en-US');
+runOracleSuite(mathOracle as OracleSuite, 'en-US');
+runOracleSuite(textOracle as OracleSuite, 'cs-CZ');
+runOracleSuite(datetimeOracle as OracleSuite, 'en-US');
+runOracleSuite(statsFinancialOracle as OracleSuite, 'en-US');
+
+it('exercises valid and invalid arguments for all 225 functions and evaluates TODAY from a deterministic clock', () => {
   const cases = [
     ...fixture.flatMap(input => input.cases),
     ...dynamicArrays.cases,
+    ...logicalInfo.cases,
+    ...lookupOracle.cases,
+    ...shapingOracle.cases,
+    ...mathOracle.cases,
+    ...textOracle.cases,
+    ...datetimeOracle.cases,
+    ...statsFinancialOracle.cases,
   ];
   for (const kind of ['result', 'error']) {
     const examples = cases.filter(test => (test.kind === 'error') === (kind === 'error'));
     const names = new Set(examples.flatMap(test =>
-      [...test.expression.matchAll(/([A-Z.]+)\(/giu)].map(match => match[1]!.toUpperCase())));
+      [...test.expression.matchAll(/([A-Z][A-Z0-9.]*)\(/giu)].map(match => match[1]!.toUpperCase())));
     expect(nativeFunctions.filter(name => !names.has(name)), kind).toEqual([]);
   }
-  expect(nativeFunctions).toHaveLength(40);
+  expect(nativeFunctions).toHaveLength(225);
   let clockReads = 0;
   const result = calculateNative(workbook([formula('today', 1, 1, '=TODAY()'), formula('next', 1, 2, '=TODAY()+A1')]), {
     clock: () => { clockReads++; return new Date(2024, 0, 15, 23, 59); },

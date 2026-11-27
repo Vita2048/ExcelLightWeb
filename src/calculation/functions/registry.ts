@@ -7,6 +7,7 @@ import { infoFunctions } from './info';
 import { logicalFunctions } from './logical';
 import { lookupFunctions } from './lookup';
 import { mathFunctions } from './math';
+import { shapingFunctions } from './shaping';
 import { statisticalFunctions } from './statistical';
 import { textFunctions } from './text';
 import type { FunctionContext, FunctionSignature, FunctionSpec } from './types';
@@ -20,6 +21,33 @@ export const ribbonInsertFunctions = [
 export const nativeFunctions = [
   ...ribbonInsertFunctions,
   'LET', 'LAMBDA', 'ISOMITTED', 'MAP', 'REDUCE', 'SCAN', 'BYROW', 'BYCOL', 'MAKEARRAY',
+  'IFS', 'SWITCH', 'XOR', 'IFNA', 'TRUE', 'FALSE',
+  'ISBLANK', 'ISERR', 'ISERROR', 'ISLOGICAL', 'ISNA', 'ISNONTEXT', 'ISNUMBER', 'ISTEXT',
+  'ISFORMULA', 'ISREF', 'ISEVEN', 'ISODD', 'ERROR.TYPE', 'N', 'NA', 'TYPE',
+  'XLOOKUP', 'XMATCH', 'INDEX', 'MATCH', 'HLOOKUP', 'LOOKUP', 'CHOOSE',
+  'OFFSET', 'INDIRECT', 'ROW', 'ROWS', 'COLUMN', 'COLUMNS', 'ADDRESS', 'AREAS', 'FORMULATEXT', 'HYPERLINK',
+  'FILTER', 'SORT', 'SORTBY', 'UNIQUE', 'SEQUENCE', 'RANDARRAY', 'VSTACK', 'HSTACK',
+  'TOROW', 'TOCOL', 'WRAPROWS', 'WRAPCOLS', 'TAKE', 'DROP', 'CHOOSEROWS', 'CHOOSECOLS', 'EXPAND', 'TEXTSPLIT',
+  // Wave B Math & Aggregates (+42)
+  'SUMIFS', 'SUMPRODUCT', 'AGGREGATE', 'PRODUCT', 'INT', 'TRUNC', 'MOD', 'POWER', 'SQRT', 'SIGN', 'RAND', 'RANDBETWEEN',
+  'CEILING', 'CEILING.MATH', 'FLOOR', 'FLOOR.MATH', 'MROUND', 'EXP', 'LN', 'LOG', 'LOG10', 'PI',
+  'SIN', 'COS', 'TAN', 'ASIN', 'ACOS', 'ATAN', 'ATAN2', 'DEGREES', 'RADIANS',
+  'FACT', 'COMBIN', 'PERMUT', 'GCD', 'LCM', 'QUOTIENT', 'EVEN', 'ODD', 'SUMSQ', 'MMULT', 'TRANSPOSE',
+  // Wave B Text (+25)
+  'CONCAT', 'CONCATENATE', 'TEXTJOIN', 'TEXT', 'VALUE', 'NUMBERVALUE', 'FIND', 'SEARCH',
+  'SUBSTITUTE', 'REPLACE', 'REPT', 'PROPER', 'EXACT', 'CLEAN', 'CHAR', 'CODE', 'UNICODE', 'UNICHAR',
+  'T', 'TEXTBEFORE', 'TEXTAFTER', 'VALUETOTEXT', 'ARRAYTOTEXT', 'FIXED', 'DOLLAR',
+  // Wave B Date & Time (+20)
+  'NOW', 'TIME', 'HOUR', 'MINUTE', 'SECOND', 'DATEVALUE', 'TIMEVALUE', 'EDATE', 'EOMONTH',
+  'DATEDIF', 'DAYS', 'DAYS360', 'WEEKDAY', 'WEEKNUM', 'ISOWEEKNUM',
+  'WORKDAY', 'WORKDAY.INTL', 'NETWORKDAYS', 'NETWORKDAYS.INTL', 'YEARFRAC',
+  // Wave B Statistical (+27)
+  'COUNTIFS', 'AVERAGEIF', 'AVERAGEIFS', 'MAXIFS', 'MINIFS', 'COUNTBLANK', 'MEDIAN', 'MODE', 'MODE.SNGL',
+  'STDEV.S', 'STDEV.P', 'VAR.S', 'VAR.P', 'LARGE', 'SMALL', 'RANK', 'RANK.EQ', 'RANK.AVG',
+  'PERCENTILE.INC', 'PERCENTILE.EXC', 'QUARTILE.INC', 'QUARTILE.EXC',
+  'CORREL', 'COVARIANCE.S', 'SLOPE', 'INTERCEPT', 'FORECAST.LINEAR',
+  // Wave B Financial (+14)
+  'PMT', 'PV', 'FV', 'NPV', 'XNPV', 'IRR', 'XIRR', 'RATE', 'NPER', 'IPMT', 'PPMT', 'SLN', 'DB', 'DDB',
 ] as const;
 
 export type NativeFunction = typeof nativeFunctions[number];
@@ -34,6 +62,7 @@ const allSpecs: readonly FunctionSpec[] = [
   ...financialFunctions,
   ...dynamicArrayFunctions,
   ...infoFunctions,
+  ...shapingFunctions,
 ];
 
 export const functionRegistry: ReadonlyMap<string, FunctionSpec> = new Map(

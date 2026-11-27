@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RowMask } from '../../src/core/row-mask';
 import type { AxisDimension } from '../../src/core/workbook';
 import {
   capFromScrollport, contentOffset, GridAxis, placeScroll, rowHeaderWidth, scrollCap, scrollSpacer, scrollTopFor, type Track,
@@ -231,5 +232,17 @@ describe('scroll mapping', () => {
     expect(rowHeaderWidth(56)).toBe(68);
     expect(rowHeaderWidth(112, 2)).toBe(136);
     expect(rowHeaderWidth(20, 2)).toBe(88);
+  });
+
+  it('keeps RowMask.none() referentially stable and compares masks by value', () => {
+    expect(RowMask.none()).toBe(RowMask.none());
+    const a = RowMask.hidden(2, 10, [4, 7]);
+    const b = RowMask.hidden(2, 10, [4, 7]);
+    const c = RowMask.hidden(2, 10, [4, 8]);
+    const d = RowMask.shown(2, 10, [4, 7]);
+    expect(a.equals(b)).toBe(true);
+    expect(a.equals(c)).toBe(false);
+    expect(a.equals(d)).toBe(false);
+    expect(a.equals(RowMask.none())).toBe(false);
   });
 });

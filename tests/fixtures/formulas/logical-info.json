@@ -1,0 +1,419 @@
+{
+    "id":  "logical-info-excel",
+    "sourceSpec":  "tests/fixtures/formulas/specs/logical-info.spec.json",
+    "excelVersion":  "16.0",
+    "excelBuild":  "17932",
+    "capturedAt":  "2026-11-27T13:36:02.4810142+01:00",
+    "cells":  [
+                  [
+                      1,
+                      1,
+                      10
+                  ],
+                  [
+                      2,
+                      1,
+                      "hi"
+                  ],
+                  [
+                      3,
+                      1,
+                      true
+                  ],
+                  [
+                      4,
+                      1,
+                      "=A1+5"
+                  ],
+                  [
+                      1,
+                      2,
+                      ""
+                  ],
+                  [
+                      2,
+                      2,
+                      0
+                  ]
+              ],
+    "other":  [
+
+              ],
+    "cases":  [
+                  {
+                      "expression":  "=IFS(FALSE,1,TRUE,20)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=IFS(TRUE,30,1/0,40)",
+                      "kind":  "number",
+                      "value":  "30"
+                  },
+                  {
+                      "expression":  "=IFS(FALSE,1,FALSE,2)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=SWITCH(2,1,\"a\",2,\"b\",\"other\")",
+                      "kind":  "text",
+                      "value":  "b"
+                  },
+                  {
+                      "expression":  "=SWITCH(9,1,\"a\",\"fallback\")",
+                      "kind":  "text",
+                      "value":  "fallback"
+                  },
+                  {
+                      "expression":  "=SWITCH(9,1,\"a\")",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=XOR(TRUE,FALSE)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=XOR(TRUE,TRUE)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=XOR(\"bad\",TRUE)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=XOR(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=IFNA(NA(),\"caught\")",
+                      "kind":  "text",
+                      "value":  "caught"
+                  },
+                  {
+                      "expression":  "=IFNA(10,\"caught\")",
+                      "kind":  "number",
+                      "value":  "10"
+                  },
+                  {
+                      "expression":  "=IFNA(1/0,\"caught\")",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=TRUE()",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=IF(TRUE(),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=FALSE()",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(FALSE(),0,1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISBLANK(A5)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISBLANK(B1)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISBLANK(A5),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISERR(1/0)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISERR(NA())",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISERR(1/0),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISERROR(NA())",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISERROR(A1)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISERROR(NA()),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISLOGICAL(A3)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISLOGICAL(A1)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISLOGICAL(A3),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISNA(NA())",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISNA(1/0)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISNA(NA()),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISNONTEXT(A1)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISNONTEXT(A2)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=ISNONTEXT(1/0)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=IF(ISNONTEXT(A1),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISNUMBER(A1)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISNUMBER(A2)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISNUMBER(A1),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISTEXT(A2)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISTEXT(A1)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISTEXT(A2),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISFORMULA(A4)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISFORMULA(A1)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=ISFORMULA(INDIRECT(\"NoSuchSheet!A1\"))",
+                      "kind":  "error",
+                      "value":  "#REF!"
+                  },
+                  {
+                      "expression":  "=ISREF(A1)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISREF(123)",
+                      "kind":  "boolean",
+                      "value":  "false"
+                  },
+                  {
+                      "expression":  "=IF(ISREF(A1),1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=ISEVEN(4)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISEVEN(2.9)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISEVEN(A5)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISEVEN(TRUE)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=ISODD(-3)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=ISODD(TRUE)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(#NULL!)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(1/0)",
+                      "kind":  "number",
+                      "value":  "2"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(#VALUE!)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(#REF!)",
+                      "kind":  "number",
+                      "value":  "4"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(#NAME?)",
+                      "kind":  "number",
+                      "value":  "5"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(#NUM!)",
+                      "kind":  "number",
+                      "value":  "6"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(NA())",
+                      "kind":  "number",
+                      "value":  "7"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(FILTER(A1:A1,A1:A1=999))",
+                      "kind":  "number",
+                      "value":  "14"
+                  },
+                  {
+                      "expression":  "=ERROR.TYPE(1)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=N(5)",
+                      "kind":  "number",
+                      "value":  "5"
+                  },
+                  {
+                      "expression":  "=N(TRUE)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=N(\"abc\")",
+                      "kind":  "number",
+                      "value":  "0"
+                  },
+                  {
+                      "expression":  "=N(A1:A2)",
+                      "kind":  "number",
+                      "value":  "10"
+                  },
+                  {
+                      "expression":  "=N(1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=NA()",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=TYPE(1)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=TYPE(\"a\")",
+                      "kind":  "number",
+                      "value":  "2"
+                  },
+                  {
+                      "expression":  "=TYPE(TRUE)",
+                      "kind":  "number",
+                      "value":  "4"
+                  },
+                  {
+                      "expression":  "=TYPE(1/0)",
+                      "kind":  "number",
+                      "value":  "16"
+                  },
+                  {
+                      "expression":  "=TYPE(A1:B2)",
+                      "kind":  "number",
+                      "value":  "64"
+                  },
+                  {
+                      "expression":  "=1/0+TYPE(1)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  }
+              ]
+}

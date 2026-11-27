@@ -410,8 +410,10 @@ function parseFormulaInternal(source: string): ParsedFormula {
     }
     if (text === '+' || text === '-') return { kind: 'unary', operator: text, value: postfix(depth + 1) };
     if (text === '@') return { kind: 'unary', operator: '@', value: postfix(depth + 1) };
-    const value = constant(text);
-    if (value) return value;
+    if (!(/^[\p{L}_]/u.test(text) && peek() === '(')) {
+      const value = constant(text);
+      if (value) return value;
+    }
     if (!/^[\p{L}_]/u.test(text)) throw malformed();
     if (peek() !== '(') {
       nameSpans.push({ start: token.start, end: token.end, name: text });

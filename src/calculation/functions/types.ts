@@ -1,4 +1,5 @@
 import type { FormulaExpression } from '../../core/formula-references';
+import type { CellDocument } from '../../core/workbook';
 import type { FormulaArray, FormulaLambda, FormulaValue, Range, Scalar } from '../formula-values';
 
 export interface FunctionContext {
@@ -11,6 +12,11 @@ export interface FunctionContext {
   readonly text: (value: Exclude<Scalar, FormulaErrorLike>) => string;
   readonly locale: string;
   readonly today: number;
+  readonly now: number;
+  readonly target: { readonly sheetId: string; readonly row: number; readonly column: number };
+  readonly cellAt: (sheetId: string, row: number, column: number) => CellDocument | undefined;
+  readonly resolveRefText: (refText: string, a1?: boolean) => readonly Range[] | undefined;
+  readonly random: () => number;
   readonly env: ReadonlyMap<string, FormulaValue>;
   readonly evaluateInEnv: (expression: FormulaExpression, env: ReadonlyMap<string, FormulaValue>, includeRanges?: boolean) => FormulaValue;
   readonly invokeLambda: (lambda: FormulaLambda, argValues: readonly FormulaValue[]) => FormulaValue;

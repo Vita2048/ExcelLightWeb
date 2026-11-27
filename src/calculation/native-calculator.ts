@@ -11,7 +11,7 @@ import {
 } from '../core/workbook';
 import { lastColumn, lastRow, resolveStructuredReference, resolveWorkbookName } from '../core/workbook-names';
 import { overlaps, ordinalNameKey } from '../core/workbook-validation';
-import { todaySerial } from './formula-dates';
+import { nowSerial, todaySerial } from './formula-dates';
 import { evaluateFunction, isVolatileFunction, sumIfRange, supportedFunctions } from './formula-functions';
 import {
   arrayFromMatrix, compare, error, finite, isArray, isError, isLambda, isOmitted, isRange,
@@ -147,6 +147,8 @@ export interface CalculationOptions {
   readonly locale?: string;
   /** Override the shared display key for a caller-supplied set of filter criteria. */
   readonly filterText?: (cell: CellDocument | undefined) => string;
+  /** Deterministic PRNG hook for volatile random functions such as RANDARRAY. */
+  readonly random?: () => number;
 }
 
 export function prepareNativeGraph(document: WorkbookDocument) {
@@ -381,7 +383,10 @@ const emptyEnv: ReadonlyMap<string, FormulaValue> = new Map();
 
 export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, graph: ReturnType<typeof prepareNativeGraph>,
   selected: ReadonlySet<FormulaNode> | undefined, options: CalculationOptions): NativeCalculation {
-  const today = todaySerial(options.clock?.() ?? new Date());
+  const clockDate = options.clock?.() ?? new Date();
+  const today = todaySerial(clockDate);
+  const now = nowSerial(clockDate);
+  const random = options.random ?? Math.random;
   const numberFormat = new Intl.NumberFormat(options.locale);
   const locale = numberFormat.resolvedOptions().locale;
   const parts = numberFormat.formatToParts(12345.6);
@@ -402,6 +407,11 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
     sheets: [...inputs.values()].map(entry => entry.sheet),
     names,
   } satisfies WorkbookDocument;
+  const sheetsByName = new Map(docView.sheets.map(entry => [ordinalNameKey(entry.name), entry]));
+
+  function cellAt(sheetId: string, row: number, column: number): CellDocument | undefined {
+    return inputs.get(sheetId)?.cells.get(cellKey({ row, column }));
+  }
 
   const liveSpills = new Map<string, { readonly rows: number; readonly columns: number }>();
   const liveSheetSpills = new Map<string, Map<number, { readonly ownerId: string; readonly value: Scalar }>>();
@@ -624,6 +634,129 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
         return value;
       };
 
+      function resolveR1C1(refText: string): readonly Range[] | undefined {
+        const prefixMatch = /^(?:(?:'((?:[^']|'')+)'|([\p{L}_][\p{L}\p{N}_.]*))!)?(.+)$/u.exec(refText);
+        if (!prefixMatch) return undefined;
+        const sheetName = prefixMatch[1]?.replaceAll("''", "'") ?? prefixMatch[2];
+        const targetSheet = sheetName === undefined ? sheet : sheetsByName.get(ordinalNameKey(sheetName));
+        if (!targetSheet) return undefined;
+        const body = prefixMatch[3]!.trim();
+        const coord = (token: string, origin: number, limit: number): number | undefined => {
+          if (token === '') return origin;
+          if (token.startsWith('[') && token.endsWith(']')) {
+            const delta = Number.parseInt(token.slice(1, -1), 10);
+            if (!Number.isFinite(delta)) return undefined;
+            const resolved = origin + delta;
+            return resolved >= 1 && resolved <= limit ? resolved : undefined;
+          }
+          const absolute = Number.parseInt(token, 10);
+          return Number.isFinite(absolute) && absolute >= 1 && absolute <= limit ? absolute : undefined;
+        };
+        const parseCell = (part: string): { row: number; column: number } | undefined => {
+          const m = /^R(\[[+-]?\d+\]|[1-9]\d*)?C(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(part.trim());
+          if (!m) return undefined;
+          const r = coord(m[1] ?? '', target.row, documentLimits.rows);
+          const c = coord(m[2] ?? '', target.column, documentLimits.columns);
+          return r === undefined || c === undefined ? undefined : { row: r, column: c };
+        };
+        const parts = body.split(':').map(part => part.trim());
+        if (parts.length === 1) {
+          const single = parseCell(parts[0]!);
+          if (single) return [{ sheetId: targetSheet.id, top: single.row, left: single.column, bottom: single.row, right: single.column }];
+          const rowOnly = /^R(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(parts[0]!);
+          if (rowOnly) {
+            const r = coord(rowOnly[1] ?? '', target.row, documentLimits.rows);
+            return r === undefined ? undefined : [{ sheetId: targetSheet.id, top: r, left: 1, bottom: r, right: documentLimits.columns }];
+          }
+          const colOnly = /^C(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(parts[0]!);
+          if (colOnly) {
+            const c = coord(colOnly[1] ?? '', target.column, documentLimits.columns);
+            return c === undefined ? undefined : [{ sheetId: targetSheet.id, top: 1, left: c, bottom: documentLimits.rows, right: c }];
+          }
+          return undefined;
+        }
+        if (parts.length !== 2) return undefined;
+        const leftCell = parseCell(parts[0]!);
+        const rightCell = parseCell(parts[1]!);
+        if (leftCell && rightCell) {
+          return [{
+            sheetId: targetSheet.id,
+            top: Math.min(leftCell.row, rightCell.row),
+            left: Math.min(leftCell.column, rightCell.column),
+            bottom: Math.max(leftCell.row, rightCell.row),
+            right: Math.max(leftCell.column, rightCell.column),
+          }];
+        }
+        const rowA = /^R(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(parts[0]!);
+        const rowB = /^R(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(parts[1]!);
+        if (rowA && rowB) {
+          const r1 = coord(rowA[1] ?? '', target.row, documentLimits.rows);
+          const r2 = coord(rowB[1] ?? '', target.row, documentLimits.rows);
+          if (r1 === undefined || r2 === undefined) return undefined;
+          return [{ sheetId: targetSheet.id, top: Math.min(r1, r2), left: 1, bottom: Math.max(r1, r2), right: documentLimits.columns }];
+        }
+        const colA = /^C(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(parts[0]!);
+        const colB = /^C(\[[+-]?\d+\]|[1-9]\d*)?$/i.exec(parts[1]!);
+        if (colA && colB) {
+          const c1 = coord(colA[1] ?? '', target.column, documentLimits.columns);
+          const c2 = coord(colB[1] ?? '', target.column, documentLimits.columns);
+          if (c1 === undefined || c2 === undefined) return undefined;
+          return [{ sheetId: targetSheet.id, top: 1, left: Math.min(c1, c2), bottom: documentLimits.rows, right: Math.max(c1, c2) }];
+        }
+        return undefined;
+      }
+
+      function resolveRefText(refText: string, a1 = true): readonly Range[] | undefined {
+        const trimmed = refText.trim();
+        if (!trimmed) return undefined;
+        if (!a1) return resolveR1C1(trimmed);
+        let parsedRef: ReturnType<typeof parseFormula>;
+        try {
+          parsedRef = parseFormula('=' + trimmed);
+        } catch {
+          return undefined;
+        }
+        const expr = parsedRef.expression;
+        if (expr.kind === 'reference' && expr.reference.endSheet === undefined) {
+          const targetSheet = expr.reference.sheet === undefined ? sheet : sheetsByName.get(ordinalNameKey(expr.reference.sheet));
+          const bounds = referenceBox(expr.reference);
+          if (!targetSheet || bounds.bottom > documentLimits.rows || bounds.right > documentLimits.columns) return undefined;
+          return [{ sheetId: targetSheet.id, ...bounds }];
+        }
+        if (expr.kind === 'name') {
+          const area = resolveWorkbookName(docView, expr.name);
+          if (!area || area.invalid) return undefined;
+          return [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }];
+        }
+        if (expr.kind === 'structured') {
+          const area = resolveStructuredReference(docView, expr.reference, target);
+          if (!area || area.invalid) return undefined;
+          return [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }];
+        }
+        if (expr.kind === 'spill' && expr.target.kind === 'reference' && expr.target.reference.endSheet === undefined) {
+          const targetSheet = expr.target.reference.sheet === undefined ? sheet : sheetsByName.get(ordinalNameKey(expr.target.reference.sheet));
+          const bounds = referenceBox(expr.target.reference);
+          if (!targetSheet || bounds.top !== bounds.bottom || bounds.left !== bounds.right) return undefined;
+          const anchorCell = cellAt(targetSheet.id, bounds.top, bounds.left);
+          if (!anchorCell) return undefined;
+          if (anchorCell.content.kind === 'formula') {
+            const ext = liveSpills.get(anchorCell.id) ?? anchorCell.spillExtent;
+            return [{
+              sheetId: targetSheet.id,
+              top: bounds.top,
+              left: bounds.left,
+              bottom: bounds.top + (ext?.rows ?? 1) - 1,
+              right: bounds.left + (ext?.columns ?? 1) - 1,
+            }];
+          }
+          if (anchorCell.content.kind === 'python' && anchorCell.content.block?.spillActive && anchorCell.content.block.lastTable) {
+            const t = anchorCell.content.block.lastTable;
+            return [{ sheetId: targetSheet.id, top: bounds.top, left: bounds.left, bottom: bounds.top + t.rows - 1, right: bounds.left + t.columns - 1 }];
+          }
+        }
+        return undefined;
+      }
+
       function evaluateInEnv(
         expression: FormulaExpression,
         env: ReadonlyMap<string, FormulaValue>,
@@ -640,6 +773,31 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
           const opExpr = operators.pop()!;
           if (opExpr.kind === 'unary' && opExpr.operator === '@') {
             value = implicitIntersect(value);
+            continue;
+          }
+          if (opExpr.kind === 'binary' && opExpr.operator === ':') {
+            if (!isRange(value)) {
+              value = isError(value) ? value : error('#VALUE!');
+              continue;
+            }
+            const right = evaluateInEnv(opExpr.right, env, true, depth);
+            if (!isRange(right)) {
+              value = isError(right) ? right : error('#VALUE!');
+              continue;
+            }
+            if (value.length !== 1 || right.length !== 1 || value[0]!.sheetId !== right[0]!.sheetId) {
+              value = error('#VALUE!');
+              continue;
+            }
+            const a = value[0]!;
+            const b = right[0]!;
+            value = [{
+              sheetId: a.sheetId,
+              top: Math.min(a.top, b.top),
+              left: Math.min(a.left, b.left),
+              bottom: Math.max(a.bottom, b.bottom),
+              right: Math.max(a.right, b.right),
+            }];
             continue;
           }
           const leftArray = asArray(value, includeRanges);
@@ -775,6 +933,11 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
               text,
               locale,
               today,
+              now,
+              target,
+              cellAt,
+              resolveRefText,
+              random,
               env,
               evaluateInEnv: (expr, nextEnv, inc) => evaluateInEnv(expr, nextEnv, inc, depth),
               invokeLambda: (fn, argVals) => invokeLambda(fn, argVals, depth),

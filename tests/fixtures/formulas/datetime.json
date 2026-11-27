@@ -1,0 +1,225 @@
+{
+    "id":  "datetime-excel",
+    "sourceSpec":  "tests/fixtures/formulas/specs/datetime.spec.json",
+    "excelVersion":  "16.0",
+    "excelBuild":  "17932",
+    "capturedAt":  "2026-11-27T14:03:19.5824198+01:00",
+    "cells":  [
+
+              ],
+    "other":  [
+
+              ],
+    "cases":  [
+                  {
+                      "expression":  "=NOW()\u003e40000",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=IF(NOW()\u003e0,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=TIME(14,30,0)",
+                      "kind":  "number",
+                      "value":  "0.60416666666666663"
+                  },
+                  {
+                      "expression":  "=TIME(-1,0,0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=HOUR(TIME(14,30,45))",
+                      "kind":  "number",
+                      "value":  "14"
+                  },
+                  {
+                      "expression":  "=HOUR(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=MINUTE(TIME(14,30,45))",
+                      "kind":  "number",
+                      "value":  "30"
+                  },
+                  {
+                      "expression":  "=MINUTE(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=SECOND(TIME(14,30,45))",
+                      "kind":  "number",
+                      "value":  "45"
+                  },
+                  {
+                      "expression":  "=SECOND(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=DATEVALUE(\"2024-02-29\")",
+                      "kind":  "number",
+                      "value":  "45351"
+                  },
+                  {
+                      "expression":  "=DATEVALUE(\"not-a-date\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=TIMEVALUE(\"2:30 PM\")",
+                      "kind":  "number",
+                      "value":  "0.60416666666666663"
+                  },
+                  {
+                      "expression":  "=TIMEVALUE(\"not-a-time\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=EDATE(DATE(2024,1,31),1)",
+                      "kind":  "number",
+                      "value":  "45351"
+                  },
+                  {
+                      "expression":  "=EDATE(\"bad\",1)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=EOMONTH(DATE(2024,2,10),0)",
+                      "kind":  "number",
+                      "value":  "45351"
+                  },
+                  {
+                      "expression":  "=EOMONTH(\"bad\",0)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=DATEDIF(DATE(2020,1,15),DATE(2024,3,10),\"YM\")",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=DATEDIF(DATE(2024,1,1),DATE(2020,1,1),\"D\")",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=DAYS(DATE(2024,3,1),DATE(2024,2,1))",
+                      "kind":  "number",
+                      "value":  "29"
+                  },
+                  {
+                      "expression":  "=DAYS(\"bad\",DATE(2024,1,1))",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=DAYS360(DATE(2024,1,31),DATE(2024,3,31),FALSE)",
+                      "kind":  "number",
+                      "value":  "60"
+                  },
+                  {
+                      "expression":  "=DAYS360(DATE(2024,1,31),DATE(2024,3,31),TRUE)",
+                      "kind":  "number",
+                      "value":  "60"
+                  },
+                  {
+                      "expression":  "=DAYS360(\"bad\",DATE(2024,1,1))",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=WEEKDAY(DATE(2024,1,15),2)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=WEEKDAY(DATE(2024,1,15),99)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=WEEKNUM(DATE(2024,1,15),2)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=WEEKNUM(DATE(2024,1,15),99)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=ISOWEEKNUM(DATE(2021,1,1))",
+                      "kind":  "number",
+                      "value":  "53"
+                  },
+                  {
+                      "expression":  "=ISOWEEKNUM(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=WORKDAY(DATE(2024,1,12),3,DATE(2024,1,15))",
+                      "kind":  "number",
+                      "value":  "45309"
+                  },
+                  {
+                      "expression":  "=WORKDAY(\"bad\",1)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=WORKDAY.INTL(DATE(2024,1,12),3,\"0000110\")",
+                      "kind":  "number",
+                      "value":  "45307"
+                  },
+                  {
+                      "expression":  "=WORKDAY.INTL(DATE(2024,1,12),3,\"1111111\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=NETWORKDAYS(DATE(2024,1,1),DATE(2024,1,10),DATE(2024,1,1))",
+                      "kind":  "number",
+                      "value":  "7"
+                  },
+                  {
+                      "expression":  "=NETWORKDAYS(\"bad\",DATE(2024,1,10))",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=NETWORKDAYS.INTL(DATE(2024,1,1),DATE(2024,1,10),11)",
+                      "kind":  "number",
+                      "value":  "9"
+                  },
+                  {
+                      "expression":  "=NETWORKDAYS.INTL(DATE(2024,1,1),DATE(2024,1,10),\"1111111\")",
+                      "kind":  "number",
+                      "value":  "0"
+                  },
+                  {
+                      "expression":  "=NETWORKDAYS.INTL(DATE(2024,1,1),DATE(2024,1,10),99)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=YEARFRAC(DATE(2024,1,1),DATE(2024,7,1),1)",
+                      "kind":  "number",
+                      "value":  "0.49726775956284153"
+                  },
+                  {
+                      "expression":  "=YEARFRAC(DATE(2024,1,1),DATE(2024,7,1),9)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  }
+              ]
+}

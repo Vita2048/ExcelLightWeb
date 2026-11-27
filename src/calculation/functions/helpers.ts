@@ -167,8 +167,8 @@ export function evaluateScalarArgs(
   args: readonly FormulaExpression[],
   ctx: FunctionContext,
   rejectMultiCellArray = false,
-): Scalar[] | FormulaError {
-  const values: Scalar[] = [];
+): Exclude<Scalar, FormulaError>[] | FormulaError {
+  const values: Exclude<Scalar, FormulaError>[] = [];
   for (let i = 0; i < args.length; i++) {
     const input = ctx.evaluate(args[i]!);
     if (rejectMultiCellArray && isArray(input) && input.rows * input.columns > 1) return error('#VALUE!');
@@ -177,4 +177,174 @@ export function evaluateScalarArgs(
     values.push(value);
   }
   return values;
+}
+
+export function collectNumbers(args: readonly FormulaExpression[], ctx: FunctionContext): number[] | FormulaError {
+  const numbers: number[] = [];
+  for (const value of aggregateInputs(args, ctx, 2)) {
+    if (isError(value)) return value;
+    if (typeof value === 'number') numbers.push(value);
+  }
+  return numbers;
+}
+
+export function averageIf(args: readonly FormulaExpression[], ctx: FunctionContext): Scalar {
+  if (args.length < 2 || args.length > 3) return error('#VALUE!');
+  const input = ctx.evaluate(args[0]!);
+  const criterion = ctx.scalar(ctx.evaluate(args[1]!));
+  const target = args[2] ? ctx.evaluate(args[2]) : input;
+  if (isError(criterion)) return criterion;
+  if (!isRange(input)) return !isArray(input) && isError(input) ? input : error('#VALUE!');
+  if (!isRange(target)) return !isArray(target) && isError(target) ? target : error('#VALUE!');
+  if (input.length !== 1 || target.length !== 1) return error('#VALUE!');
+  const from = input[0]!, avg = target[0]!;
+  const expanded = sumIfRange(from, avg);
+  if (!expanded) return error('#REF!');
+  const match = criteria(criterion, ctx.number);
+  let sum = 0;
+  let count = 0;
+  for (const { row, column, value } of ctx.entries(expanded)) {
+    if (!match(ctx.read(from, from.top + row - avg.top, from.left + column - avg.left))) continue;
+    if (typeof value === 'number') {
+      sum += value;
+      count++;
+    }
+  }
+  return count ? finite(sum / count) : error('#DIV/0!');
+}
+
+export function multiConditional(
+  kind: 'SUMIFS' | 'COUNTIFS' | 'AVERAGEIFS' | 'MAXIFS' | 'MINIFS',
+  args: readonly FormulaExpression[],
+  ctx: FunctionContext,
+): Scalar {
+  const isCount = kind === 'COUNTIFS';
+  if (isCount ? args.length < 2 || args.length % 2 !== 0 : args.length < 3 || args.length % 2 !== 1) {
+    return error('#VALUE!');
+  }
+
+  let targetRange: Range | undefined;
+  if (!isCount) {
+    const tVal = ctx.evaluate(args[0]!, true);
+    if (!isRange(tVal) || tVal.length !== 1) return !isArray(tVal) && isError(tVal) ? tVal : error('#VALUE!');
+    targetRange = tVal[0]!;
+  }
+
+  const pairStart = isCount ? 0 : 1;
+  const pairs: { readonly range: Range; readonly match: (input: Scalar) => boolean }[] = [];
+  let expectedRows: number | undefined = targetRange ? targetRange.bottom - targetRange.top + 1 : undefined;
+  let expectedCols: number | undefined = targetRange ? targetRange.right - targetRange.left + 1 : undefined;
+
+  for (let i = pairStart; i < args.length; i += 2) {
+    const rVal = ctx.evaluate(args[i]!, true);
+    if (!isRange(rVal) || rVal.length !== 1) return !isArray(rVal) && isError(rVal) ? rVal : error('#VALUE!');
+    const r = rVal[0]!;
+    const rows = r.bottom - r.top + 1;
+    const cols = r.right - r.left + 1;
+    if (expectedRows === undefined) {
+      expectedRows = rows;
+      expectedCols = cols;
+    } else if (rows !== expectedRows || cols !== expectedCols) {
+      return error('#VALUE!');
+    }
+    const crit = ctx.scalar(ctx.evaluate(args[i + 1]!));
+    if (isError(crit)) return crit;
+    pairs.push({ range: r, match: criteria(crit, ctx.number) });
+  }
+
+  const matchesAt = (dr: number, dc: number) =>
+    pairs.every(pair => pair.match(ctx.read(pair.range, pair.range.top + dr, pair.range.left + dc)));
+
+  if (isCount) {
+    const total = (expectedRows ?? 0) * (expectedCols ?? 0);
+    const seenOffsets = new Set<number>();
+    const stride = expectedCols ?? 1;
+    let count = 0;
+    for (const pair of pairs) {
+      for (const entry of ctx.entries(pair.range)) {
+        const dr = entry.row - pair.range.top;
+        const dc = entry.column - pair.range.left;
+        const key = dr * stride + dc;
+        if (seenOffsets.has(key)) continue;
+        seenOffsets.add(key);
+        if (matchesAt(dr, dc)) count++;
+      }
+    }
+    if (pairs.every(pair => pair.match(null))) {
+      count += total - seenOffsets.size;
+    }
+    return count;
+  }
+
+  let sum = 0;
+  let count = 0;
+  let best = kind === 'MAXIFS' ? -Infinity : Infinity;
+  for (const entry of ctx.entries(targetRange!)) {
+    const dr = entry.row - targetRange!.top;
+    const dc = entry.column - targetRange!.left;
+    if (!matchesAt(dr, dc)) continue;
+    if (kind === 'SUMIFS' && isError(entry.value)) return entry.value;
+    if (typeof entry.value !== 'number') continue;
+    if (kind === 'SUMIFS' || kind === 'AVERAGEIFS') {
+      sum += entry.value;
+      count++;
+    } else if (kind === 'MAXIFS') {
+      best = Math.max(best, entry.value);
+      count++;
+    } else {
+      best = Math.min(best, entry.value);
+      count++;
+    }
+  }
+  if (kind === 'SUMIFS') return finite(sum);
+  if (kind === 'AVERAGEIFS') return count ? finite(sum / count) : error('#DIV/0!');
+  return count ? best : 0;
+}
+
+export function medianOf(nums: readonly number[]): Scalar {
+  if (!nums.length) return error('#NUM!');
+  const s = [...nums].sort((a, b) => a - b);
+  const mid = s.length >>> 1;
+  return s.length % 2 === 1 ? s[mid]! : finite((s[mid - 1]! + s[mid]!) / 2);
+}
+
+export function modeOf(nums: readonly number[]): Scalar {
+  const counts = new Map<number, number>();
+  let bestVal = 0;
+  let bestCount = 1;
+  for (const n of nums) {
+    const key = n === 0 ? 0 : n;
+    const next = (counts.get(key) ?? 0) + 1;
+    counts.set(key, next);
+    if (next > bestCount) {
+      bestCount = next;
+      bestVal = key;
+    }
+  }
+  return bestCount > 1 ? bestVal : error('#N/A');
+}
+
+export function percentileOf(nums: readonly number[], k: number, inclusive: boolean): Scalar {
+  const n = nums.length;
+  if (!n || !Number.isFinite(k)) return error('#NUM!');
+  if (inclusive ? k < 0 || k > 1 : k <= 0 || k >= 1) return error('#NUM!');
+  const s = [...nums].sort((a, b) => a - b);
+  if (inclusive) {
+    const pos = k * (n - 1);
+    const lo = Math.floor(pos);
+    const hi = Math.ceil(pos);
+    return finite(s[lo]! + (pos - lo) * (s[hi]! - s[lo]!));
+  }
+  const pos = k * (n + 1) - 1;
+  if (pos < 0 || pos > n - 1) return error('#NUM!');
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return finite(s[lo]! + (pos - lo) * (s[hi]! - s[lo]!));
+}
+
+export function nthExtreme(nums: readonly number[], k: number, largest: boolean): Scalar {
+  const rank = Math.trunc(k);
+  if (!Number.isFinite(k) || rank < 1 || rank > nums.length) return error('#NUM!');
+  const s = [...nums].sort((a, b) => largest ? b - a : a - b);
+  return s[rank - 1]!;
 }

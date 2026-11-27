@@ -1,0 +1,549 @@
+{
+    "id":  "stats-financial-excel",
+    "sourceSpec":  "tests/fixtures/formulas/specs/stats-financial.spec.json",
+    "excelVersion":  "16.0",
+    "excelBuild":  "17932",
+    "capturedAt":  "2026-11-27T14:03:23.2846361+01:00",
+    "cells":  [
+                  [
+                      1,
+                      1,
+                      10
+                  ],
+                  [
+                      2,
+                      1,
+                      20
+                  ],
+                  [
+                      3,
+                      1,
+                      20
+                  ],
+                  [
+                      4,
+                      1,
+                      30
+                  ],
+                  [
+                      5,
+                      1,
+                      40
+                  ],
+                  [
+                      1,
+                      2,
+                      "east"
+                  ],
+                  [
+                      2,
+                      2,
+                      "west"
+                  ],
+                  [
+                      3,
+                      2,
+                      "east"
+                  ],
+                  [
+                      4,
+                      2,
+                      "east"
+                  ],
+                  [
+                      5,
+                      2,
+                      "west"
+                  ],
+                  [
+                      1,
+                      3,
+                      2
+                  ],
+                  [
+                      2,
+                      3,
+                      4
+                  ],
+                  [
+                      3,
+                      3,
+                      6
+                  ],
+                  [
+                      4,
+                      3,
+                      8
+                  ],
+                  [
+                      5,
+                      3,
+                      10
+                  ],
+                  [
+                      1,
+                      4,
+                      ""
+                  ],
+                  [
+                      3,
+                      4,
+                      "ok"
+                  ],
+                  [
+                      7,
+                      1,
+                      -1000
+                  ],
+                  [
+                      8,
+                      1,
+                      300
+                  ],
+                  [
+                      9,
+                      1,
+                      400
+                  ],
+                  [
+                      10,
+                      1,
+                      500
+                  ],
+                  [
+                      7,
+                      2,
+                      "=DATE(2024,1,1)"
+                  ],
+                  [
+                      8,
+                      2,
+                      "=DATE(2024,7,1)"
+                  ],
+                  [
+                      9,
+                      2,
+                      "=DATE(2025,1,1)"
+                  ],
+                  [
+                      10,
+                      2,
+                      "=DATE(2025,7,1)"
+                  ]
+              ],
+    "other":  [
+
+              ],
+    "cases":  [
+                  {
+                      "expression":  "=COUNTIFS(B1:B5,\"east\",A1:A5,\"\u003e15\")",
+                      "kind":  "number",
+                      "value":  "2"
+                  },
+                  {
+                      "expression":  "=COUNTIFS(B1:B5,\"east\",A1:A3,\"\u003e15\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=AVERAGEIF(B1:B5,\"east\",A1:A5)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=AVERAGEIF(B1:B5,\"north\",A1:A5)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=AVERAGEIFS(A1:A5,B1:B5,\"east\",C1:C5,\"\u003e=6\")",
+                      "kind":  "number",
+                      "value":  "25"
+                  },
+                  {
+                      "expression":  "=AVERAGEIFS(A1:A5,B1:B5,\"none\")",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=MAXIFS(A1:A5,B1:B5,\"east\")",
+                      "kind":  "number",
+                      "value":  "30"
+                  },
+                  {
+                      "expression":  "=MAXIFS(A1:A5,B1:B3,\"east\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=MINIFS(A1:A5,B1:B5,\"west\")",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=MINIFS(A1:A5,B1:B3,\"west\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=COUNTBLANK(D1:D5)",
+                      "kind":  "number",
+                      "value":  "4"
+                  },
+                  {
+                      "expression":  "=IF(COUNTBLANK(D1:D5)\u003e0,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=MEDIAN(A1:A5)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=MEDIAN(1,\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=MODE(A1:A5)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=MODE(1,2,3)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=MODE.SNGL(A1:A5)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=MODE.SNGL(1,2,3)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=STDEV.S(A1:A5)",
+                      "kind":  "number",
+                      "value":  "11.401754250991379"
+                  },
+                  {
+                      "expression":  "=STDEV.S(1)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=STDEV.P(A1:A5)",
+                      "kind":  "number",
+                      "value":  "10.198039027185569"
+                  },
+                  {
+                      "expression":  "=STDEV.P(1,\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=VAR.S(A1:A5)",
+                      "kind":  "number",
+                      "value":  "130"
+                  },
+                  {
+                      "expression":  "=VAR.S(1)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=VAR.P(A1:A5)",
+                      "kind":  "number",
+                      "value":  "104"
+                  },
+                  {
+                      "expression":  "=VAR.P(1,\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=LARGE(A1:A5,2)",
+                      "kind":  "number",
+                      "value":  "30"
+                  },
+                  {
+                      "expression":  "=LARGE(A1:A5,9)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=SMALL(A1:A5,2)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=SMALL(A1:A5,0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=RANK(20,A1:A5)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=RANK(99,A1:A5)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=RANK.EQ(20,A1:A5,1)",
+                      "kind":  "number",
+                      "value":  "2"
+                  },
+                  {
+                      "expression":  "=RANK.EQ(99,A1:A5)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=RANK.AVG(20,A1:A5)",
+                      "kind":  "number",
+                      "value":  "3.5"
+                  },
+                  {
+                      "expression":  "=RANK.AVG(99,A1:A5)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=PERCENTILE.INC(A1:A5,0.25)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=PERCENTILE.INC(A1:A5,2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=PERCENTILE.EXC(A1:A5,0.25)",
+                      "kind":  "number",
+                      "value":  "15"
+                  },
+                  {
+                      "expression":  "=PERCENTILE.EXC(A1:A5,0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=QUARTILE.INC(A1:A5,3)",
+                      "kind":  "number",
+                      "value":  "30"
+                  },
+                  {
+                      "expression":  "=QUARTILE.INC(A1:A5,5)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=QUARTILE.EXC(A1:A5,1)",
+                      "kind":  "number",
+                      "value":  "15"
+                  },
+                  {
+                      "expression":  "=QUARTILE.EXC(A1:A5,0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=CORREL(A1:A5,C1:C5)",
+                      "kind":  "number",
+                      "value":  "0.97072534339415106"
+                  },
+                  {
+                      "expression":  "=CORREL(A1:A5,C1:C3)",
+                      "kind":  "error",
+                      "value":  "#N/A"
+                  },
+                  {
+                      "expression":  "=COVARIANCE.S(A1:A5,C1:C5)",
+                      "kind":  "number",
+                      "value":  "35"
+                  },
+                  {
+                      "expression":  "=COVARIANCE.S({1},{2})",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=SLOPE(A1:A5,C1:C5)",
+                      "kind":  "number",
+                      "value":  "3.5"
+                  },
+                  {
+                      "expression":  "=SLOPE({1,2},{5,5})",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=INTERCEPT(A1:A5,C1:C5)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=INTERCEPT({1,2},{5,5})",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=FORECAST.LINEAR(12,A1:A5,C1:C5)",
+                      "kind":  "number",
+                      "value":  "45"
+                  },
+                  {
+                      "expression":  "=FORECAST.LINEAR(12,{1,2},{5,5})",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=PMT(0.05/12,360,200000)",
+                      "kind":  "number",
+                      "value":  "-1073.6432460242781"
+                  },
+                  {
+                      "expression":  "=PMT(0.05,0,1000)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=PV(0.05,10,-100)",
+                      "kind":  "number",
+                      "value":  "772.17349291848132"
+                  },
+                  {
+                      "expression":  "=PV(-1,10,-100)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=FV(0.05,10,-100,-1000)",
+                      "kind":  "number",
+                      "value":  "2886.6838803323244"
+                  },
+                  {
+                      "expression":  "=FV(\"bad\",10,-100)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=NPV(0.1,300,400,500)",
+                      "kind":  "number",
+                      "value":  "978.96318557475581"
+                  },
+                  {
+                      "expression":  "=NPV(-1,300,400)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=XNPV(0.1,A7:A10,B7:B10)",
+                      "kind":  "number",
+                      "value":  "83.066221110547019"
+                  },
+                  {
+                      "expression":  "=XNPV(-1,A7:A10,B7:B10)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=IRR(A7:A10)",
+                      "kind":  "number",
+                      "value":  "0.088963394693349906"
+                  },
+                  {
+                      "expression":  "=IRR({100,200})",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=XIRR(A7:A10,B7:B10)",
+                      "kind":  "number",
+                      "value":  "0.18583820462226869"
+                  },
+                  {
+                      "expression":  "=XIRR({100,200},B7:B8)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=RATE(10,-200,1000)",
+                      "kind":  "number",
+                      "value":  "0.15098414477112568"
+                  },
+                  {
+                      "expression":  "=RATE(0,-200,1000)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=NPER(0.05,-100,500)",
+                      "kind":  "number",
+                      "value":  "5.8963128603698989"
+                  },
+                  {
+                      "expression":  "=NPER(0,0,500)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=IPMT(0.1,1,5,1000)",
+                      "kind":  "number",
+                      "value":  "-100"
+                  },
+                  {
+                      "expression":  "=IPMT(0.1,9,5,1000)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=PPMT(0.1,1,5,1000)",
+                      "kind":  "number",
+                      "value":  "-163.79748079474541"
+                  },
+                  {
+                      "expression":  "=PPMT(0.1,9,5,1000)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=SLN(10000,1000,5)",
+                      "kind":  "number",
+                      "value":  "1800"
+                  },
+                  {
+                      "expression":  "=SLN(10000,1000,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=DB(10000,1000,5,1,7)",
+                      "kind":  "number",
+                      "value":  "2152.5"
+                  },
+                  {
+                      "expression":  "=DB(10000,1000,5,9)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=DDB(10000,1000,5,1,2)",
+                      "kind":  "number",
+                      "value":  "4000"
+                  },
+                  {
+                      "expression":  "=DDB(10000,1000,5,9,2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  }
+              ]
+}

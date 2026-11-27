@@ -11,7 +11,36 @@ export function todaySerial(date: Date): number {
   return (midnight - epoch) / dayMs + (midnight >= march1900 ? 1 : 0);
 }
 
-function parseDateText(text: string, locale: string): number {
+export function nowSerial(date: Date): number {
+  const fraction = (date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds() + date.getMilliseconds() / 1000) / 86_400;
+  return todaySerial(date) + fraction;
+}
+
+export function dateToSerial(year: number, month: number, day: number): number {
+  const fullYear = year < 1900 ? year + 1900 : year;
+  const stamp = Date.UTC(fullYear, month - 1, 1);
+  return (stamp - epoch) / dayMs + (stamp >= march1900 ? 1 : 0) + day - 1;
+}
+
+export function parseTimeText(text: string): number {
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}(?:\.\d+)?))?\s*(AM|PM)?$/iu.exec(text.trim());
+  if (!m) return NaN;
+  let hours = Number(m[1]);
+  const minutes = Number(m[2]);
+  const seconds = m[3] ? Number(m[3]) : 0;
+  const mer = m[4]?.toUpperCase();
+  if (minutes >= 60 || seconds >= 60) return NaN;
+  if (mer) {
+    if (hours < 1 || hours > 12) return NaN;
+    if (mer === 'AM' && hours === 12) hours = 0;
+    else if (mer === 'PM' && hours < 12) hours += 12;
+  } else if (hours > 9999) {
+    return NaN;
+  }
+  return ((hours * 3600 + minutes * 60 + seconds) / 86_400) % 1;
+}
+
+export function parseDateText(text: string, locale: string): number {
   const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/u.exec(text.trim());
   let year: number, month: number, day: number;
   if (iso) {

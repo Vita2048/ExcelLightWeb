@@ -1,0 +1,580 @@
+{
+    "id":  "math-excel",
+    "sourceSpec":  "tests/fixtures/formulas/specs/math.spec.json",
+    "excelVersion":  "16.0",
+    "excelBuild":  "17932",
+    "capturedAt":  "2026-11-27T14:00:23.2833824+01:00",
+    "cells":  [
+                  [
+                      1,
+                      1,
+                      10
+                  ],
+                  [
+                      2,
+                      1,
+                      20
+                  ],
+                  [
+                      3,
+                      1,
+                      30
+                  ],
+                  [
+                      1,
+                      2,
+                      "a"
+                  ],
+                  [
+                      2,
+                      2,
+                      "b"
+                  ],
+                  [
+                      3,
+                      2,
+                      "a"
+                  ],
+                  [
+                      1,
+                      3,
+                      2
+                  ],
+                  [
+                      2,
+                      3,
+                      4
+                  ],
+                  [
+                      3,
+                      3,
+                      6
+                  ],
+                  [
+                      5,
+                      1,
+                      1
+                  ],
+                  [
+                      5,
+                      2,
+                      2
+                  ],
+                  [
+                      6,
+                      1,
+                      3
+                  ],
+                  [
+                      6,
+                      2,
+                      4
+                  ]
+              ],
+    "other":  [
+
+              ],
+    "cases":  [
+                  {
+                      "expression":  "=SUMIFS(C1:C3,B1:B3,\"a\")",
+                      "kind":  "number",
+                      "value":  "8"
+                  },
+                  {
+                      "expression":  "=SUMIFS(C1:C3,B1:B2,\"a\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=SUMPRODUCT(A1:A3,C1:C3)",
+                      "kind":  "number",
+                      "value":  "280"
+                  },
+                  {
+                      "expression":  "=SUMPRODUCT(A1:A3,C1:C2)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=AGGREGATE(9,6,A1:A3)",
+                      "kind":  "number",
+                      "value":  "60"
+                  },
+                  {
+                      "expression":  "=AGGREGATE(14,6,A1:A3,1)",
+                      "kind":  "number",
+                      "value":  "30"
+                  },
+                  {
+                      "expression":  "=AGGREGATE(99,0,A1:A3)",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=PRODUCT(C1:C3)",
+                      "kind":  "number",
+                      "value":  "48"
+                  },
+                  {
+                      "expression":  "=PRODUCT(C1,1/0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=INT(-8.9)",
+                      "kind":  "number",
+                      "value":  "-9"
+                  },
+                  {
+                      "expression":  "=INT(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=TRUNC(1.259,2)",
+                      "kind":  "number",
+                      "value":  "1.25"
+                  },
+                  {
+                      "expression":  "=TRUNC(-8.9)",
+                      "kind":  "number",
+                      "value":  "-8"
+                  },
+                  {
+                      "expression":  "=TRUNC(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=MOD(-3,2)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=MOD(3,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=POWER(2,5)",
+                      "kind":  "number",
+                      "value":  "32"
+                  },
+                  {
+                      "expression":  "=POWER(0,0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=SQRT(81)",
+                      "kind":  "number",
+                      "value":  "9"
+                  },
+                  {
+                      "expression":  "=SQRT(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=SIGN(-5)",
+                      "kind":  "number",
+                      "value":  "-1"
+                  },
+                  {
+                      "expression":  "=SIGN(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=AND(RAND()\u003e=0,RAND()\u003c1)",
+                      "kind":  "boolean",
+                      "value":  "true"
+                  },
+                  {
+                      "expression":  "=IF(RAND()\u003e=0,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=RANDBETWEEN(7,7)",
+                      "kind":  "number",
+                      "value":  "7"
+                  },
+                  {
+                      "expression":  "=RANDBETWEEN(10,5)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=CEILING(4.2,1.5)",
+                      "kind":  "number",
+                      "value":  "4.5"
+                  },
+                  {
+                      "expression":  "=CEILING(-5.5,-2)",
+                      "kind":  "number",
+                      "value":  "-6"
+                  },
+                  {
+                      "expression":  "=CEILING(5,-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=CEILING.MATH(-5.5,2)",
+                      "kind":  "number",
+                      "value":  "-4"
+                  },
+                  {
+                      "expression":  "=CEILING.MATH(-5.5,2,1)",
+                      "kind":  "number",
+                      "value":  "-6"
+                  },
+                  {
+                      "expression":  "=CEILING.MATH(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=FLOOR(-5.5,2)",
+                      "kind":  "number",
+                      "value":  "-6"
+                  },
+                  {
+                      "expression":  "=FLOOR(5,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=FLOOR.MATH(-5.5,2,1)",
+                      "kind":  "number",
+                      "value":  "-4"
+                  },
+                  {
+                      "expression":  "=FLOOR.MATH(-5.5,2)",
+                      "kind":  "number",
+                      "value":  "-6"
+                  },
+                  {
+                      "expression":  "=FLOOR.MATH(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=MROUND(10,3)",
+                      "kind":  "number",
+                      "value":  "9"
+                  },
+                  {
+                      "expression":  "=MROUND(5,-2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=EXP(1)",
+                      "kind":  "number",
+                      "value":  "2.7182818284590451"
+                  },
+                  {
+                      "expression":  "=EXP(1000)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=LN(10)",
+                      "kind":  "number",
+                      "value":  "2.3025850929940459"
+                  },
+                  {
+                      "expression":  "=LN(0)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=LOG(8,2)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=LOG(10,1)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=LOG10(1000)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=LOG10(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=PI()",
+                      "kind":  "number",
+                      "value":  "3.1415926535897931"
+                  },
+                  {
+                      "expression":  "=IF(PI()\u003e3,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=SIN(PI()/2)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=SIN(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=COS(0)",
+                      "kind":  "number",
+                      "value":  "1"
+                  },
+                  {
+                      "expression":  "=COS(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=TAN(PI()/4)",
+                      "kind":  "number",
+                      "value":  "0.99999999999999989"
+                  },
+                  {
+                      "expression":  "=TAN(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=ASIN(0.5)",
+                      "kind":  "number",
+                      "value":  "0.52359877559829893"
+                  },
+                  {
+                      "expression":  "=ASIN(2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=ACOS(0.5)",
+                      "kind":  "number",
+                      "value":  "1.0471975511965976"
+                  },
+                  {
+                      "expression":  "=ACOS(-2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=ATAN(1)",
+                      "kind":  "number",
+                      "value":  "0.78539816339744828"
+                  },
+                  {
+                      "expression":  "=ATAN(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=ATAN2(1,2)",
+                      "kind":  "number",
+                      "value":  "1.1071487177940904"
+                  },
+                  {
+                      "expression":  "=ATAN2(0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=DEGREES(PI())",
+                      "kind":  "number",
+                      "value":  "180"
+                  },
+                  {
+                      "expression":  "=DEGREES(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=RADIANS(180)",
+                      "kind":  "number",
+                      "value":  "3.1415926535897931"
+                  },
+                  {
+                      "expression":  "=RADIANS(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=FACT(5)",
+                      "kind":  "number",
+                      "value":  "120"
+                  },
+                  {
+                      "expression":  "=FACT(-1)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=COMBIN(52,5)",
+                      "kind":  "number",
+                      "value":  "2598960"
+                  },
+                  {
+                      "expression":  "=COMBIN(3,5)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=PERMUT(5,2)",
+                      "kind":  "number",
+                      "value":  "20"
+                  },
+                  {
+                      "expression":  "=PERMUT(3,5)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=GCD(24,36,60)",
+                      "kind":  "number",
+                      "value":  "12"
+                  },
+                  {
+                      "expression":  "=GCD(-1,2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=LCM(4,6,8)",
+                      "kind":  "number",
+                      "value":  "24"
+                  },
+                  {
+                      "expression":  "=LCM(-1,2)",
+                      "kind":  "error",
+                      "value":  "#NUM!"
+                  },
+                  {
+                      "expression":  "=QUOTIENT(7,2)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=QUOTIENT(7,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  },
+                  {
+                      "expression":  "=EVEN(1.5)",
+                      "kind":  "number",
+                      "value":  "2"
+                  },
+                  {
+                      "expression":  "=EVEN(-1.5)",
+                      "kind":  "number",
+                      "value":  "-2"
+                  },
+                  {
+                      "expression":  "=EVEN(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=ODD(2)",
+                      "kind":  "number",
+                      "value":  "3"
+                  },
+                  {
+                      "expression":  "=ODD(-1.5)",
+                      "kind":  "number",
+                      "value":  "-3"
+                  },
+                  {
+                      "expression":  "=ODD(\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=SUMSQ(3,4)",
+                      "kind":  "number",
+                      "value":  "25"
+                  },
+                  {
+                      "expression":  "=SUMSQ(3,\"bad\")",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=MMULT(A5:B6,A5:B6)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "7"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "10"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "15"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "22"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=MMULT({1,2},{1,2})",
+                      "kind":  "error",
+                      "value":  "#VALUE!"
+                  },
+                  {
+                      "expression":  "=TRANSPOSE(A5:B6)",
+                      "kind":  "array",
+                      "rows":  2,
+                      "columns":  2,
+                      "matrix":  [
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "1"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "3"
+                                         }
+                                     ],
+                                     [
+                                         {
+                                             "kind":  "number",
+                                             "value":  "2"
+                                         },
+                                         {
+                                             "kind":  "number",
+                                             "value":  "4"
+                                         }
+                                     ]
+                                 ]
+                  },
+                  {
+                      "expression":  "=IF(ROWS(TRANSPOSE(A5:B6))=2,1/0,0)",
+                      "kind":  "error",
+                      "value":  "#DIV/0!"
+                  }
+              ]
+}
