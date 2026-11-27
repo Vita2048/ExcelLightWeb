@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  collectFieldCollapsibleKeys,
   computePivotOverlays,
   evaluatePivotTable,
   extractPivotCellDrillDown,
   extractPivotRecords,
+  resolveActivePivotField,
 } from '../../src/calculation/pivot-engine';
-import { defaultPivotValueLabel, nextPivotName, type PivotTableDocument } from '../../src/core/pivot';
+import { defaultPivotValueLabel, nextPivotName, pivotStyles, type PivotTableDocument } from '../../src/core/pivot';
 import { newWorkbook, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
 
 function sampleWorkbook(): WorkbookDocument {
@@ -325,5 +327,63 @@ describe('pivot engine', () => {
       values: [{ id: 'v1', fieldName: 'Amount', aggregation: 'sum', numberFormat: '0.0' }],
     });
     expect(evaluatePivotTable(formatted, overridePivot).cells.find(c => c.role === 'data')?.style?.numberFormat).toBe('0.0');
+  });
+
+  it('renders emptyCellText on blank data intersections, supports 8 styles, and resolves active fields & collapsible keys', () => {
+    const doc = sampleWorkbook();
+    const sheetId = doc.sheets[0]!.id;
+
+    // Sparse cross-tab: East has Hardware/Software, Monitor only in East, Suite only in West -> West × Monitor is blank.
+    for (const style of pivotStyles) {
+      const styled = evaluatePivotTable(doc, makePivot(doc, { style }));
+      expect(styled.cells.some(c => c.role === 'header' && c.style?.fillRgb)).toBe(true);
+    }
+
+    const sparse = makePivot(doc, {
+      emptyCellText: '--',
+      filters: [{ fieldName: 'Category' }],
+      columns: [{ fieldName: 'Region' }],
+      rows: [{ fieldName: 'Category' }, { fieldName: 'Product' }],
+    });
+    const res = evaluatePivotTable(doc, sparse);
+    expect(res.cells.some(c => c.role === 'data' && c.content.kind === 'text' && c.content.value === '--')).toBe(true);
+
+    const keys = collectFieldCollapsibleKeys(doc, sparse, 'Category');
+    expect(keys).toEqual(['Hardware', 'Software']);
+    expect(collectFieldCollapsibleKeys(doc, sparse, 'Product')).toEqual([]);
+
+    // Active field resolution across filter, column banner, row label, value cell, and outside.
+    expect(resolveActivePivotField(doc, sparse, { sheetId, row: 1, column: 6 })?.area).toBe('filters');
+    expect(resolveActivePivotField(doc, sparse, { sheetId, row: 3, column: 7 })?.fieldName).toBe('Region');
+    expect(resolveActivePivotField(doc, sparse, { sheetId, row: 5, column: 6 })?.canExpandCollapse).toBe(true);
+    const activeData = resolveActivePivotField(doc, sparse, { sheetId, row: 5, column: 7 });
+    expect(activeData?.area).toBe('values');
+    expect(activeData?.displayName).toBe('Sum of Amount');
+    expect(resolveActivePivotField(doc, sparse, { sheetId, row: 1, column: 1 })).toBeUndefined();
+  });
+
+  it('hides Column Labels and Row Labels banners when showFieldHeaders is false while keeping values and item headers', () => {
+    const doc = sampleWorkbook();
+
+    const compactWithCols = evaluatePivotTable(doc, makePivot(doc, {
+      columns: [{ fieldName: 'Region' }],
+      rows: [{ fieldName: 'Product' }],
+      showFieldHeaders: false,
+    }));
+    const texts = compactWithCols.cells.map(c => c.content.kind === 'text' ? c.content.value : '');
+    expect(texts).not.toContain('Column Labels');
+    expect(texts).not.toContain('Row Labels');
+    expect(compactWithCols.cells.find(c => c.rowOffset === 0 && c.colOffset === 0)?.content).toEqual({ kind: 'text', value: 'Sum of Amount' });
+    expect(compactWithCols.cells.find(c => c.rowOffset === 0 && c.colOffset === 1)?.content).toEqual({ kind: 'text', value: 'East' });
+
+    const tabularRowsOnly = evaluatePivotTable(doc, makePivot(doc, {
+      columns: [],
+      rows: [{ fieldName: 'Region' }, { fieldName: 'Product' }],
+      reportLayout: 'tabular',
+      showFieldHeaders: false,
+    }));
+    const tabTexts = tabularRowsOnly.cells.map(c => c.content.kind === 'text' ? c.content.value : '');
+    expect(tabTexts).not.toContain('Region');
+    expect(tabularRowsOnly.cells.find(c => c.rowOffset === 0 && c.colOffset === 2)?.content).toEqual({ kind: 'text', value: 'Sum of Amount' });
   });
 });

@@ -44,12 +44,14 @@ import {
   refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
 } from '../application/table-commands';
 import {
-  createPivotTableWithSheet, drillDownPivotCell, findPivotAt, parsePivotRangeReference, parsePivotTargetCell,
-  togglePivotCollapse, updatePivotLayout,
+  changePivotSource, clearPivotTable, createPivotTableWithSheet, drillDownPivotCell, expandCollapsePivotField,
+  findPivotAt, movePivotTableWithSheet, parsePivotRangeReference, parsePivotTargetCell, refreshAllPivotTables,
+  refreshPivotTable, renamePivotTable, togglePivotCollapse, updatePivotLayout,
 } from '../application/pivot-commands';
-import { computePivotOverlays } from '../calculation/pivot-engine';
+import { computePivotOverlays, resolveActivePivotField } from '../calculation/pivot-engine';
 import { CreatePivotTableDialog, type PivotPlacement } from '../features/pivot/CreatePivotTableDialog';
 import { FieldSettingsDialog, type FieldSettingsRequest } from '../features/pivot/FieldSettingsDialog';
+import { ChangePivotSourceDialog, MovePivotTableDialog, PivotOptionsDialog } from '../features/pivot/PivotDialogs';
 import { PivotFilterDropdown } from '../features/pivot/PivotFilterDropdown';
 import { PivotTableFieldsPane } from '../features/pivot/PivotTableFieldsPane';
 import type { PivotAxisField, PivotTableDocument, PivotValueField } from '../core/pivot';
@@ -441,6 +443,16 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     readonly pivotId: DocumentId;
     readonly request: FieldSettingsRequest;
   }>();
+  const [pivotOptionsOpen, setPivotOptionsOpen] = useState(false);
+  const [changePivotSourceDraft, setChangePivotSourceDraft] = useState<{
+    readonly pivotId: DocumentId;
+    readonly sourceText: string;
+  }>();
+  const [movePivotDraft, setMovePivotDraft] = useState<{
+    readonly pivotId: DocumentId;
+    readonly placement: PivotPlacement;
+    readonly locationText: string;
+  }>();
   const [pivotFilterMenu, setPivotFilterMenu] = useState<{
     readonly pivotId: DocumentId;
     readonly kind: 'reportFilter' | 'rowLabel' | 'colLabel';
@@ -451,6 +463,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     () => findPivotAt(snapshot.document, { sheetId: sheet.id, row: selection.anchor.row, column: selection.anchor.column }),
     [snapshot.document, sheet.id, selection.anchor.row, selection.anchor.column],
   );
+  const activePivotField = useMemo(
+    () => activePivot
+      ? resolveActivePivotField(snapshot.document, activePivot, { sheetId: sheet.id, row: selection.anchor.row, column: selection.anchor.column })
+      : undefined,
+    [activePivot, snapshot.document, sheet.id, selection.anchor.row, selection.anchor.column],
+  );
   const pivotOverlays = useMemo(
     () => computePivotOverlays(snapshot.document, sheet.id),
     [snapshot.document, sheet.id],
@@ -459,11 +477,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const settingsPivot = fieldSettingsModal
     ? snapshot.document.pivots?.find(item => item.id === fieldSettingsModal.pivotId)
     : undefined;
+  const optionsPivot = pivotOptionsOpen ? activePivot : undefined;
   const menuPivot = pivotFilterMenu
     ? snapshot.document.pivots?.find(item => item.id === pivotFilterMenu.pivotId)
     : undefined;
   useEffect(() => {
     if (activePivot?.id) setPivotFieldListOpen(true);
+    else setPivotOptionsOpen(false);
   }, [activePivot?.id]);
 
   useEffect(() => {
@@ -1631,6 +1651,169 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     } catch (err: unknown) {
       editing.reject(err instanceof Error ? err : new Error(String(err)));
       return true;
+    }
+  }
+
+  function handlePivotRename(name: string) {
+    if (!activePivot || !editing.commit()) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, renamePivotTable(basis, activePivot.id, name, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handleOpenPivotFieldSettings() {
+    if (!activePivot || !activePivotField) return;
+    if (activePivotField.valueField) {
+      setFieldSettingsModal({ pivotId: activePivot.id, request: { mode: 'value', field: activePivotField.valueField } });
+    } else if (activePivotField.axisField && (activePivotField.area === 'rows' || activePivotField.area === 'columns')) {
+      setFieldSettingsModal({
+        pivotId: activePivot.id,
+        request: { mode: 'axis', area: activePivotField.area, field: activePivotField.axisField },
+      });
+    }
+  }
+
+  function handlePivotExpandCollapse(expand: boolean) {
+    if (!activePivot || !activePivotField?.canExpandCollapse || !editing.commit()) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, expandCollapsePivotField(basis, activePivot.id, activePivotField.fieldName, expand, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handlePivotRefresh() {
+    if (!activePivot || !editing.commit()) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, refreshPivotTable(basis, activePivot.id, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handlePivotRefreshAll() {
+    if (!editing.commit()) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, refreshAllPivotTables(basis, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handlePivotClear(mode: 'all' | 'filters') {
+    if (!activePivot || !editing.commit()) return;
+    try {
+      const basis = session.capture();
+      applyStructure(basis, clearPivotTable(basis, activePivot.id, mode, makeId));
+    } catch (err: unknown) {
+      editing.reject(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+
+  function handlePivotSelectEntire() {
+    if (!activePivot?.extent || !editing.commit()) return;
+    const ext = activePivot.extent;
+    setSelections(current => new Map(current).set(activePivot.target.sheetId, {
+      ...singleSelection({ row: ext.row, column: ext.column }),
+      end: { row: ext.row + ext.rows - 1, column: ext.column + ext.columns - 1 },
+    }));
+    requestAnimationFrame(focusGrid);
+  }
+
+  function handleOpenChangePivotSource() {
+    if (!activePivot || !editing.commit()) return;
+    const src = activePivot.source;
+    const sourceText = src.kind === 'table'
+      ? (snapshot.document.names.find(entry => entry.id === src.tableId)?.name ?? '')
+      : refersTo(snapshot.document, src.area).replace(/^=/u, '');
+    setChangePivotSourceDraft({ pivotId: activePivot.id, sourceText });
+  }
+
+  function handlePickChangePivotSource() {
+    if (!changePivotSourceDraft) return;
+    const trimmed = changePivotSourceDraft.sourceText.trim();
+    setRangePicker({
+      initial: trimmed ? (trimmed.startsWith('=') ? trimmed : `=${trimmed}`) : '',
+      onDone: picked => {
+        setRangePicker(undefined);
+        if (picked) {
+          setChangePivotSourceDraft(current => current ? { ...current, sourceText: picked.replace(/^=/u, '') } : undefined);
+        }
+      },
+    });
+  }
+
+  function handleChangePivotSourceSubmit(): string | undefined {
+    if (!changePivotSourceDraft) return undefined;
+    try {
+      const basis = session.capture();
+      const source = parsePivotRangeReference(basis.document, sheet.id, changePivotSourceDraft.sourceText);
+      requireDocument(source, 'Enter a valid table name or worksheet cell range.');
+      applyStructure(basis, changePivotSource(basis, changePivotSourceDraft.pivotId, source, makeId));
+      setChangePivotSourceDraft(undefined);
+      requestAnimationFrame(focusGrid);
+      return undefined;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function handleOpenMovePivot() {
+    if (!activePivot || !editing.commit()) return;
+    const locationText = refersTo(snapshot.document, {
+      sheetId: activePivot.target.sheetId,
+      row: activePivot.target.row,
+      column: activePivot.target.column,
+      rows: 1,
+      columns: 1,
+    }).replace(/^=/u, '');
+    setMovePivotDraft({ pivotId: activePivot.id, placement: 'existing', locationText });
+  }
+
+  function handlePickMovePivotLocation() {
+    if (!movePivotDraft) return;
+    const trimmed = movePivotDraft.locationText.trim();
+    setRangePicker({
+      initial: trimmed ? (trimmed.startsWith('=') ? trimmed : `=${trimmed}`) : '',
+      onDone: picked => {
+        setRangePicker(undefined);
+        if (picked) {
+          setMovePivotDraft(current => current ? { ...current, placement: 'existing', locationText: picked.replace(/^=/u, '') } : undefined);
+        }
+      },
+    });
+  }
+
+  function handleMovePivotSubmit(): string | undefined {
+    if (!movePivotDraft) return undefined;
+    try {
+      const basis = session.capture();
+      const currentPivot = basis.document.pivots?.find(item => item.id === movePivotDraft.pivotId);
+      requireDocument(currentPivot, 'PivotTable no longer exists.');
+      let moved: ReturnType<typeof movePivotTableWithSheet>;
+      let targetAnchor: Coordinate;
+      if (movePivotDraft.placement === 'new') {
+        moved = movePivotTableWithSheet(basis, movePivotDraft.pivotId, { newSheet: true, insertBeforeSheetId: sheet.id }, makeId);
+        targetAnchor = { row: 3, column: 1 };
+      } else {
+        const target = parsePivotTargetCell(basis.document, sheet.id, movePivotDraft.locationText);
+        requireDocument(target, 'Enter a valid destination cell reference.');
+        moved = movePivotTableWithSheet(basis, movePivotDraft.pivotId, { target }, makeId);
+        targetAnchor = { row: target.row, column: target.column };
+      }
+      applyStructure(basis, moved.command, moved.sheetId);
+      setSelections(current => new Map(current).set(moved.sheetId, singleSelection(targetAnchor)));
+      setMovePivotDraft(undefined);
+      requestAnimationFrame(focusGrid);
+      return undefined;
+    } catch (err: unknown) {
+      return err instanceof Error ? err.message : String(err);
     }
   }
 
@@ -2935,6 +3118,71 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onAction: ribbonHandlers.onBorderAction, onStyle: ribbonHandlers.onBorderStyle,
     onColor: ribbonHandlers.onBorderColor, onDialog: ribbonHandlers.onBorderDialog,
   }), [borderAction, lineStyle, lineColor, borderTool?.mode, ribbonHandlers]);
+  const pivotLatest = useRef({
+    onRename: handlePivotRename,
+    onOpenOptions: () => setPivotOptionsOpen(true),
+    onOpenFieldSettings: handleOpenPivotFieldSettings,
+    onExpandField: () => handlePivotExpandCollapse(true),
+    onCollapseField: () => handlePivotExpandCollapse(false),
+    onRefresh: handlePivotRefresh,
+    onRefreshAll: handlePivotRefreshAll,
+    onOpenChangeSource: handleOpenChangePivotSource,
+    onClear: handlePivotClear,
+    onSelectEntire: handlePivotSelectEntire,
+    onOpenMove: handleOpenMovePivot,
+    onToggleFieldList: () => setPivotFieldListOpen(open => !open),
+    onToggleButtons: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showButtons: activePivot.showButtons === false }); },
+    onToggleFieldHeaders: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showFieldHeaders: activePivot.showFieldHeaders === false }); },
+    onUpdateLayout: (patch: Partial<Omit<PivotTableDocument, 'id' | 'extent'>>) => {
+      if (activePivot) handleUpdatePivotLayout(activePivot.id, patch);
+    },
+  });
+  pivotLatest.current = {
+    onRename: handlePivotRename,
+    onOpenOptions: () => { if (activePivot) setPivotOptionsOpen(true); },
+    onOpenFieldSettings: handleOpenPivotFieldSettings,
+    onExpandField: () => handlePivotExpandCollapse(true),
+    onCollapseField: () => handlePivotExpandCollapse(false),
+    onRefresh: handlePivotRefresh,
+    onRefreshAll: handlePivotRefreshAll,
+    onOpenChangeSource: handleOpenChangePivotSource,
+    onClear: handlePivotClear,
+    onSelectEntire: handlePivotSelectEntire,
+    onOpenMove: handleOpenMovePivot,
+    onToggleFieldList: () => setPivotFieldListOpen(open => !open),
+    onToggleButtons: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showButtons: activePivot.showButtons === false }); },
+    onToggleFieldHeaders: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showFieldHeaders: activePivot.showFieldHeaders === false }); },
+    onUpdateLayout: (patch: Partial<Omit<PivotTableDocument, 'id' | 'extent'>>) => {
+      if (activePivot) handleUpdatePivotLayout(activePivot.id, patch);
+    },
+  };
+  const pivotCallbacks = useMemo(() => ({
+    onRename: (name: string) => pivotLatest.current.onRename(name),
+    onOpenOptions: () => pivotLatest.current.onOpenOptions(),
+    onOpenFieldSettings: () => pivotLatest.current.onOpenFieldSettings(),
+    onExpandField: () => pivotLatest.current.onExpandField(),
+    onCollapseField: () => pivotLatest.current.onCollapseField(),
+    onRefresh: () => pivotLatest.current.onRefresh(),
+    onRefreshAll: () => pivotLatest.current.onRefreshAll(),
+    onOpenChangeSource: () => pivotLatest.current.onOpenChangeSource(),
+    onClear: (mode: 'all' | 'filters') => pivotLatest.current.onClear(mode),
+    onSelectEntire: () => pivotLatest.current.onSelectEntire(),
+    onOpenMove: () => pivotLatest.current.onOpenMove(),
+    onToggleFieldList: () => pivotLatest.current.onToggleFieldList(),
+    onToggleButtons: () => pivotLatest.current.onToggleButtons(),
+    onToggleFieldHeaders: () => pivotLatest.current.onToggleFieldHeaders(),
+    onUpdateLayout: (patch: Partial<Omit<PivotTableDocument, 'id' | 'extent'>>) => pivotLatest.current.onUpdateLayout(patch),
+  }), []);
+  const pivotRibbonProps = useMemo(() => (
+    activePivot
+      ? {
+        pivot: activePivot,
+        activeField: activePivotField,
+        fieldListOpen: pivotFieldListOpen,
+        ...pivotCallbacks,
+      }
+      : undefined
+  ), [activePivot, activePivotField, pivotFieldListOpen, pivotCallbacks]);
   const activeCell = findCell(sheet, selection.anchor);
   const activeStyle = resolvedCellStyle(sheet, selection.anchor, activeCell);
   const activeMerged = !!mergeAt(sheet, selection.anchor.row, selection.anchor.column);
@@ -2996,6 +3244,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onTableRename={ribbonHandlers.onTableRename} onTableResize={ribbonHandlers.onTableResize}
         onTableChangeDesign={ribbonHandlers.onTableChangeDesign} onTableClick={ribbonHandlers.onTableClick}
         onPivotTableClick={ribbonHandlers.onPivotTableClick}
+        {...(pivotRibbonProps && { pivotRibbon: pivotRibbonProps })}
         onFind={ribbonHandlers.onFind} onReplace={ribbonHandlers.onReplace}
         onNameManagerClick={ribbonHandlers.onNameManagerClick} onDefineNameClick={ribbonHandlers.onDefineNameClick}
         filter={filterCommands} onSort={ribbonHandlers.onSort} onToggleFilter={ribbonHandlers.onToggleFilter}
@@ -3300,6 +3549,33 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onSaveValueField={handleSaveValueFieldSettings}
         onSaveAxisField={handleSaveAxisFieldSettings}
         onCancel={() => { setFieldSettingsModal(undefined); requestAnimationFrame(focusGrid); }}
+      />}
+      {optionsPivot && <PivotOptionsDialog
+        pivot={optionsPivot}
+        onSave={patch => {
+          handleUpdatePivotLayout(optionsPivot.id, patch);
+          setPivotOptionsOpen(false);
+          requestAnimationFrame(focusGrid);
+        }}
+        onCancel={() => { setPivotOptionsOpen(false); requestAnimationFrame(focusGrid); }}
+      />}
+      {changePivotSourceDraft && <ChangePivotSourceDialog
+        sourceText={changePivotSourceDraft.sourceText}
+        suspended={rangePicker !== undefined}
+        onChangeSource={sourceText => setChangePivotSourceDraft(current => current ? { ...current, sourceText } : undefined)}
+        onPickSource={handlePickChangePivotSource}
+        onSubmit={handleChangePivotSourceSubmit}
+        onCancel={() => { setChangePivotSourceDraft(undefined); requestAnimationFrame(focusGrid); }}
+      />}
+      {movePivotDraft && <MovePivotTableDialog
+        placement={movePivotDraft.placement}
+        locationText={movePivotDraft.locationText}
+        suspended={rangePicker !== undefined}
+        onChangePlacement={placement => setMovePivotDraft(current => current ? { ...current, placement } : undefined)}
+        onChangeLocation={locationText => setMovePivotDraft(current => current ? { ...current, locationText } : undefined)}
+        onPickLocation={handlePickMovePivotLocation}
+        onSubmit={handleMovePivotSubmit}
+        onCancel={() => { setMovePivotDraft(undefined); requestAnimationFrame(focusGrid); }}
       />}
       {rangePicker && <RangePickerWidget initialRange={rangePicker.initial}
         onConfirm={range => rangePicker.onDone(range)}

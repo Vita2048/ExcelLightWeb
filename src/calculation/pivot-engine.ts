@@ -46,6 +46,15 @@ export interface PivotInteractiveOverlay {
   readonly filters: readonly PivotFilterOverlay[];
 }
 
+export interface ActivePivotFieldInfo {
+  readonly displayName: string;
+  readonly fieldName: string;
+  readonly area: 'filters' | 'columns' | 'rows' | 'values';
+  readonly axisField?: PivotAxisField;
+  readonly valueField?: PivotValueField;
+  readonly canExpandCollapse: boolean;
+}
+
 export interface PivotCellOutput {
   readonly rowOffset: number;
   readonly colOffset: number;
@@ -57,6 +66,7 @@ export interface PivotCellOutput {
   readonly collapsibleKey?: string;
   readonly collapsed?: boolean;
   readonly fieldName?: string;
+  readonly valueFieldId?: string;
 }
 
 export interface PivotEvaluationResult {
@@ -579,10 +589,10 @@ interface PivotPalette {
 }
 
 const pivotPalettes: Readonly<Record<PivotTableDocument['style'], PivotPalette>> = {
-  Blue: { headerFill: '1F354D', totalFill: '172638', bandFill: '1B2129', accentBorder: '3B6E9C', filterFill: '1E242D' },
-  Green: { headerFill: '1E3A2F', totalFill: '162922', bandFill: '1A221E', accentBorder: '3A7D5C', filterFill: '1D2621' },
-  Orange: { headerFill: '432C1D', totalFill: '2E2017', bandFill: '241E1A', accentBorder: '9C5E34', filterFill: '27201B' },
-  Purple: { headerFill: '332645', totalFill: '231C30', bandFill: '201C26', accentBorder: '6F509B', filterFill: '231F2B' },
+  Blue: { headerFill: '1E4471', totalFill: '163150', bandFill: '1A2634', accentBorder: '4F81BD', filterFill: '1C2836' },
+  Green: { headerFill: '214E36', totalFill: '173826', bandFill: '192920', accentBorder: '548235', filterFill: '1B2A21' },
+  Orange: { headerFill: '693714', totalFill: '4B270E', bandFill: '2D2018', accentBorder: 'C65911', filterFill: '2E2118' },
+  Purple: { headerFill: '462D66', totalFill: '32204A', bandFill: '251E30', accentBorder: '8064A2', filterFill: '261F31' },
 };
 
 interface InternalPivotResult {
@@ -608,6 +618,7 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
   const palette = pivotPalettes[pivot.style] ?? pivotPalettes.Blue;
   const styleOptions = pivot.styleOptions;
   const showButtons = pivot.showButtons !== false;
+  const showFieldHeaders = pivot.showFieldHeaders !== false;
 
   const headerStyle: CellStyle = {
     bold: true,
@@ -745,16 +756,17 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
 
   const hasColumnHierarchy = pivot.columns.length > 0;
   const colHeaderRows = hasColumnHierarchy ? Math.max(1, pivot.columns.length) : 1;
-  if (pivot.values.length === 1 && hasColumnHierarchy && labelColCount > 0) {
+  const singleValueBannerOccupied = pivot.values.length === 1 && hasColumnHierarchy && labelColCount > 0;
+  if (singleValueBannerOccupied) {
     const vf = pivot.values[0]!;
     cells.push({
       rowOffset: rowCursor, colOffset: 0,
       content: { kind: 'text', value: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation) },
-      style: headerStyle, role: 'header',
+      style: headerStyle, role: 'header', fieldName: vf.fieldName, valueFieldId: vf.id,
     });
   }
   const headerBannerRow = rowCursor;
-  if (hasColumnHierarchy) {
+  if (hasColumnHierarchy && showFieldHeaders) {
     const colField = pivot.columns[0]?.fieldName;
     cells.push({
       rowOffset: headerBannerRow, colOffset: dataStartCol,
@@ -762,71 +774,88 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
       style: headerStyle, role: 'header', ...(colField && { fieldName: colField }),
     });
   }
-  const rowHeaderRowOffset = hasColumnHierarchy ? rowCursor + colHeaderRows : rowCursor;
+  const rowHeaderRowOffset = hasColumnHierarchy
+    ? (showFieldHeaders ? rowCursor + colHeaderRows : rowCursor + colHeaderRows - 1)
+    : rowCursor;
   if (labelColCount > 0) {
     if (pivot.reportLayout === 'compact') {
-      cells.push({
-        rowOffset: rowHeaderRowOffset, colOffset: 0,
-        content: { kind: 'text', value: pivot.rows.length > 0 ? 'Row Labels' : (pivot.values[0]?.customName ?? pivot.name) },
-        style: headerStyle, role: 'header', ...(pivot.rows[0] && { fieldName: pivot.rows[0].fieldName }),
-      });
+      const skipTopLeftSingleValue = singleValueBannerOccupied && rowHeaderRowOffset === rowCursor;
+      if (!skipTopLeftSingleValue) {
+        const vf0 = pivot.rows.length === 0 ? pivot.values[0] : undefined;
+        const text = showFieldHeaders
+          ? (pivot.rows.length > 0 ? 'Row Labels' : (pivot.values[0]?.customName ?? pivot.name))
+          : '';
+        cells.push({
+          rowOffset: rowHeaderRowOffset, colOffset: 0,
+          content: { kind: 'text', value: text },
+          style: headerStyle, role: 'header',
+          ...(pivot.rows[0] ? { fieldName: pivot.rows[0].fieldName } : vf0 ? { fieldName: vf0.fieldName, valueFieldId: vf0.id } : {}),
+        });
+      }
     } else {
       for (let i = 0; i < Math.max(1, pivot.rows.length); i++) {
+        if (i === 0 && singleValueBannerOccupied && rowHeaderRowOffset === rowCursor) continue;
         cells.push({
           rowOffset: rowHeaderRowOffset, colOffset: i,
-          content: { kind: 'text', value: pivot.rows[i]?.fieldName ?? 'Row Labels' },
+          content: { kind: 'text', value: showFieldHeaders ? (pivot.rows[i]?.fieldName ?? 'Row Labels') : '' },
           style: headerStyle, role: 'header', ...(pivot.rows[i] && { fieldName: pivot.rows[i]!.fieldName }),
         });
       }
       if (valuesInRows && hasMultipleValues) {
         cells.push({
           rowOffset: rowHeaderRowOffset, colOffset: labelColCount - 1,
-          content: { kind: 'text', value: 'Values' },
+          content: { kind: 'text', value: showFieldHeaders ? 'Values' : '' },
           style: headerStyle, role: 'header',
         });
       }
     }
   }
 
-  const colLabelStartRow = hasColumnHierarchy ? rowCursor + 1 : rowHeaderRowOffset;
+  const colLabelStartRow = hasColumnHierarchy ? (showFieldHeaders ? rowCursor + 1 : rowCursor) : rowHeaderRowOffset;
   for (let c = 0; c < colLines.length; c++) {
     const colLine = colLines[c]!;
     const colIndex = dataStartCol + c;
     if (colLine.kind === 'grandTotal') {
-      const text = hasMultipleValues && !valuesInRows
-        ? `Total ${pivot.values[colLine.valueIndex]?.customName ?? defaultPivotValueLabel(pivot.values[colLine.valueIndex]!.fieldName, pivot.values[colLine.valueIndex]!.aggregation)}`
+      const gtVf = hasMultipleValues && !valuesInRows ? pivot.values[colLine.valueIndex] : undefined;
+      const text = gtVf
+        ? `Total ${gtVf.customName ?? defaultPivotValueLabel(gtVf.fieldName, gtVf.aggregation)}`
         : 'Grand Total';
       cells.push({
         rowOffset: rowHeaderRowOffset,
         colOffset: colIndex,
         content: { kind: 'text', value: text },
         style: headerStyle, role: 'grandTotal',
+        ...(gtVf && { fieldName: gtVf.fieldName, valueFieldId: gtVf.id }),
       });
       continue;
     }
     if (hasColumnHierarchy) {
       const topLabel = colLine.node ? colLine.label : '';
       const rowPos = Math.min(rowHeaderRowOffset, colLabelStartRow + (colLine.level ?? 0));
+      const cfName = colLine.node?.fieldName ?? pivot.columns[colLine.level ?? 0]?.fieldName;
+      const colVf = !valuesInRows && hasMultipleValues ? pivot.values[colLine.valueIndex] : undefined;
       cells.push({
         rowOffset: rowPos, colOffset: colIndex,
-        content: { kind: 'text', value: hasMultipleValues && !valuesInRows && pivot.values[colLine.valueIndex]
-          ? `${topLabel} - ${pivot.values[colLine.valueIndex]!.customName ?? pivot.values[colLine.valueIndex]!.fieldName}`
+        content: { kind: 'text', value: colVf
+          ? `${topLabel} - ${colVf.customName ?? colVf.fieldName}`
           : topLabel },
         style: headerStyle, role: 'colLabel',
+        ...(cfName && { fieldName: cfName }),
+        ...(colVf && { valueFieldId: colVf.id }),
       });
     } else if (hasMultipleValues && !valuesInRows) {
       const vf = pivot.values[colLine.valueIndex]!;
       cells.push({
         rowOffset: rowHeaderRowOffset, colOffset: colIndex,
         content: { kind: 'text', value: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation) },
-        style: headerStyle, role: 'colLabel',
+        style: headerStyle, role: 'colLabel', fieldName: vf.fieldName, valueFieldId: vf.id,
       });
     } else if (pivot.values.length === 1) {
       const vf = pivot.values[0]!;
       cells.push({
         rowOffset: rowHeaderRowOffset, colOffset: colIndex,
         content: { kind: 'text', value: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation) },
-        style: headerStyle, role: 'header',
+        style: headerStyle, role: 'header', fieldName: vf.fieldName, valueFieldId: vf.id,
       });
     }
   }
@@ -856,6 +885,9 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
             ...(indent > 0 && { alignment: 'left', indent }),
           }
           : undefined;
+        const compactFieldName = rLine.kind !== 'grandTotal'
+          ? (rLine.node?.fieldName ?? rLine.path[rLine.level]?.fieldName ?? pivot.rows[rLine.level]?.fieldName)
+          : undefined;
         cells.push({
           rowOffset: dataRowCursor, colOffset: 0,
           content: { kind: 'text', value: `${rLine.label}${valueSuffix}` },
@@ -863,6 +895,7 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
           role: rLine.kind === 'grandTotal' ? 'grandTotal' : rLine.kind === 'subtotal' ? 'subtotal' : 'rowLabel',
           indent: rLine.level,
           ...(rLine.collapsibleKey !== undefined && { collapsibleKey: rLine.collapsibleKey, collapsed: rLine.collapsed }),
+          ...(compactFieldName && { fieldName: compactFieldName }),
         });
       } else {
         for (let lvl = 0; lvl < Math.max(1, pivot.rows.length); lvl++) {
@@ -911,12 +944,14 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
                 ...(indent > 0 && { alignment: 'left', indent }),
               }
               : undefined;
+            const rowFieldAtLevel = rLine.kind !== 'grandTotal' ? pivot.rows[lvl]?.fieldName : undefined;
             cells.push({
               rowOffset: dataRowCursor, colOffset: lvl,
               content: { kind: 'text', value: atLevel },
               ...(cellStyle && { style: cellStyle }),
               role: rLine.kind === 'grandTotal' ? 'grandTotal' : rLine.kind === 'subtotal' ? 'subtotal' : 'rowLabel',
               ...attachCollapse,
+              ...(rowFieldAtLevel && { fieldName: rowFieldAtLevel }),
             });
           }
         }
@@ -927,7 +962,7 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
             rowOffset: dataRowCursor, colOffset: labelColCount - 1,
             content: { kind: 'text', value: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation) },
             ...(isTotalRow || fill ? { style: { ...(isTotalRow && totalStyleBase), ...(fill && { fillRgb: fill }) } } : {}),
-            role: 'rowLabel',
+            role: 'rowLabel', fieldName: vf.fieldName, valueFieldId: vf.id,
           });
         }
       }
@@ -953,15 +988,19 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
         }
         : undefined;
       const { content, cache } = contentAndCache(cellVal);
+      const effectiveContent: CellContent = content.kind === 'blank' && !cache && pivot.values.length > 0 && pivot.emptyCellText
+        ? { kind: 'text', value: pivot.emptyCellText }
+        : content;
       if (pivot.values.length > 0) {
         dataBuckets.set(`${dataRowCursor}:${dataStartCol + c}`, bucketMatrix[r]![c]!);
       }
-      if (content.kind !== 'blank' || cache || style) {
+      if (effectiveContent.kind !== 'blank' || cache || style) {
         cells.push({
           rowOffset: dataRowCursor, colOffset: dataStartCol + c,
-          content, ...(cache && { cache }), ...(style && { style }),
+          content: effectiveContent, ...(cache && { cache }), ...(style && { style }),
           role: rLine.kind === 'grandTotal' || cLine.kind === 'grandTotal' ? 'grandTotal'
             : rLine.kind === 'subtotal' || cLine.kind === 'subtotal' ? 'subtotal' : 'data',
+          ...(vf && { fieldName: vf.fieldName, valueFieldId: vf.id }),
         });
       }
     }
@@ -1097,4 +1136,143 @@ export function extractPivotCellDrillDown(
   const records = internal.dataBuckets.get(`${rowOffset}:${colOffset}`);
   if (!records) return undefined;
   return { fields: internal.evaluation.fields, records };
+}
+
+export function collectFieldCollapsibleKeys(
+  document: WorkbookDocument,
+  pivot: PivotTableDocument,
+  fieldName: string,
+): readonly string[] {
+  const fieldIndex = pivot.rows.findIndex(rf => rf.fieldName === fieldName);
+  if (fieldIndex < 0 || fieldIndex >= pivot.rows.length - 1) return [];
+  const { records: allRecords } = extractPivotRecords(document, pivot.source);
+  const visibleRecords = allRecords.filter(record =>
+    pivot.filters.every(filter => !filter.hiddenItems?.length || !filter.hiddenItems.includes(formatPivotItemLabel(record[filter.fieldName] ?? null))) &&
+    pivot.rows.every(rf => !rf.hiddenItems?.length || !rf.hiddenItems.includes(formatPivotItemLabel(record[rf.fieldName] ?? null))) &&
+    pivot.columns.every(cf => !cf.hiddenItems?.length || !cf.hiddenItems.includes(formatPivotItemLabel(record[cf.fieldName] ?? null))),
+  );
+  const rowTree = buildAxisTree(visibleRecords, pivot.rows, pivot.values);
+  const keys: string[] = [];
+  const walk = (nodes: readonly AxisNode[]) => {
+    for (const node of nodes) {
+      if (node.level === fieldIndex && node.fieldName === fieldName && node.children.length > 0) {
+        keys.push(node.key);
+      } else if (node.level < fieldIndex) {
+        walk(node.children);
+      }
+    }
+  };
+  walk(rowTree);
+  return keys;
+}
+
+export function resolveActivePivotField(
+  document: WorkbookDocument,
+  pivot: PivotTableDocument,
+  target: CellReference,
+): ActivePivotFieldInfo | undefined {
+  if (target.sheetId !== pivot.target.sheetId) return undefined;
+  const rowOffset = target.row - pivot.target.row;
+  const colOffset = target.column - pivot.target.column;
+  if (rowOffset < 0 || colOffset < 0) return undefined;
+  const internal = evaluatePivotInternal(document, pivot);
+  if (rowOffset >= internal.evaluation.rows || colOffset >= internal.evaluation.columns) return undefined;
+
+  const cell = internal.evaluation.cells.find(c => c.rowOffset === rowOffset && c.colOffset === colOffset);
+  if (cell?.role === 'filter' && cell.fieldName) {
+    return {
+      displayName: cell.fieldName,
+      fieldName: cell.fieldName,
+      area: 'filters',
+      canExpandCollapse: false,
+    };
+  }
+  if (cell?.valueFieldId) {
+    const vf = pivot.values.find(v => v.id === cell.valueFieldId);
+    if (vf) {
+      return {
+        displayName: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation),
+        fieldName: vf.fieldName,
+        area: 'values',
+        valueField: vf,
+        canExpandCollapse: false,
+      };
+    }
+  }
+  if (cell?.fieldName) {
+    const rowIdx = pivot.rows.findIndex(rf => rf.fieldName === cell.fieldName);
+    if (rowIdx >= 0 && (cell.role === 'rowLabel' || cell.role === 'subtotal' || (cell.role === 'header' && colOffset < internal.dataStartCol))) {
+      const axisField = pivot.rows[rowIdx]!;
+      return {
+        displayName: axisField.fieldName,
+        fieldName: axisField.fieldName,
+        area: 'rows',
+        axisField,
+        canExpandCollapse: rowIdx < pivot.rows.length - 1,
+      };
+    }
+    const colIdx = pivot.columns.findIndex(cf => cf.fieldName === cell.fieldName);
+    if (colIdx >= 0) {
+      const axisField = pivot.columns[colIdx]!;
+      return {
+        displayName: axisField.fieldName,
+        fieldName: axisField.fieldName,
+        area: 'columns',
+        axisField,
+        canExpandCollapse: false,
+      };
+    }
+  }
+
+  if (colOffset >= internal.dataStartCol && pivot.values.length > 0) {
+    const vf = pivot.values[0]!;
+    return {
+      displayName: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation),
+      fieldName: vf.fieldName,
+      area: 'values',
+      valueField: vf,
+      canExpandCollapse: false,
+    };
+  }
+  if (pivot.rows.length > 0) {
+    const rowIdx = pivot.reportLayout !== 'compact' && colOffset < pivot.rows.length ? colOffset : 0;
+    const axisField = pivot.rows[rowIdx]!;
+    return {
+      displayName: axisField.fieldName,
+      fieldName: axisField.fieldName,
+      area: 'rows',
+      axisField,
+      canExpandCollapse: rowIdx < pivot.rows.length - 1,
+    };
+  }
+  if (pivot.columns.length > 0) {
+    const axisField = pivot.columns[0]!;
+    return {
+      displayName: axisField.fieldName,
+      fieldName: axisField.fieldName,
+      area: 'columns',
+      axisField,
+      canExpandCollapse: false,
+    };
+  }
+  if (pivot.filters.length > 0) {
+    const filterField = pivot.filters[0]!;
+    return {
+      displayName: filterField.fieldName,
+      fieldName: filterField.fieldName,
+      area: 'filters',
+      canExpandCollapse: false,
+    };
+  }
+  if (pivot.values.length > 0) {
+    const vf = pivot.values[0]!;
+    return {
+      displayName: vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation),
+      fieldName: vf.fieldName,
+      area: 'values',
+      valueField: vf,
+      canExpandCollapse: false,
+    };
+  }
+  return undefined;
 }

@@ -18,6 +18,9 @@ import type { AppearancePatch } from '../../core/formats/appearance';
 import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 import { TableDesignRibbon } from '../tables/TableDesignRibbon';
+import { PivotAnalyzeRibbon, type PivotAnalyzeRibbonProps } from '../pivot/PivotAnalyzeRibbon';
+import { PivotDesignRibbon } from '../pivot/PivotDesignRibbon';
+import type { PivotTableDocument } from '../../core/pivot';
 import { DataSortFilterRibbon, SortFilterHomeMenu, type FilterCommands } from '../data/DataRibbon';
 
 const families = ['File', 'Home', 'Insert', 'Formulas', 'Data', 'View'] as const;
@@ -69,6 +72,9 @@ interface RibbonProps {
   readonly onTableChangeDesign?: (patch: Partial<TableDesign>) => void;
   readonly onTableClick?: () => void;
   readonly onPivotTableClick?: () => void;
+  readonly pivotRibbon?: PivotAnalyzeRibbonProps & {
+    readonly onUpdateLayout: (patch: Partial<Omit<PivotTableDocument, 'id' | 'extent'>>) => void;
+  };
   readonly onNameManagerClick?: () => void;
   readonly onDefineNameClick?: () => void;
   readonly filter: FilterCommands;
@@ -105,24 +111,28 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, pythonOpen, onPython, recentFunctions, onInsertFunction, onOpenInsertFunctionDialog, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
-  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onNameManagerClick, onDefineNameClick,
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, pivotRibbon, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
   const [knownTables, setKnownTables] = useState<ReadonlySet<string>>(() => new Set());
-  const lastNonTableTab = useRef<string>('Home');
+  const [trackedPivotId, setTrackedPivotId] = useState<string | undefined>(undefined);
+  const [knownPivots, setKnownPivots] = useState<ReadonlySet<string>>(() => new Set());
+  const lastNonContextualTab = useRef<string>('Home');
   const tableTabWasActive = useRef<Map<string, boolean>>(new Map());
+  const pivotTabWasActive = useRef<Map<string, 'PivotTable Analyze' | 'Design' | undefined>>(new Map());
   const id = useId();
   const tabs = useRef(new Map<string, HTMLButtonElement>());
   const onFontDialog = useCallback(() => onFormatDialog('Font'), [onFormatDialog]);
   const onAlignmentDialog = useCallback(() => onFormatDialog('Alignment'), [onFormatDialog]);
   const borderRibbonNode = useMemo(() => <BorderRibbon {...borders} />, [borders]);
   const currentId = activeTable?.id;
-  // Switch the contextual tab during render. An effect paints one frame with every panel hidden, and the grid jumps.
+  const currentPivotId = pivotRibbon?.pivot.id;
+  // Switch contextual tabs during render so the panel never paints one frame hidden and shifts the grid.
+  let nextActive = active;
   if (currentId !== trackedTableId) {
     const priorId = trackedTableId;
     if (priorId !== undefined) tableTabWasActive.current.set(priorId, active === 'Table Design');
-    let nextActive = active;
     if (currentId !== undefined) {
       const isNew = !knownTables.has(currentId);
       if (isNew) {
@@ -132,13 +142,40 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
       }
       if (isNew || tableTabWasActive.current.get(currentId)) nextActive = 'Table Design';
     } else if (active === 'Table Design') {
-      nextActive = lastNonTableTab.current;
+      nextActive = lastNonContextualTab.current;
     }
-    if (nextActive !== active) setActive(nextActive);
     setTrackedTableId(currentId);
   }
+  if (currentPivotId !== trackedPivotId) {
+    const priorPivotId = trackedPivotId;
+    if (priorPivotId !== undefined) {
+      pivotTabWasActive.current.set(
+        priorPivotId,
+        active === 'PivotTable Analyze' || active === 'Design' ? active : undefined,
+      );
+    }
+    if (currentPivotId !== undefined) {
+      const isNew = !knownPivots.has(currentPivotId);
+      if (isNew) {
+        const nextKnown = new Set(knownPivots);
+        nextKnown.add(currentPivotId);
+        setKnownPivots(nextKnown);
+      }
+      const remembered = pivotTabWasActive.current.get(currentPivotId);
+      if (isNew) nextActive = 'PivotTable Analyze';
+      else if (remembered) nextActive = remembered;
+    } else if (active === 'PivotTable Analyze' || active === 'Design') {
+      nextActive = lastNonContextualTab.current;
+    }
+    setTrackedPivotId(currentPivotId);
+  }
+  if (nextActive !== active) setActive(nextActive);
 
-  const tabList = activeTable ? [...families, 'Table Design'] : families;
+  const tabList: readonly string[] = [
+    ...families,
+    ...(activeTable ? ['Table Design'] : []),
+    ...(pivotRibbon ? ['PivotTable Analyze', 'Design'] : []),
+  ];
 
   useEffect(() => {
     if (!fileBackstageOpen && active === 'File') setActive('Home');
@@ -150,11 +187,17 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
       onFileBackstage();
       return;
     }
-    if (name !== 'Table Design') {
-      lastNonTableTab.current = name;
+    if (name !== 'Table Design' && name !== 'PivotTable Analyze' && name !== 'Design') {
+      lastNonContextualTab.current = name;
     }
     if (activeTable) {
       tableTabWasActive.current.set(activeTable.id, name === 'Table Design');
+    }
+    if (pivotRibbon) {
+      pivotTabWasActive.current.set(
+        pivotRibbon.pivot.id,
+        name === 'PivotTable Analyze' || name === 'Design' ? name : undefined,
+      );
     }
     setActive(name);
   }
@@ -176,22 +219,53 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
   return (
     <div className="ribbon" inert={inert}>
       <div role="tablist" aria-label="Ribbon" className="ribbon-tabs">
-        {tabList.map((name, index) => (
-          <button type="button" key={name} role="tab" id={id + '-tab-' + name}
-            aria-selected={active === name} aria-controls={id + '-panel-' + name} tabIndex={active === name ? 0 : -1}
-            ref={node => { if (node) tabs.current.set(name, node); else tabs.current.delete(name); }}
-            onClick={() => selectTab(name)} onKeyDown={event => keyDown(event, index)}>{name}</button>
-        ))}
+        {tabList.map((name, index) => {
+          const slug = name.replace(/[^A-Za-z0-9_-]/g, '-');
+          return (
+            <button type="button" key={name} role="tab" id={id + '-tab-' + slug}
+              className={name === 'Table Design' || name === 'PivotTable Analyze' || name === 'Design' ? 'ribbon-tab-contextual' : undefined}
+              aria-selected={active === name} aria-controls={id + '-panel-' + slug} tabIndex={active === name ? 0 : -1}
+              ref={node => { if (node) tabs.current.set(name, node); else tabs.current.delete(name); }}
+              onClick={() => selectTab(name)} onKeyDown={event => keyDown(event, index)}>{name}</button>
+          );
+        })}
       </div>
-      {tabList.map(name => (
-        <div key={name} className="ribbon-panel" role="tabpanel" hidden={active !== name}
-          id={id + '-panel-' + name} aria-labelledby={id + '-tab-' + name}>
+      {tabList.map(name => {
+        const slug = name.replace(/[^A-Za-z0-9_-]/g, '-');
+        return (
+          <div key={name} className="ribbon-panel" role="tabpanel" hidden={active !== name}
+            id={id + '-panel-' + slug} aria-labelledby={id + '-tab-' + slug}>
           {name === 'Table Design' && activeTable ? (
             <TableDesignRibbon
               table={activeTable}
               onRename={onTableRename ?? (() => {})}
               onResize={onTableResize ?? (() => {})}
               onChangeDesign={onTableChangeDesign ?? (() => {})}
+            />
+          ) : name === 'PivotTable Analyze' && pivotRibbon ? (
+            <PivotAnalyzeRibbon
+              pivot={pivotRibbon.pivot}
+              activeField={pivotRibbon.activeField}
+              fieldListOpen={pivotRibbon.fieldListOpen}
+              onRename={pivotRibbon.onRename}
+              onOpenOptions={pivotRibbon.onOpenOptions}
+              onOpenFieldSettings={pivotRibbon.onOpenFieldSettings}
+              onExpandField={pivotRibbon.onExpandField}
+              onCollapseField={pivotRibbon.onCollapseField}
+              onRefresh={pivotRibbon.onRefresh}
+              onRefreshAll={pivotRibbon.onRefreshAll}
+              onOpenChangeSource={pivotRibbon.onOpenChangeSource}
+              onClear={pivotRibbon.onClear}
+              onSelectEntire={pivotRibbon.onSelectEntire}
+              onOpenMove={pivotRibbon.onOpenMove}
+              onToggleFieldList={pivotRibbon.onToggleFieldList}
+              onToggleButtons={pivotRibbon.onToggleButtons}
+              onToggleFieldHeaders={pivotRibbon.onToggleFieldHeaders}
+            />
+          ) : name === 'Design' && pivotRibbon ? (
+            <PivotDesignRibbon
+              pivot={pivotRibbon.pivot}
+              onUpdateLayout={pivotRibbon.onUpdateLayout}
             />
           ) : name === 'Insert' ? (
             <fieldset>
@@ -362,8 +436,9 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
             </fieldset>
           </> : name === 'Data' ? <DataSortFilterRibbon filter={filter} onSort={onSort} onToggleFilter={onToggleFilter}
             onClearFilter={onClearFilter} onReapplyFilter={onReapplyFilter} /> : null}
-        </div>
-      ))}
+          </div>
+        );
+      })}
     </div>
   );
 });

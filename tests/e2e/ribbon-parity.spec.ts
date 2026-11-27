@@ -250,3 +250,84 @@ test('Function Library icons are top-aligned and flyouts only scroll when exceed
   await expectInsideViewport(page, `${parentMenuSelector} >> nth=-1`);
   await page.keyboard.press('Escape');
 });
+
+test('contextual PivotTable Analyze and Design tabs appear only inside a PivotTable and restore the prior tab', async ({ page }) => {
+  await page.context().addInitScript(axe.source);
+  await page.goto(path);
+  const tablist = page.getByRole('tablist', { name: 'Ribbon' });
+  await expect(tablist.getByRole('tab')).toHaveText([...tabs]);
+
+  const seed = async (addr: string, val: string) => {
+    await page.getByRole('textbox', { name: 'Name box' }).fill(addr);
+    await page.getByRole('textbox', { name: 'Name box' }).press('Enter');
+    await page.getByRole('textbox', { name: 'Formula bar' }).fill(val);
+    await page.getByRole('textbox', { name: 'Formula bar' }).press('Enter');
+  };
+  await seed('A1', 'Region');
+  await seed('B1', 'Sales');
+  await seed('A2', 'North');
+  await seed('B2', '100');
+  await page.getByRole('textbox', { name: 'Name box' }).fill('A1');
+  await page.getByRole('textbox', { name: 'Name box' }).press('Enter');
+
+  await openMenu(page, 'Insert', 'PivotTable');
+  await page.getByRole('menuitem', { name: 'From Table/Range', exact: true }).click();
+  const createDialog = page.getByRole('dialog', { name: 'PivotTable from table or range' });
+  await createDialog.getByRole('radio', { name: 'Existing Worksheet' }).check();
+  await createDialog.getByLabel('Location:').fill("='Sheet1'!$D$1");
+  await createDialog.getByRole('button', { name: 'OK' }).click();
+
+  await expect(tablist.getByRole('tab')).toHaveText([...tabs, 'PivotTable Analyze', 'Design']);
+  const analyzeTab = page.getByRole('tab', { name: 'PivotTable Analyze', exact: true });
+  await expect(analyzeTab).toHaveAttribute('aria-selected', 'true');
+  await expect(analyzeTab).toHaveCSS('color', 'rgb(110, 231, 183)');
+  const analyzePanel = page.locator('.ribbon-panel:not([hidden])');
+  await expect(analyzePanel.locator('> fieldset > legend')).toHaveText(['PivotTable', 'Active Field', 'Data', 'Actions', 'Show']);
+
+  const designTab = page.getByRole('tab', { name: 'Design', exact: true });
+  await designTab.click();
+  await expect(designTab).toHaveCSS('color', 'rgb(110, 231, 183)');
+  const designPanel = page.locator('.ribbon-panel:not([hidden])');
+  await expect(designPanel.locator('> fieldset > legend')).toHaveText(['Layout', 'PivotTable Style Options', 'PivotTable Styles']);
+  const styleOptions = designPanel.getByRole('option');
+  await expect(styleOptions).toHaveCount(4);
+  const swatchHeaders = await designPanel.locator('.table-style-swatch-header').evaluateAll(nodes =>
+    nodes.map(node => ({
+      width: node.getBoundingClientRect().width,
+      height: node.getBoundingClientRect().height,
+      bg: getComputedStyle(node).backgroundColor,
+    })));
+  expect(swatchHeaders.every(item => item.width >= 40 && item.height >= 8)).toBe(true);
+  expect(new Set(swatchHeaders.map(item => item.bg)).size).toBe(4);
+
+  const designViolations = await page.evaluate(async () => (await (window as Window & { axe?: typeof axe }).axe!.run({
+    runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+  })).violations.map(({ id, nodes }) => ({ id, targets: nodes.map(node => node.target) })));
+  expect(designViolations).toEqual([]);
+
+  // Leaving the PivotTable hides contextual tabs and restores the previous non-contextual tab (Insert).
+  await page.getByRole('textbox', { name: 'Name box' }).fill('A1');
+  await page.getByRole('textbox', { name: 'Name box' }).press('Enter');
+  await expect(tablist.getByRole('tab')).toHaveText([...tabs]);
+  await expect(page.getByRole('tab', { name: 'Insert', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+  // Re-entering the same PivotTable restores the remembered contextual tab (Design).
+  await page.getByRole('textbox', { name: 'Name box' }).fill('D1');
+  await page.getByRole('textbox', { name: 'Name box' }).press('Enter');
+  await expect(tablist.getByRole('tab')).toHaveText([...tabs, 'PivotTable Analyze', 'Design']);
+  await expect(page.getByRole('tab', { name: 'Design', exact: true })).toHaveAttribute('aria-selected', 'true');
+
+  // Table Design contextual tab shares the exact same green contextual tab accent color.
+  await page.getByRole('textbox', { name: 'Name box' }).fill('F1:G2');
+  await page.getByRole('textbox', { name: 'Name box' }).press('Enter');
+  await seed('F1', 'Item');
+  await seed('G1', 'Qty');
+  await seed('F2', 'Pen');
+  await seed('G2', '3');
+  await page.getByRole('textbox', { name: 'Name box' }).fill('F1');
+  await page.getByRole('textbox', { name: 'Name box' }).press('Enter');
+  await openTab(page, 'Insert');
+  await page.getByRole('button', { name: 'Table', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByRole('tab', { name: 'Table Design', exact: true })).toHaveCSS('color', 'rgb(110, 231, 183)');
+});

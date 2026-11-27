@@ -346,3 +346,116 @@ test('supports mouse drag-and-drop in PivotTable Fields and indented hierarchy w
   );
   await expect(rowsArea.locator('.pivot-chip-label')).toHaveText(['Region']);
 });
+
+test('supports PivotTable Analyze and Design ribbon actions, options, change source and move PivotTable', async ({ page }) => {
+  await page.goto(path);
+  await seedSalesData(page);
+  await go(page, 'A1');
+
+  const createDialog = await openCreatePivotDialog(page);
+  await createDialog.getByRole('radio', { name: 'Existing Worksheet' }).check();
+  await createDialog.getByLabel('Location:').fill("='Sheet1'!$E$1");
+  await createDialog.getByRole('button', { name: 'OK' }).click();
+
+  const pane = page.getByRole('complementary', { name: 'PivotTable Fields' });
+  await pane.getByRole('checkbox', { name: 'Region' }).check();
+  await pane.getByRole('checkbox', { name: 'Product' }).check();
+  await pane.getByRole('checkbox', { name: 'Sales' }).check();
+
+  // Clicking row label vs value updates Active Field readout on PivotTable Analyze.
+  await go(page, 'E2');
+  await expect(page.getByLabel('Active Field')).toHaveText('Region');
+  await go(page, 'F3');
+  await expect(page.getByLabel('Active Field')).toHaveText('Sum of Sales');
+
+  // Rename PivotTable.
+  const nameInput = page.getByLabel('PivotTable Name:');
+  await nameInput.fill('SalesSummary');
+  await nameInput.press('Enter');
+  await expect(page.getByLabel('PivotTable Name:')).toHaveValue('SalesSummary');
+
+  // Collapse Field / Expand Field on Region.
+  await go(page, 'E2');
+  await page.getByRole('button', { name: 'Collapse Field', exact: true }).click();
+  await expect(page.getByRole('gridcell', { name: 'E3, South' })).toBeAttached();
+  await page.getByRole('button', { name: 'Expand Field', exact: true }).click();
+  await expect(page.getByRole('gridcell', { name: 'E3, Gadget' })).toBeAttached();
+
+  // Show toggles: Change Data Source, Field List, +/- Buttons, Field Headers are large buttons matching Refresh.
+  const refreshBtn = page.getByRole('button', { name: 'Refresh', exact: true });
+  const refreshIconTop = (await refreshBtn.locator('.ribbon-glyph').boundingBox())!.y;
+  for (const label of ['Change Data Source', 'Field List', '+/- Buttons', 'Field Headers']) {
+    const btn = page.getByRole('button', { name: label, exact: true });
+    await expect(btn).toHaveClass(/ribbon-large/);
+    const box = (await btn.boundingBox())!;
+    expect(box.height).toBeGreaterThanOrEqual(68);
+    const iconBox = (await btn.locator('.ribbon-glyph').boundingBox())!;
+    expect(Math.abs(iconBox.y - refreshIconTop)).toBeLessThanOrEqual(2);
+  }
+
+  await page.getByRole('button', { name: 'Field List', exact: true }).click();
+  await expect(pane).toHaveCount(0);
+  await page.getByRole('button', { name: 'Field List', exact: true }).click();
+  await expect(pane).toBeVisible();
+  await page.getByRole('button', { name: '+/- Buttons', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Collapse North' })).toHaveCount(0);
+  await page.getByRole('button', { name: '+/- Buttons', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Collapse North' })).toBeVisible();
+
+  // Field Headers hides both Column Labels and Row Labels (and their filter triggers).
+  await pane.getByRole('button', { name: 'Product options' }).click();
+  await pane.getByRole('menuitem', { name: 'Move to Column Labels' }).click();
+  await expect(page.getByRole('gridcell', { name: 'F1, Column Labels' })).toBeAttached();
+  await expect(page.getByRole('gridcell', { name: 'E2, Row Labels' })).toBeAttached();
+  await page.getByRole('button', { name: 'Field Headers', exact: true }).click();
+  await expect(page.getByRole('gridcell', { name: /Column Labels/ })).toHaveCount(0);
+  await expect(page.getByRole('gridcell', { name: /Row Labels/ })).toHaveCount(0);
+  await expect(page.getByRole('gridcell', { name: 'E1, Sum of Sales' })).toBeAttached();
+  await expect(page.getByRole('gridcell', { name: 'F1, Gadget' })).toBeAttached();
+  await page.getByRole('button', { name: 'Field Headers', exact: true }).click();
+  await expect(page.getByRole('gridcell', { name: 'F1, Column Labels' })).toBeAttached();
+  await expect(page.getByRole('gridcell', { name: 'E2, Row Labels' })).toBeAttached();
+  await pane.getByRole('button', { name: 'Product options' }).click();
+  await pane.getByRole('menuitem', { name: 'Move to Row Labels' }).click();
+
+  // PivotTable Options dialog.
+  await page.getByRole('button', { name: 'Options', exact: true }).click();
+  const optsDialog = page.getByRole('dialog', { name: 'PivotTable Options' });
+  await optsDialog.getByLabel('For empty cells show:').fill('--');
+  await optsDialog.getByLabel('Show grand totals for rows').uncheck();
+  await optsDialog.getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByRole('gridcell', { name: /Grand Total/ })).toHaveCount(0);
+
+  // Design tab: Tabular layout, Blank Rows, Subtotals bottom, Green style, Banded Rows.
+  await page.getByRole('tab', { name: 'Design', exact: true }).click();
+  await page.getByRole('button', { name: 'Subtotals', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Show all Subtotals at Bottom of Group' }).click();
+  await page.getByRole('button', { name: 'Report Layout', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Show in Tabular Form' }).click();
+  await page.getByRole('option', { name: 'Pivot Style Green' }).click();
+  await page.getByLabel('Banded Rows').check();
+  await expect(page.getByRole('gridcell', { name: 'E4, North Total' })).toBeAttached();
+
+  // Actions: Select -> Entire PivotTable, Change Data Source, Move PivotTable.
+  await page.getByRole('tab', { name: 'PivotTable Analyze', exact: true }).click();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Entire PivotTable' }).click();
+  await expect(page.getByRole('textbox', { name: 'Name box' })).toHaveValue(/E1/u);
+
+  await page.getByRole('button', { name: 'Change Data Source', exact: true }).click();
+  const sourceDialog = page.getByRole('dialog', { name: 'Change PivotTable Data Source' });
+  await sourceDialog.getByLabel('Table/Range:').fill("='Sheet1'!$A$1:$C$4");
+  await sourceDialog.getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByRole('gridcell', { name: 'G6, 200' })).toBeAttached();
+
+  await page.getByRole('button', { name: 'Move PivotTable', exact: true }).click();
+  const moveDialog = page.getByRole('dialog', { name: 'Move PivotTable' });
+  await moveDialog.getByLabel('Location:').fill("='Sheet1'!$I$1");
+  await moveDialog.getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByRole('gridcell', { name: 'I1, Region' })).toBeAttached();
+  await expect(page.getByRole('gridcell', { name: 'E1, Region' })).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Clear All' }).click();
+  await expect(page.getByRole('gridcell', { name: 'I1, SalesSummary' })).toBeAttached();
+});

@@ -1,4 +1,4 @@
-import { evaluatePivotTable, extractPivotCellDrillDown } from '../calculation/pivot-engine';
+import { collectFieldCollapsibleKeys, evaluatePivotTable, extractPivotCellDrillDown } from '../calculation/pivot-engine';
 import {
   nextPivotName,
   type PivotAxisField,
@@ -42,6 +42,8 @@ export interface CreatePivotInput {
   readonly blankRows?: boolean;
   readonly showButtons?: boolean;
   readonly showFieldHeaders?: boolean;
+  readonly emptyCellText?: string;
+  readonly autoFitColumns?: boolean;
   readonly style?: PivotStyleId;
   readonly styleOptions?: {
     readonly rowHeaders: boolean;
@@ -149,18 +151,20 @@ export function materializePivotDocument(
   }
 
   const nextColumns = [...sheet.columns];
-  for (const [colIndex, width] of desiredWidths) {
-    if (width <= 96) continue;
-    const existingIdx = nextColumns.findIndex(col => col.index === colIndex);
-    if (existingIdx >= 0) {
-      const cur = nextColumns[existingIdx]!;
-      const curSize = cur.size ?? 96;
-      if (width > curSize) nextColumns[existingIdx] = { ...cur, size: width };
-    } else {
-      nextColumns.push({ index: colIndex, hidden: false, size: width });
+  if (pivot.autoFitColumns !== false) {
+    for (const [colIndex, width] of desiredWidths) {
+      if (width <= 96) continue;
+      const existingIdx = nextColumns.findIndex(col => col.index === colIndex);
+      if (existingIdx >= 0) {
+        const cur = nextColumns[existingIdx]!;
+        const curSize = cur.size ?? 96;
+        if (width > curSize) nextColumns[existingIdx] = { ...cur, size: width };
+      } else {
+        nextColumns.push({ index: colIndex, hidden: false, size: width });
+      }
     }
+    nextColumns.sort((a, b) => a.index - b.index);
   }
-  nextColumns.sort((a, b) => a.index - b.index);
 
   const nextCells = [...retained.values()].sort((a, b) => cellKey(a) - cellKey(b));
   const nextSheets = document.sheets.map((item, idx) => (idx === sheetIndex ? { ...item, cells: nextCells, columns: nextColumns } : item));
@@ -204,6 +208,8 @@ export function createPivotTable(
     ...(input.blankRows !== undefined && { blankRows: input.blankRows }),
     showButtons: input.showButtons ?? true,
     showFieldHeaders: input.showFieldHeaders ?? true,
+    ...(input.emptyCellText !== undefined && input.emptyCellText !== '' && { emptyCellText: input.emptyCellText }),
+    ...(input.autoFitColumns !== undefined && { autoFitColumns: input.autoFitColumns }),
     style: input.style ?? 'Blue',
     styleOptions: input.styleOptions ?? {
       rowHeaders: true,
@@ -314,6 +320,144 @@ export function deletePivotTable(
     kind: 'structure',
     label: 'Delete PivotTable',
     document: revertPivotCellsOnSheet(basis.document, pivotId),
+  };
+}
+
+export function renamePivotTable(
+  basis: WorkbookSnapshot,
+  pivotId: DocumentId,
+  name: string,
+  makeId: IdFactory,
+): StructureCommand {
+  const current = (basis.document.pivots ?? []).find(item => item.id === pivotId);
+  requireDocument(current, 'PivotTable no longer exists.');
+  const trimmed = name.trim();
+  requireDocument(trimmed.length > 0 && trimmed.length <= 255, 'PivotTable requires a valid name.');
+  const nameKey = ordinalNameKey(trimmed);
+  requireDocument(
+    !(basis.document.pivots ?? []).some(item => item.id !== pivotId && ordinalNameKey(item.name) === nameKey),
+    'A PivotTable with this name already exists.',
+  );
+  return {
+    kind: 'structure',
+    label: 'Rename PivotTable',
+    document: materializePivotDocument(basis.document, { ...current, name: trimmed }, makeId),
+  };
+}
+
+function clearFieldHiddenItems<T extends PivotFilterField | PivotAxisField>(field: T): T {
+  const { hiddenItems: _hidden, ...rest } = field;
+  return rest as T;
+}
+
+export function clearPivotTable(
+  basis: WorkbookSnapshot,
+  pivotId: DocumentId,
+  mode: 'all' | 'filters',
+  makeId: IdFactory,
+): StructureCommand {
+  const current = (basis.document.pivots ?? []).find(item => item.id === pivotId);
+  requireDocument(current, 'PivotTable no longer exists.');
+  const { collapsedKeys: _prevCollapsed, ...basePivot } = current;
+  const updated: PivotTableDocument = mode === 'all'
+    ? {
+      ...basePivot,
+      filters: [],
+      columns: [],
+      rows: [],
+      values: [],
+    }
+    : {
+      ...current,
+      filters: current.filters.map(clearFieldHiddenItems),
+      columns: current.columns.map(clearFieldHiddenItems),
+      rows: current.rows.map(clearFieldHiddenItems),
+    };
+  return {
+    kind: 'structure',
+    label: mode === 'all' ? 'Clear PivotTable' : 'Clear PivotTable Filters',
+    document: materializePivotDocument(basis.document, updated, makeId),
+  };
+}
+
+export function expandCollapsePivotField(
+  basis: WorkbookSnapshot,
+  pivotId: DocumentId,
+  fieldName: string,
+  expand: boolean,
+  makeId: IdFactory,
+): StructureCommand {
+  const current = (basis.document.pivots ?? []).find(item => item.id === pivotId);
+  requireDocument(current, 'PivotTable no longer exists.');
+  const keys = collectFieldCollapsibleKeys(basis.document, current, fieldName);
+  const collapsed = new Set(current.collapsedKeys ?? []);
+  for (const key of keys) {
+    if (expand) collapsed.delete(key);
+    else collapsed.add(key);
+  }
+  const { collapsedKeys: _prevCollapsed, ...basePivot } = current;
+  const updated: PivotTableDocument = {
+    ...basePivot,
+    ...(collapsed.size > 0 && { collapsedKeys: [...collapsed] }),
+  };
+  return {
+    kind: 'structure',
+    label: expand ? 'Expand PivotTable Field' : 'Collapse PivotTable Field',
+    document: materializePivotDocument(basis.document, updated, makeId),
+  };
+}
+
+export function changePivotSource(
+  basis: WorkbookSnapshot,
+  pivotId: DocumentId,
+  source: PivotSource,
+  makeId: IdFactory,
+): StructureCommand {
+  const current = (basis.document.pivots ?? []).find(item => item.id === pivotId);
+  requireDocument(current, 'PivotTable no longer exists.');
+  return {
+    kind: 'structure',
+    label: 'Change PivotTable Data Source',
+    document: materializePivotDocument(basis.document, { ...current, source }, makeId),
+  };
+}
+
+export function movePivotTableWithSheet(
+  basis: WorkbookSnapshot,
+  pivotId: DocumentId,
+  input: { readonly target?: CellReference; readonly newSheet?: boolean; readonly insertBeforeSheetId?: DocumentId },
+  makeId: IdFactory,
+): { readonly command: StructureCommand; readonly sheetId: DocumentId } {
+  const current = (basis.document.pivots ?? []).find(item => item.id === pivotId);
+  requireDocument(current, 'PivotTable no longer exists.');
+  const reverted = revertPivotCellsOnSheet(basis.document, pivotId);
+  if (input.newSheet) {
+    requireDocument(reverted.sheets.length < documentLimits.sheets, 'A workbook may contain at most 10 worksheets.');
+    const newSheetId = makeId();
+    const sheetName = nextAutoSheetName(reverted);
+    const newSheet = emptySheet(newSheetId, sheetName);
+    const sheets = [...reverted.sheets];
+    const insertAt = input.insertBeforeSheetId ? sheets.findIndex(s => s.id === input.insertBeforeSheetId) : -1;
+    if (insertAt >= 0) sheets.splice(insertAt, 0, newSheet);
+    else sheets.push(newSheet);
+    const target: CellReference = { sheetId: newSheetId, row: 3, column: 1 };
+    return {
+      command: {
+        kind: 'structure',
+        label: 'Move PivotTable',
+        document: materializePivotDocument({ ...reverted, sheets }, { ...current, target }, makeId),
+      },
+      sheetId: newSheetId,
+    };
+  }
+  requireDocument(input.target, 'PivotTable requires a destination cell.');
+  return {
+    command: {
+      kind: 'structure',
+      label: 'Move PivotTable',
+      document: materializePivotDocument(reverted, { ...current, target: input.target }, makeId),
+    },
+    sheetId: input.target.sheetId,
   };
 }
 

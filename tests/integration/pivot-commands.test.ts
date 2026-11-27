@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  changePivotSource,
+  clearPivotTable,
   createPivotTable,
   deletePivotTable,
   drillDownPivotCell,
+  expandCollapsePivotField,
   movePivotTable,
+  movePivotTableWithSheet,
   refreshPivotTable,
+  renamePivotTable,
   togglePivotCollapse,
   updatePivotLayout,
 } from '../../src/application/pivot-commands';
@@ -168,5 +173,66 @@ describe('pivot session commands and native persistence', () => {
     session.undo();
     expect(session.active.sheets).toHaveLength(1);
     expect(session.active.names).toHaveLength(0);
+  });
+
+  it('supports Sprint 2.4 commands (rename, expand/collapse field, clear, change source, move to new sheet, autoFitColumns)', () => {
+    const { doc, makeId } = buildSalesWorkbook();
+    const sheetId = doc.sheets[0]!.id;
+    const session = new WorkbookSession(doc, { makeId });
+
+    session.execute(createPivotTable(session.capture(), {
+      source: { kind: 'range', area: { sheetId, row: 1, column: 1, rows: 4, columns: 3 } },
+      target: { sheetId, row: 1, column: 5 },
+      rows: [{ fieldName: 'Region', hiddenItems: ['West'] }, { fieldName: 'Product' }],
+      values: [{ id: makeId(), fieldName: 'Sales', aggregation: 'sum' }],
+      autoFitColumns: false,
+    }, makeId));
+
+    const pivot = session.active.pivots![0]!;
+    expect(session.active.sheets[0]!.columns.some(col => col.index === 5)).toBe(false);
+
+    // Rename validation & success + duplicate rejection
+    session.execute(renamePivotTable(session.capture(), pivot.id, 'RegionalSales', makeId));
+    expect(session.active.pivots![0]!.name).toBe('RegionalSales');
+    expect(() => session.execute(renamePivotTable(session.capture(), pivot.id, '   ', makeId))).toThrow();
+
+    // Expand / collapse all items of Region field
+    session.execute(expandCollapsePivotField(session.capture(), pivot.id, 'Region', false, makeId));
+    expect(session.active.pivots![0]!.collapsedKeys).toEqual(['East']);
+    session.execute(expandCollapsePivotField(session.capture(), pivot.id, 'Region', true, makeId));
+    expect(session.active.pivots![0]!.collapsedKeys).toBeUndefined();
+
+    // Clear Filters removes hiddenItems on fields while retaining layout
+    session.execute(clearPivotTable(session.capture(), pivot.id, 'filters', makeId));
+    expect(session.active.pivots![0]!.rows[0]!.hiddenItems).toBeUndefined();
+    expect(session.active.pivots![0]!.values).toHaveLength(1);
+
+    // Change Data Source shrinks source range to A1:C3 (only East = 300 total)
+    session.execute(changePivotSource(session.capture(), pivot.id, {
+      kind: 'range', area: { sheetId, row: 1, column: 1, rows: 3, columns: 3 },
+    }, makeId));
+    const gtRow = session.active.sheets[0]!.cells.find(
+      c => c.spillOwner === pivot.id && c.content.kind === 'text' && c.content.value === 'Grand Total',
+    )?.row;
+    const gt = session.active.sheets[0]!.cells.find(
+      c => c.spillOwner === pivot.id && c.content.kind === 'number' && c.row === gtRow,
+    );
+    expect(gt?.content).toEqual({ kind: 'number', value: 300 });
+
+    // Move PivotTable to a new worksheet and undo back
+    const moved = movePivotTableWithSheet(session.capture(), pivot.id, { newSheet: true }, makeId);
+    session.execute(moved.command);
+    expect(session.active.sheets).toHaveLength(2);
+    expect(session.active.pivots![0]!.target).toEqual({ sheetId: moved.sheetId, row: 3, column: 1 });
+    expect(session.active.sheets[0]!.cells.some(c => c.spillOwner === pivot.id)).toBe(false);
+
+    session.undo();
+    expect(session.active.sheets).toHaveLength(1);
+    expect(session.active.pivots![0]!.target).toEqual({ sheetId, row: 1, column: 5 });
+
+    // Clear All wipes field assignments cleanly
+    session.execute(clearPivotTable(session.capture(), pivot.id, 'all', makeId));
+    expect(session.active.pivots![0]!.rows).toEqual([]);
+    expect(session.active.pivots![0]!.values).toEqual([]);
   });
 });

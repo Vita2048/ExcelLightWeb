@@ -86,6 +86,8 @@ export interface PivotTableDocument {
   readonly blankRows?: boolean;
   readonly showButtons?: boolean;
   readonly showFieldHeaders?: boolean;
+  readonly emptyCellText?: string;
+  readonly autoFitColumns?: boolean;
   readonly style: PivotStyleId;
   readonly styleOptions: {
     readonly rowHeaders: boolean;

@@ -37,6 +37,8 @@ button:disabled { cursor: default; opacity: .5; }
   min-height: 33px; padding: 0 13px; white-space: nowrap;
   background: transparent; border: 0; border-bottom: 2px solid transparent;
 }
+.ribbon-tabs button.ribbon-tab-contextual { color: #6ee7b7; }
+.ribbon-tabs button.ribbon-tab-contextual[aria-selected='true'] { border-bottom-color: #34d399; }
 .ribbon-tabs button[aria-selected='true'] { border-bottom-color: var(--accent); font-weight: 600; }
 .ribbon-tabs button:hover { background: var(--top-field); }
 .ribbon-panel {
@@ -748,6 +750,9 @@ button:disabled { cursor: default; opacity: .5; }
     background: Highlight; color: HighlightText; border-color: Highlight;
   }
   .table-style-preview-btn.selected { border-color: Highlight; outline-color: Highlight; }
+  .ribbon-tabs button.ribbon-tab-contextual { color: CanvasText; }
+  .ribbon-tabs button.ribbon-tab-contextual[aria-selected='true'] { border-bottom-color: Highlight; }
+  .pivot-ribbon-toggle[aria-pressed='true'] { border-color: Highlight; background: Highlight; color: HighlightText; }
   .name-manager-grid tr.selected { background: Highlight; color: HighlightText; }
 }
 
@@ -1253,4 +1258,35 @@ button:disabled { cursor: default; opacity: .5; }
 .pivot-filter-multi-check {
   display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0;
 }
+
+.pivot-properties-content { display: flex; flex-direction: column; gap: 4px; justify-content: center; height: 100%; }
+.pivot-name-label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.pivot-name-input {
+  width: 124px; height: 24px; padding: 0 6px; font-size: 12px;
+  background: var(--top-field); border: 1px solid var(--border); border-radius: 3px; color: var(--text);
+}
+.pivot-active-field-readout {
+  display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 6px; font-size: 12px; font-weight: 600; color: var(--text);
+  background: var(--top-field); border: 1px solid var(--border); border-radius: 3px;
+}
+.pivot-ribbon-stack { display: flex; flex-direction: column; gap: 2px; }
+.ribbon-panel .ribbon-large { text-align: center; }
+.ribbon-panel button.pivot-ribbon-toggle[aria-pressed='true']:not(.ribbon-palette button, .border-menu button) {
+  background: #1a2d3d; border-color: var(--accent);
+}
+.pivot-style-options-grid {
+  display: grid; grid-template-columns: repeat(2, auto); grid-template-rows: repeat(2, 21px);
+  gap: 1px 12px; align-items: center; font-size: 12px; white-space: nowrap;
+}
+.pivot-style-options-grid label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.pivot-options-dialog { width: min(430px, calc(100vw - 24px)); }
+.pivot-options-row {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 8px; font-size: 13px;
+}
+.pivot-options-row input {
+  height: 28px; padding: 0 8px; background: var(--top-field); border: 1px solid var(--border); border-radius: 3px; color: var(--text);
+}
+.pivot-options-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; min-height: 26px; }
+
 
