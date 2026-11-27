@@ -103,15 +103,17 @@ test('draws and erases on a frozen cell at zoom after scrolling both axes', asyn
   await commands.getByText('Line Style', { exact: true }).click();
   await commands.getByRole('button', { name: 'Thick', exact: true }).click();
   const box = (await grid.boundingBox())!;
+  const header = Number(await grid.getAttribute('data-row-header'));
+  const x = header + 24;
   // The frozen divider covers row 1's bottom edge, so draw on its visible top edge instead.
-  await page.mouse.click(box.x + 108, box.y + 39);
-  await expect.poll(() => pixels(page, [[108, 39]])).toEqual([[255, 0, 0, 255]]);
+  await page.mouse.click(box.x + x, box.y + 39);
+  await expect.poll(() => pixels(page, [[x, 39]])).toEqual([[255, 0, 0, 255]]);
   await open();
   await commands.getByRole('button', { name: 'Erase Border', exact: true }).click();
-  await page.mouse.click(box.x + 108, box.y + 39);
-  await expect.poll(() => pixels(page, [[108, 39]])).toEqual([[255, 255, 255, 255]]);
+  await page.mouse.click(box.x + x, box.y + 39);
+  await expect.poll(() => pixels(page, [[x, 39]])).toEqual([[255, 255, 255, 255]]);
   await grid.press('Control+z');
-  await expect.poll(() => pixels(page, [[108, 39]])).toEqual([[255, 0, 0, 255]]);
+  await expect.poll(() => pixels(page, [[x, 39]])).toEqual([[255, 0, 0, 255]]);
 });
 
 test('projects one merged fill through the four frozen panes and hides the internal gridlines', async ({ page }) => {
@@ -126,7 +128,7 @@ test('projects one merged fill through the four frozen panes and hides the inter
   const divider = [160, 160, 160, 255];
   const header = Number(await grid.getAttribute('data-row-header'));
   await expect.poll(() => pixels(page, [
-    [120, 35], [160, 35], [120, 60], [160, 60],
-    [header + 95, 36], [120, 51], [223, 60], [120, 70], [360, 60],
+    [header + 50, 35], [header + 116, 35], [header + 50, 60], [header + 116, 60],
+    [header + 95, 36], [header + 50, 51], [header + 179, 60], [header + 50, 70], [header + 316, 60],
   ])).toEqual([ink, ink, ink, ink, divider, divider, ink, ink, [32, 32, 32, 255]]);
 });
