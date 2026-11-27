@@ -31,6 +31,7 @@ interface GridFrame {
   readonly calculatingCells: ReadonlySet<string>;
   readonly separator: ',' | ';';
   readonly referenceArea?: Area | undefined;
+  readonly formulaHighlights?: readonly { readonly area: Area; readonly color: string }[] | undefined;
   readonly borderPreview?: { readonly area: Area } | { readonly segments: readonly BorderSegment[]; readonly pen: CellBorder } | undefined;
   readonly resizePreview?: Area | undefined;
   readonly tables?: readonly WorkbookName[] | undefined;
@@ -350,6 +351,42 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     if (activeRect) {
       context.lineWidth = 2;
       context.strokeRect(activeRect.x + 1, activeRect.y + 1, Math.max(0, activeRect.width - 2), Math.max(0, activeRect.height - 2));
+    }
+    if (frame.formulaHighlights?.length) {
+      for (const highlight of frame.formulaHighlights) {
+        const { area, color } = highlight;
+        const firstRow = rows.find(row => row.index >= area.top);
+        const lastRow = lastTrack(rows, area.bottom);
+        const firstColumn = columns.find(column => column.index >= area.left);
+        const lastColumn = lastTrack(columns, area.right);
+        if (!(firstRow && lastRow && firstColumn && lastColumn) ||
+            firstRow.index > lastRow.index || firstColumn.index > lastColumn.index) continue;
+        const leftEdge = x(firstColumn), rightEdge = x(lastColumn) + lastColumn.size;
+        const topEdge = y(firstRow), bottomEdge = y(lastRow) + lastRow.size;
+        const paint = forced ? 'Highlight' : color;
+        context.save();
+        context.fillStyle = paint;
+        context.globalAlpha = forced ? 0.15 : 0.14;
+        context.fillRect(leftEdge, topEdge, rightEdge - leftEdge, bottomEdge - topEdge);
+        context.globalAlpha = 1;
+        context.strokeStyle = paint;
+        outline(area, 2);
+        const handleSize = 4;
+        const half = handleSize / 2;
+        if (firstRow.index === area.top && firstColumn.index === area.left) {
+          context.fillRect(leftEdge - half, topEdge - half, handleSize, handleSize);
+        }
+        if (firstRow.index === area.top && lastColumn.index === area.right) {
+          context.fillRect(rightEdge - half, topEdge - half, handleSize, handleSize);
+        }
+        if (lastRow.index === area.bottom && firstColumn.index === area.left) {
+          context.fillRect(leftEdge - half, bottomEdge - half, handleSize, handleSize);
+        }
+        if (lastRow.index === area.bottom && lastColumn.index === area.right) {
+          context.fillRect(rightEdge - half, bottomEdge - half, handleSize, handleSize);
+        }
+        context.restore();
+      }
     }
     if (frame.referenceArea) {
       context.strokeStyle = referenceColor;

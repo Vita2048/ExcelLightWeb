@@ -58,6 +58,10 @@ import { Ribbon, type SheetView } from '../features/shell/Ribbon';
 import { CellEditor, type CellEditorProps } from '../features/editing/CellEditor';
 import { PasteTextDialog } from '../features/editing/PasteTextDialog';
 import { localeArgumentSeparator } from '../features/formulas/formula-presentation';
+import { InsertFunctionDialog } from '../features/formulas/InsertFunctionDialog';
+import { FunctionArgumentsDialog } from '../features/formulas/FunctionArgumentsDialog';
+import { formulaReferenceHighlights } from '../features/formulas/formula-highlights';
+import { formatArgumentReference, initialFunctionArguments, recordRecentFunction, sanitizeRecentFunctions, type InsertFunctionFilter } from '../features/formulas/function-library';
 import { useWorksheetEditing, type AfterEditKey, type EditAction, type EditSurface } from '../features/editing/useWorksheetEditing';
 import { Worksheet, type WorksheetHandle } from '../grid/Worksheet';
 import type { WorksheetFigure } from '../grid/Worksheet';
@@ -299,6 +303,17 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [searchHistory, setSearchHistory] = useState<SearchHistory>(emptySearchHistory);
   const [searchLook, setSearchLook] = useState<SearchLook>('values');
   const [zoomDialog, setZoomDialog] = useState(false);
+  const [insertFunctionDialog, setInsertFunctionDialog] = useState<{ category: InsertFunctionFilter }>();
+  const [functionArgsDialog, setFunctionArgsDialog] = useState<{
+    readonly name: NativeFunction;
+    readonly target: CellReference;
+    readonly values: readonly string[];
+    readonly activeIndex: number;
+  }>();
+  const recentFunctions = useMemo(
+    () => sanitizeRecentFunctions(preferences.recentFunctions),
+    [preferences.recentFunctions],
+  );
   const textOrder = useMemo(() => localeTextOrder(locale), [locale]);
   const usedNumberCodes = useMemo(() => [...new Set(formatDraft?.basis.document.sheets.flatMap(item => [
     ...item.cells.flatMap(cell => cell.style?.numberFormat ?? []),
@@ -1336,6 +1351,35 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         if (picked) setPickedManagerExtent(picked);
       },
     });
+  }
+
+  function handlePickRangeFromFunctionArgs(index: number, currentValue: string) {
+    if (!functionArgsDialog) return;
+    const originSheet = snapshot.document.sheets.find(item => item.id === functionArgsDialog.target.sheetId)?.name ?? sheet.name;
+    const initial = currentValue.trim()
+      ? (currentValue.trim().startsWith('=') ? currentValue.trim() : `=${currentValue.trim()}`)
+      : '';
+    setRangePicker({
+      initial,
+      onDone: picked => {
+        setRangePicker(undefined);
+        if (!picked) return;
+        const formatted = formatArgumentReference(picked, originSheet);
+        setFunctionArgsDialog(current => current ? {
+          ...current,
+          values: current.values.map((val, i) => (i === index ? formatted : val)),
+          activeIndex: index,
+        } : undefined);
+      },
+    });
+  }
+
+  function handleConfirmFunctionArgs(localizedFormula: string) {
+    if (!functionArgsDialog) return;
+    const { target } = functionArgsDialog;
+    if (!editing.commitFormula(target, localizedFormula)) return;
+    setFunctionArgsDialog(undefined);
+    requestAnimationFrame(focusGrid);
   }
 
   function handleTableRename(name: string) {
@@ -2401,6 +2445,17 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return true;
   }
 
+  const formulaHighlights = useMemo(
+    () => (editing.draft && editing.draft.originalStyle?.numberFormat !== '@' && editing.draft.text.startsWith('=')
+      ? formulaReferenceHighlights(editing.draft.text, snapshot.document, editing.draft.target.sheetId)
+      : []),
+    [editing.draft, snapshot.document],
+  );
+  const sheetFormulaHighlights = useMemo(
+    () => formulaHighlights.filter(item => item.sheetId === sheet.id),
+    [formulaHighlights, sheet.id],
+  );
+
   function editorProps(surface: EditSurface): CellEditorProps {
     const cell = editing.draft ? editing.draft.original : findCell(sheet, selection.anchor);
     return {
@@ -2427,6 +2482,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       ...(editing.draft?.surface === surface && editing.draft.selectText && { selectText: editing.draft.selectText }),
       separator,
       textFormat: (editing.draft ? editing.draft.originalStyle : resolvedCellStyle(sheet, selection.anchor, cell))?.numberFormat === '@',
+      highlights: formulaHighlights,
       onKeepCaret: editing.keepCaret,
     };
   }
@@ -2476,6 +2532,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onPython: togglePython,
     onCalculate: (_scope: 'sheet' | 'workbook') => {},
     onInsertFunction: (_name: NativeFunction) => {},
+    onOpenInsertFunctionDialog: (_category?: InsertFunctionFilter) => {},
     onZoomToSelection: () => {},
     onZoomDialog: () => {},
     onFreeze: runFreeze,
@@ -2514,7 +2571,21 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (python.barrier() && editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
     },
     onInsertFunction: name => {
-      if (editing.commit()) editing.begin(activeTarget, view.formulaBar ? 'formula' : 'inline', '=' + name + '()', true);
+      if (!editing.commit()) return;
+      setPreferences(current => ({
+        ...current,
+        recentFunctions: recordRecentFunction(sanitizeRecentFunctions(current.recentFunctions), name),
+      }));
+      setFunctionArgsDialog({
+        name,
+        target: activeTarget,
+        values: initialFunctionArguments(name).map(() => ''),
+        activeIndex: 0,
+      });
+    },
+    onOpenInsertFunctionDialog: (category = 'Most Recently Used') => {
+      if (!editing.commit()) return;
+      setInsertFunctionDialog({ category });
     },
     onZoomToSelection: () => {
       if (!editing.commit()) return;
@@ -2560,6 +2631,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onPython: () => ribbonLatest.current.onPython(),
     onCalculate: (scope: 'sheet' | 'workbook') => ribbonLatest.current.onCalculate(scope),
     onInsertFunction: (name: NativeFunction) => ribbonLatest.current.onInsertFunction(name),
+    onOpenInsertFunctionDialog: (category?: InsertFunctionFilter) => ribbonLatest.current.onOpenInsertFunctionDialog(category),
     onZoomToSelection: () => ribbonLatest.current.onZoomToSelection(),
     onZoomDialog: () => ribbonLatest.current.onZoomDialog(),
     onFreeze: (mode: 'panes' | 'topRow' | 'firstColumn' | 'none') => ribbonLatest.current.onFreeze(mode),
@@ -2634,7 +2706,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         painter={painterMode} onPainter={ribbonHandlers.onPainter} view={view} onView={ribbonHandlers.onView}
         onEdit={ribbonHandlers.onEdit} onStructure={ribbonHandlers.onStructure}
         calculationMode={calculation.mode} onCalculationMode={ribbonHandlers.onCalculationMode} pythonOpen={pythonOpen}
-        onPython={ribbonHandlers.onPython} onCalculate={ribbonHandlers.onCalculate} onInsertFunction={ribbonHandlers.onInsertFunction}
+        onPython={ribbonHandlers.onPython} onCalculate={ribbonHandlers.onCalculate}
+        recentFunctions={recentFunctions} onInsertFunction={ribbonHandlers.onInsertFunction}
+        onOpenInsertFunctionDialog={ribbonHandlers.onOpenInsertFunctionDialog}
         onZoomToSelection={ribbonHandlers.onZoomToSelection} onZoomDialog={ribbonHandlers.onZoomDialog}
         frozen={sheetFrozen} onFreeze={ribbonHandlers.onFreeze} activeTable={activeTable}
         onTableRename={ribbonHandlers.onTableRename} onTableResize={ribbonHandlers.onTableResize}
@@ -2664,6 +2738,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             onExitBorder={() => setBorderTool(undefined)}
             referenceArea={pythonPick?.sheetId === sheet.id ? pythonPick.area :
               editing.draft?.pick?.sheetId === sheet.id ? editing.draft.pick.area : undefined}
+            formulaHighlights={sheetFormulaHighlights}
             onReferencePick={() => {
               if (python.wantsReference()) {
                 let area: Area | undefined;
@@ -2915,6 +2990,31 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onClose={() => { setSearchDialog(undefined); requestAnimationFrame(focusGrid); }} />}
       {zoomDialog && <ZoomDialog current={view.zoom} onApply={applyZoom}
         onCancel={() => { setZoomDialog(false); requestAnimationFrame(focusGrid); }} />}
+      {insertFunctionDialog && <InsertFunctionDialog
+        initialCategory={insertFunctionDialog.category}
+        recentFunctions={recentFunctions}
+        separator={separator}
+        onInsert={name => {
+          setInsertFunctionDialog(undefined);
+          ribbonHandlers.onInsertFunction(name);
+        }}
+        onCancel={() => { setInsertFunctionDialog(undefined); requestAnimationFrame(focusGrid); }}
+      />}
+      {functionArgsDialog && <FunctionArgumentsDialog
+        functionName={functionArgsDialog.name}
+        document={snapshot.document}
+        target={functionArgsDialog.target}
+        separator={separator}
+        locale={locale}
+        suspended={rangePicker !== undefined}
+        values={functionArgsDialog.values}
+        activeIndex={functionArgsDialog.activeIndex}
+        onChangeValues={next => setFunctionArgsDialog(current => current ? { ...current, values: next } : undefined)}
+        onChangeActiveIndex={index => setFunctionArgsDialog(current => current ? { ...current, activeIndex: index } : undefined)}
+        onPickRange={handlePickRangeFromFunctionArgs}
+        onConfirm={handleConfirmFunctionArgs}
+        onCancel={() => { setFunctionArgsDialog(undefined); requestAnimationFrame(focusGrid); }}
+      />}
       {filterMenu && <FilterDropdown anchor={filterMenu.anchor} header={filterMenu.header}
         textColumn={filterMenu.textColumn} values={filterMenu.values} selected={filterMenu.selected}
         hasColumnFilter={filterMenu.hasColumnFilter} onApply={applyFilter} onClearColumn={clearFilterColumn}

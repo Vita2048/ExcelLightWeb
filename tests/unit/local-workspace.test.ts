@@ -31,8 +31,19 @@ describe('local workspace preference migration', () => {
     { manual: false, pythonAutomatic: 'yes' },
     { findHistory: Array.from({ length: 16 }, (_, index) => String(index)) },
     { findHistory: ['same', 'same'] },
+    { recentFunctions: ['sum'] },
+    { recentFunctions: ['SUM', 'SUM'] },
+    { recentFunctions: Array.from({ length: 11 }, (_, index) => `F${index}`) },
   ])('rejects invalid preference data without normalizing it silently: %o', value => {
     expect(() => migrateLegacyPreferences(value)).toThrow(LocalWorkspaceError);
+  });
+
+  it('preserves valid recentFunctions on preference migration', () => {
+    const migrated = migrateLegacyPreferences({
+      ...defaultWorkspacePreferences,
+      recentFunctions: ['XLOOKUP', 'SUM', 'IF'],
+    });
+    expect(migrated.recentFunctions).toEqual(['XLOOKUP', 'SUM', 'IF']);
   });
 });
 

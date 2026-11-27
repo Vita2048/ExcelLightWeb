@@ -1,8 +1,14 @@
-import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import type { TextSelection } from '../formulas/reference-pick';
 import { formulaHint } from './formula-hints';
 import type { AfterEditKey, EditSurface } from './useWorksheetEditing';
+
+export interface CellEditorHighlight {
+  readonly start: number;
+  readonly end: number;
+  readonly color: string;
+}
 
 export interface CellEditorProps {
   readonly surface: EditSurface;
@@ -21,15 +27,21 @@ export interface CellEditorProps {
   readonly selectText?: TextSelection;
   readonly separator: ',' | ';';
   readonly textFormat: boolean;
+  readonly highlights?: readonly CellEditorHighlight[] | undefined;
   readonly onKeepCaret: () => void;
 }
 
 export function CellEditor(props: CellEditorProps) {
   const node = useRef<HTMLTextAreaElement>(null);
+  const backdrop = useRef<HTMLDivElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const tipId = useId();
   const [caret, setCaret] = useState<number | null>(null);
   const hint = props.active && caret !== null && !props.textFormat ? formulaHint(props.value, caret, props.separator) : undefined;
+  const activeHighlights = useMemo(
+    () => (props.active && !props.textFormat && props.highlights?.length ? props.highlights : []),
+    [props.active, props.textFormat, props.highlights],
+  );
 
   useLayoutEffect(() => {
     if (props.surface !== 'inline' && !props.functionDraft) return;
@@ -47,6 +59,12 @@ export function CellEditor(props: CellEditorProps) {
     input.setSelectionRange(props.selectText.start, props.selectText.end);
     setCaret(props.selectText.start);
   }, [props.selectText]);
+
+  useLayoutEffect(() => {
+    if (backdrop.current && node.current) {
+      backdrop.current.scrollLeft = node.current.scrollLeft;
+    }
+  }, [props.value, activeHighlights, props.selectText]);
 
   useLayoutEffect(() => {
     if (!hint) return;
@@ -106,21 +124,53 @@ export function CellEditor(props: CellEditorProps) {
     }
   }
 
+  const hasHighlights = activeHighlights.length > 0;
+  const renderedTokens = useMemo<ReactNode>(() => {
+    if (!hasHighlights) return null;
+    const parts: ReactNode[] = [];
+    let cursor = 0;
+    const sorted = [...activeHighlights].sort((a, b) => a.start - b.start);
+    for (let i = 0; i < sorted.length; i++) {
+      const span = sorted[i]!;
+      const start = Math.max(cursor, Math.min(span.start, props.value.length));
+      const end = Math.max(start, Math.min(span.end, props.value.length));
+      if (start > cursor) parts.push(props.value.slice(cursor, start));
+      if (end > start) {
+        parts.push(
+          <span key={`${start}-${end}-${i}`} className="formula-highlight-token" style={{ color: span.color }}>
+            {props.value.slice(start, end)}
+          </span>,
+        );
+      }
+      cursor = end;
+    }
+    if (cursor < props.value.length) parts.push(props.value.slice(cursor));
+    return parts;
+  }, [hasHighlights, activeHighlights, props.value]);
+
   return <>
-    <textarea ref={node} rows={1} className={props.surface === 'inline' ? 'inline-cell-input' : 'formula-value'}
-      aria-label={props.label} aria-describedby={hint ? tipId : undefined} data-cell-editor={props.surface} spellCheck={false}
-      value={props.value} onFocus={event => { props.onStart(); trackCaret(event.currentTarget); }}
-      onSelect={event => trackCaret(event.currentTarget)}
-      onChange={event => { props.onChange(event.currentTarget.value); trackCaret(event.currentTarget); }}
-      onKeyDown={keyDown} onBlur={event => {
-        setCaret(null);
-        if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.dataset.cellEditor) props.onBlur();
-      }} onCompositionStart={() => { props.onComposition(true); setCaret(null); }}
-      onCompositionEnd={event => {
-        props.onChange(event.currentTarget.value);
-        props.onComposition(false);
-        trackCaret(event.currentTarget);
-      }} />
+    <div className={props.surface === 'inline' ? 'inline-cell-editor-wrap' : 'formula-editor-wrap'}>
+      {props.surface === 'inline' && (
+        <span key="sizer" className="inline-cell-sizer" aria-hidden="true">{props.value || ' '}</span>
+      )}
+      {hasHighlights && <div key="backdrop" ref={backdrop} className="formula-highlight-backdrop" aria-hidden="true">{renderedTokens}</div>}
+      <textarea key="editor" ref={node} rows={1}
+        className={(props.surface === 'inline' ? 'inline-cell-input' : 'formula-value') + (hasHighlights ? ' has-highlights' : '')}
+        aria-label={props.label} aria-describedby={hint ? tipId : undefined} data-cell-editor={props.surface} spellCheck={false}
+        value={props.value} onFocus={event => { props.onStart(); trackCaret(event.currentTarget); }}
+        onSelect={event => trackCaret(event.currentTarget)}
+        onScroll={event => { if (backdrop.current) backdrop.current.scrollLeft = event.currentTarget.scrollLeft; }}
+        onChange={event => { props.onChange(event.currentTarget.value); trackCaret(event.currentTarget); }}
+        onKeyDown={keyDown} onBlur={event => {
+          setCaret(null);
+          if (!(event.relatedTarget instanceof HTMLElement) || !event.relatedTarget.dataset.cellEditor) props.onBlur();
+        }} onCompositionStart={() => { props.onComposition(true); setCaret(null); }}
+        onCompositionEnd={event => {
+          props.onChange(event.currentTarget.value);
+          props.onComposition(false);
+          trackCaret(event.currentTarget);
+        }} />
+    </div>
     {hint && createPortal(
       <div ref={tip} id={tipId} role="tooltip" className="formula-hint">
         {hint.name}(

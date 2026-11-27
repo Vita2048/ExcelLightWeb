@@ -717,6 +717,50 @@ export function renameTableReferences(source: string, oldName: string, newName: 
   return applySpanReplacements(source, edits);
 }
 
+export function scanFormulaReferences(source: string): readonly FormulaReference[] {
+  if (!source.startsWith('=') || source.length > documentLimits.formulaLength) return [];
+  const refs: FormulaReference[] = [];
+  for (let start = 1; start < source.length;) {
+    unsupportedReference.lastIndex = start;
+    const unsupported = unsupportedReference.exec(source);
+    if (unsupported) {
+      start = unsupportedReference.lastIndex;
+      continue;
+    }
+
+    threeDReferences.lastIndex = start;
+    const threeD = threeDReferences.exec(source);
+    if (threeD) {
+      start = threeDReferences.lastIndex;
+      continue;
+    }
+
+    references.lastIndex = start;
+    const match = references.exec(source);
+    if (match) {
+      const [, qualifier, body] = match;
+      const [first, last] = body!.split(/\s*:\s*/u);
+      const ref: FormulaReference = {
+        start, end: references.lastIndex,
+        first: endpoint(first!), last: endpoint(last ?? first!), range: last !== undefined,
+        prefix: qualifier ? qualifier + '!' : '',
+        ...(qualifier && { sheet: unquoteSheetToken(qualifier) }),
+      };
+      if (!ref.sheet || !/[\[\]:]/u.test(ref.sheet)) refs.push(ref);
+      start = references.lastIndex;
+      continue;
+    }
+
+    other.lastIndex = start;
+    if (other.exec(source)) {
+      start = other.lastIndex;
+      continue;
+    }
+    start += 1;
+  }
+  return refs;
+}
+
 export function renameTableColumnReferences(
   source: string,
   tableName: string,

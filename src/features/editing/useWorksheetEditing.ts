@@ -174,6 +174,24 @@ export function useWorksheetEditing(
     }
   }
 
+  function commitFormula(target: CellReference, localizedFormula: string): boolean {
+    try {
+      const basis = session.capture();
+      const actual = findReferencedCell(basis.document, target);
+      const actualStyle = resolvedStyleAt(basis.document, target, actual);
+      const canonical = presentFormula(localizedFormula, separator, ',');
+      const outcome = session.execute({ kind: 'set-cells', label: 'Edit cell', edits: [{
+        target, content: parseEntry(canonical, actualStyle, locale, { makeId, existing: actual?.content }),
+      }] });
+      if (outcome.changed) changed(false);
+      setStatus('');
+      return true;
+    } catch (error) {
+      reject(error);
+      return false;
+    }
+  }
+
   function cancel() {
     composing.current = false;
     showDraft(null);
@@ -291,7 +309,7 @@ export function useWorksheetEditing(
   }
 
   return {
-    draft, status, begin, update, commit, cancel, moveHistory, run, manualPaste, closeManualPaste, submitManualPaste,
+    draft, status, begin, update, commit, commitFormula, cancel, moveHistory, run, manualPaste, closeManualPaste, submitManualPaste,
     pickSlot, beginReferencePick, showCrossSheetDraft,
     blur: (surface: EditSurface) => { if (liveDraft.current?.surface === surface) commit(); },
     editorText, reject, report: (message: string) => setStatus(message), clearStatus: () => setStatus(''),

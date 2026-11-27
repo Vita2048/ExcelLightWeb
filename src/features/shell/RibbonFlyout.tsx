@@ -12,13 +12,26 @@ export function positionRibbonPopup(anchor: HTMLElement, panel: HTMLElement, bes
   const box = (!beside && (anchor.closest('.ribbon-split, .ribbon-font-input') as HTMLElement)) || anchor;
   const rect = box.getBoundingClientRect();
   const gap = 4;
-  const width = panel.offsetWidth;
-  const below = innerHeight - rect.bottom - gap;
-  const above = rect.top - gap;
+  const savedScrollTop = panel.scrollTop;
+  panel.style.maxHeight = '';
+  const below = innerHeight - rect.bottom - 2 - gap;
+  const above = rect.top - 2 - gap;
   const toRight = innerWidth - rect.right - gap;
-  const preferredLeft = beside ? toRight >= width ? rect.right : rect.left - width : rect.left;
+  const naturalHeight = panel.offsetHeight;
+  let openAbove = false;
+  if (!beside) {
+    openAbove = naturalHeight > below && above > below;
+    const available = Math.max(120, openAbove ? above : below);
+    if (naturalHeight > available) panel.style.maxHeight = available + 'px';
+  } else {
+    const available = Math.max(120, innerHeight - 2 * gap);
+    if (naturalHeight > available) panel.style.maxHeight = available + 'px';
+  }
+  if (savedScrollTop && panel.scrollTop !== savedScrollTop) panel.scrollTop = savedScrollTop;
+  const width = panel.offsetWidth;
   const height = panel.offsetHeight;
-  const preferredTop = beside ? rect.top : height > below && above > below ? rect.top - height - 2 : rect.bottom + 2;
+  const preferredLeft = beside ? (toRight >= width ? rect.right : rect.left - width) : rect.left;
+  const preferredTop = beside ? rect.top : (openAbove ? rect.top - height - 2 : rect.bottom + 2);
   panel.style.left = Math.max(gap, Math.min(preferredLeft, innerWidth - width - gap)) + 'px';
   panel.style.top = Math.max(gap, Math.min(preferredTop, innerHeight - height - gap)) + 'px';
 }
@@ -31,13 +44,17 @@ export function useRibbonPopover(anchor: RefObject<HTMLElement | null>, panel: R
       const button = anchor.current;
       if (button && popup?.matches(':popover-open')) positionRibbonPopup(button, popup, beside);
     }
+    function onScroll(event: Event) {
+      if (event.target instanceof Node && popup?.contains(event.target)) return;
+      position();
+    }
     popup.addEventListener('toggle', position);
     window.addEventListener('resize', position);
-    document.addEventListener('scroll', position, true);
+    document.addEventListener('scroll', onScroll, true);
     return () => {
       popup.removeEventListener('toggle', position);
       window.removeEventListener('resize', position);
-      document.removeEventListener('scroll', position, true);
+      document.removeEventListener('scroll', onScroll, true);
     };
   }, [anchor, panel, beside]);
 }
@@ -75,15 +92,19 @@ export function RibbonFlyout({ label, caption, icon, items, large = false }: {
         setSubmenu(undefined);
       }
     }
+    function onScroll(event: Event) {
+      if (event.target instanceof Node && (panel.contains(event.target) || childMenu.current?.contains(event.target))) return;
+      position();
+    }
     position();
     panel.querySelector('button')?.focus({ preventScroll: true });
     window.addEventListener('resize', position);
-    document.addEventListener('scroll', position, true);
+    document.addEventListener('scroll', onScroll, true);
     document.addEventListener('pointerdown', dismiss);
     document.addEventListener('focusin', dismiss);
     return () => {
       window.removeEventListener('resize', position);
-      document.removeEventListener('scroll', position, true);
+      document.removeEventListener('scroll', onScroll, true);
       document.removeEventListener('pointerdown', dismiss);
       document.removeEventListener('focusin', dismiss);
     };
@@ -93,13 +114,17 @@ export function RibbonFlyout({ label, caption, icon, items, large = false }: {
     if (!submenu) return;
     const panel = childMenu.current!;
     const position = () => positionRibbonPopup(submenu.anchor, panel, true);
+    function onScroll(event: Event) {
+      if (event.target instanceof Node && panel.contains(event.target)) return;
+      position();
+    }
     position();
     panel.querySelector('button')?.focus({ preventScroll: true });
     window.addEventListener('resize', position);
-    document.addEventListener('scroll', position, true);
+    document.addEventListener('scroll', onScroll, true);
     return () => {
       window.removeEventListener('resize', position);
-      document.removeEventListener('scroll', position, true);
+      document.removeEventListener('scroll', onScroll, true);
     };
   }, [submenu]);
 

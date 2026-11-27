@@ -47,6 +47,7 @@ interface WorksheetProps {
   readonly onPaint: (area: Area) => void;
   readonly onReferencePick: () => ReferenceDrag | undefined;
   readonly referenceArea?: Area | undefined;
+  readonly formulaHighlights?: readonly { readonly area: Area; readonly color: string }[] | undefined;
   readonly onAdjacentSheet: (direction: number) => void;
   readonly onEdit: (replacement?: string) => void;
   readonly onShortcut: (event: KeyboardEvent<HTMLDivElement>) => boolean;
@@ -508,7 +509,8 @@ export function Worksheet(props: WorksheetProps) {
   useLayoutEffect(() => {
     drawWorksheet(canvas.current!, {
       sheet, view, rows: rowTracks, columns: columnTracks, rowAxis: rows, columnAxis: columns, selection, areas, scale, headings, gridlines,
-      showFormulas, staleCells, calculatingCells, separator, referenceArea: props.referenceArea, tables: props.tables,
+      showFormulas, staleCells, calculatingCells, separator, referenceArea: props.referenceArea,
+      formulaHighlights: props.formulaHighlights, tables: props.tables,
       borderPreview: props.borderTool && borderPreview && ('area' in borderPreview ? {
         area: { top: borderPreview.area.row, left: borderPreview.area.column,
           bottom: borderPreview.area.row + borderPreview.area.rows - 1, right: borderPreview.area.column + borderPreview.area.columns - 1 },
@@ -517,7 +519,7 @@ export function Worksheet(props: WorksheetProps) {
       resizePreview, rowHeaderWidth: rowHeader, themeVersion: palette,
     });
   }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells, calculatingCells,
-    separator, props.referenceArea, props.tables, props.borderTool, props.borderPen, borderPreview, resizePreview, rows, columns, palette, rowHeader]);
+    separator, props.referenceArea, props.formulaHighlights, props.tables, props.borderTool, props.borderPen, borderPreview, resizePreview, rows, columns, palette, rowHeader]);
 
   function alignTo(point: Coordinate) {
     const node = scroll.current!;
@@ -997,6 +999,7 @@ export function Worksheet(props: WorksheetProps) {
     <div className="worksheet">
       <div ref={scroll} className="worksheet-scroll" role="grid" aria-label={sheet.name} data-row-header={left}
         data-spill-range={activeSpillRange}
+        data-formula-highlights={props.formulaHighlights?.length || undefined}
         aria-rowcount={worksheetViewport.rows} aria-colcount={worksheetViewport.columns}
         aria-multiselectable="true" aria-activedescendant={cellId(selection.anchor)} tabIndex={0}
         aria-describedby={id + '-help'} onBlur={() => { exitOnTab.current = false; }}
@@ -1121,11 +1124,15 @@ export function Worksheet(props: WorksheetProps) {
       {editRow && editColumn && <div className="inline-editor-layer" style={{
         left, top, width: bodyWidth, height: bodyHeight,
       }}>
-        <div className="inline-cell-editor" style={{
-          left: editorLeft < bodyWidth ? Math.min(editorLeft, bodyWidth - editorWidth) : editorLeft,
-          top: editorTop < bodyHeight ? Math.min(editorTop, bodyHeight - editorHeight) : editorTop,
-          width: editorWidth, height: editorHeight, fontSize: Math.max(10, 14 * scale),
-        }}>{props.editor?.input}</div>
+        {(() => {
+          const clampedLeft = editorLeft < bodyWidth ? Math.min(editorLeft, bodyWidth - editorWidth) : editorLeft;
+          const editorMaxWidth = Math.max(editorWidth, bodyWidth - clampedLeft);
+          return <div className="inline-cell-editor" style={{
+            left: clampedLeft,
+            top: editorTop < bodyHeight ? Math.min(editorTop, bodyHeight - editorHeight) : editorTop,
+            minWidth: editorWidth, maxWidth: editorMaxWidth, height: editorHeight, fontSize: Math.max(10, 14 * scale),
+          }}>{props.editor?.input}</div>;
+        })()}
       </div>}
       {!props.rangePicking && filterControls().map(control => <button
         key={control.row + '-' + control.column}

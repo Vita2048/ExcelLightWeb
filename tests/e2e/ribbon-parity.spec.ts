@@ -8,12 +8,13 @@ interface RibbonManifest {
   readonly menus: readonly { readonly tab: string; readonly trigger: string; readonly items: readonly string[];
     readonly choices?: boolean; readonly textOnly?: boolean; readonly iconlessItems?: readonly string[] }[];
   readonly nested: readonly { readonly tab: string; readonly trigger: string; readonly item: string;
-    readonly items: readonly string[]; readonly iconlessItems?: readonly string[] }[];
+    readonly items: readonly string[]; readonly textOnly?: boolean; readonly iconlessItems?: readonly string[] }[];
 }
 const ribbon: RibbonManifest = JSON.parse(readFileSync(new URL('../fixtures/parity/ribbon-order.json', import.meta.url), 'utf8'));
 
 const path = '/ExcelLightWeb/';
 const tabs = ribbon.tabs;
+const parentMenuSelector = '.ribbon-flyout[role="menu"]:not([aria-label="Hide & Unhide"]):not([aria-label="Statistical"]):not([aria-label="Information"])';
 
 async function openTab(page: Page, tab: string) {
   await page.getByRole('tab', { name: tab, exact: true }).click();
@@ -31,7 +32,7 @@ async function openMenu(page: Page, tab: string, trigger: string) {
   await openTab(page, tab);
   const button = triggerButton(page, trigger);
   await button.click();
-  const menu = page.locator('.ribbon-flyout[role="menu"]:not([aria-label="Hide & Unhide"])').last();
+  const menu = page.locator(parentMenuSelector).last();
   await expect(menu).toBeVisible();
   return { button, menu };
 }
@@ -88,9 +89,15 @@ test('ribbon tabs, groups and flyout commands follow the captured desktop order'
     const rows = menu.locator(entry.choices ? '[role="menuitemcheckbox"]' : '[role="menuitem"], [role="menuitemcheckbox"]');
     for (let index = 0; index < await rows.count(); index++) {
       const row = rows.nth(index);
-      if (entry.choices || entry.textOnly) continue;
       const label = (await row.textContent())!.trim();
       const visual = await row.locator('.ribbon-flyout-glyph svg, .ribbon-flyout-check, .ribbon-submenu-chevron').count();
+      if (entry.choices) continue;
+      if (entry.textOnly) {
+        if (label === 'Insert Function...') {
+          expect(visual, entry.trigger + ' row ' + index).toBeGreaterThan(0);
+        }
+        continue;
+      }
       if (entry.iconlessItems?.includes(label)) {
         expect(visual, entry.trigger + ' row ' + index).toBe(0);
         continue;
@@ -100,54 +107,62 @@ test('ribbon tabs, groups and flyout commands follow the captured desktop order'
         expect(visual, entry.trigger + ' row ' + index).toBeGreaterThan(0);
       }
     }
-    await expectInsideViewport(page, '.ribbon-flyout[role="menu"]:not([aria-label="Hide & Unhide"]) >> nth=-1');
+    await expectInsideViewport(page, `${parentMenuSelector} >> nth=-1`);
     await page.keyboard.press('Escape');
     await expect(triggerButton(page, entry.trigger)).toBeFocused();
   }
 });
 
-test('nested Format > Hide & Unhide opens beside its parent and navigates by keyboard', async ({ page }) => {
+test('nested ribbon flyout submenus open beside their parent and navigate by keyboard', async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto(path);
-  const { button, menu } = await openMenu(page, 'Home', 'Format');
-  const parent = (await menu.boundingBox())!;
+  for (const entry of ribbon.nested) {
+    const { button, menu } = await openMenu(page, entry.tab, entry.trigger);
+    const parent = (await menu.boundingBox())!;
 
-  const hide = menu.getByRole('menuitem', { name: 'Hide & Unhide', exact: true });
-  await expect(hide).toHaveAttribute('aria-haspopup', 'menu');
-  await hide.click();
-  const child = page.getByRole('menu', { name: 'Hide & Unhide', exact: true });
-  await expect(child).toBeVisible();
-  const entry = ribbon.nested[0]!;
-  expect(await itemLabels(child)).toEqual(entry.items);
-  const rows = child.getByRole('menuitem');
-  for (let index = 0; index < await rows.count(); index++) {
-    const row = rows.nth(index);
-    const label = (await row.textContent())!.trim();
-    const visual = await row.locator('.ribbon-flyout-glyph svg, .ribbon-flyout-check, .ribbon-submenu-chevron').count();
-    if (entry.iconlessItems?.includes(label)) {
-      expect(visual, entry.item + ' row ' + index).toBe(0);
-    } else {
-      expect(visual, entry.item + ' row ' + index).toBeGreaterThan(0);
+    const triggerItem = menu.getByRole('menuitem', { name: entry.item, exact: true });
+    await expect(triggerItem).toHaveAttribute('aria-haspopup', 'menu');
+    await triggerItem.click();
+    const child = page.getByRole('menu', { name: entry.item, exact: true });
+    await expect(child).toBeVisible();
+    expect(await itemLabels(child)).toEqual(entry.items);
+    const rows = child.getByRole('menuitem');
+    for (let index = 0; index < await rows.count(); index++) {
+      const row = rows.nth(index);
+      const label = (await row.textContent())!.trim();
+      const visual = await row.locator('.ribbon-flyout-glyph svg, .ribbon-flyout-check, .ribbon-submenu-chevron').count();
+      if (entry.textOnly) {
+        if (label === 'Insert Function...') {
+          expect(visual, entry.item + ' row ' + index).toBeGreaterThan(0);
+        }
+        continue;
+      }
+      if (entry.iconlessItems?.includes(label)) {
+        expect(visual, entry.item + ' row ' + index).toBe(0);
+      } else {
+        expect(visual, entry.item + ' row ' + index).toBeGreaterThan(0);
+      }
     }
-  }
-  const submenu = (await child.boundingBox())!;
-  const anchor = (await hide.boundingBox())!;
-  // The child opens beside the owning row, flipping left when the viewport has no room on the right.
-  const beside = submenu.x >= anchor.x + anchor.width - 1 || submenu.x + submenu.width <= anchor.x + 1;
-  expect(beside).toBe(true);
-  expect(submenu.y).toBeLessThan(parent.y + parent.height);
-  expect(submenu.y + submenu.height).toBeGreaterThan(parent.y);
-  await expectInsideViewport(page, '.ribbon-flyout[aria-label="Hide & Unhide"]');
+    const submenu = (await child.boundingBox())!;
+    const anchor = (await triggerItem.boundingBox())!;
+    // The child opens beside the owning row, flipping left when the viewport has no room on the right.
+    const beside = submenu.x >= anchor.x + anchor.width - 1 || submenu.x + submenu.width <= anchor.x + 1;
+    expect(beside).toBe(true);
+    expect(submenu.y).toBeLessThan(parent.y + parent.height);
+    expect(submenu.y + submenu.height).toBeGreaterThan(parent.y);
+    await expectInsideViewport(page, `.ribbon-flyout[aria-label="${entry.item}"]`);
 
-  // Arrow keys move through the child menu; ArrowLeft closes only the submenu.
-  await expect(child.getByRole('menuitem').first()).toBeFocused();
-  await child.getByRole('menuitem').first().press('ArrowDown');
-  await expect(child.getByRole('menuitem').nth(1)).toBeFocused();
-  await page.keyboard.press('ArrowLeft');
-  await expect(child).toHaveCount(0);
-  await expect(hide).toBeFocused();
-  await page.keyboard.press('Escape');
-  await expect(menu).toHaveCount(0);
-  await expect(button).toBeFocused();
+    // Arrow keys move through the child menu; ArrowLeft closes only the submenu.
+    await expect(child.getByRole('menuitem').first()).toBeFocused();
+    await child.getByRole('menuitem').first().press('ArrowDown');
+    await expect(child.getByRole('menuitem').nth(1)).toBeFocused();
+    await page.keyboard.press('ArrowLeft');
+    await expect(child).toHaveCount(0);
+    await expect(triggerItem).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(button).toBeFocused();
+  }
 });
 
 test('ribbon keeps the dark palette under a light OS preference and uses the system palette in forced colors', async ({ page }) => {
@@ -192,4 +207,46 @@ test('an open ribbon flyout passes axe in dark mode', async ({ page }) => {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
   })).violations.map(({ id, nodes }) => ({ id, targets: nodes.map(node => node.target) })));
   expect(violations).toEqual([]);
+});
+
+test('Function Library icons are top-aligned and flyouts only scroll when exceeding viewport space', async ({ page }) => {
+  await page.goto(path);
+  const panel = await openTab(page, 'Formulas');
+  const libraryFieldset = panel.locator('> fieldset').filter({ has: page.locator('> legend', { hasText: /^Function Library$/ }) });
+  const iconTops = await libraryFieldset.locator('.ribbon-large .ribbon-glyph').evaluateAll(nodes =>
+    nodes.map(node => node.getBoundingClientRect().top));
+  expect(iconTops.length).toBeGreaterThanOrEqual(8);
+  const baselineTop = iconTops[0]!;
+  for (const top of iconTops) {
+    expect(Math.abs(top - baselineTop)).toBeLessThanOrEqual(1);
+  }
+
+  const { menu: recent } = await openMenu(page, 'Formulas', 'Recently Used');
+  const recentOverflow = await recent.evaluate(node => node.scrollHeight - node.clientHeight);
+  expect(recentOverflow).toBeLessThanOrEqual(0);
+  await page.keyboard.press('Escape');
+
+  const { menu: lookup } = await openMenu(page, 'Formulas', 'Lookup & Reference');
+  const lookupBox = (await lookup.boundingBox())!;
+  expect(lookupBox.height).toBeGreaterThan(500);
+  await expectInsideViewport(page, `${parentMenuSelector} >> nth=-1`);
+  await page.keyboard.press('Escape');
+
+  const { menu: math } = await openMenu(page, 'Formulas', 'Math & Trig');
+  const scrollState = await math.evaluate(async node => {
+    node.scrollTop = node.scrollHeight;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return { scrollTop: node.scrollTop, scrollHeight: node.scrollHeight, clientHeight: node.clientHeight };
+  });
+  expect(scrollState.scrollTop).toBeGreaterThan(100);
+  expect(scrollState.scrollTop).toBeGreaterThanOrEqual(scrollState.scrollHeight - scrollState.clientHeight - 2);
+  await expect(math.getByRole('menuitem', { name: 'Insert Function...', exact: true })).toBeInViewport();
+  await page.keyboard.press('Escape');
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { menu: financial } = await openMenu(page, 'Formulas', 'Financial');
+  const financialOverflow = await financial.evaluate(node => node.scrollHeight - node.clientHeight);
+  expect(financialOverflow).toBeLessThanOrEqual(0);
+  await expectInsideViewport(page, `${parentMenuSelector} >> nth=-1`);
+  await page.keyboard.press('Escape');
 });

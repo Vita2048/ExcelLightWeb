@@ -184,6 +184,34 @@ button:disabled { cursor: default; opacity: .5; }
 .inline-cell-input:focus-visible { outline: none; }
 .formula-value, .inline-cell-input { scrollbar-width: none; }
 .formula-value::-webkit-scrollbar, .inline-cell-input::-webkit-scrollbar { display: none; }
+.formula-editor-wrap {
+  position: relative; flex: 1; min-width: 0; height: 30px; background: var(--top-field); border-radius: 3px;
+}
+.inline-cell-editor-wrap {
+  position: relative; display: inline-grid; min-width: 100%; max-width: 100%; height: 100%; background: var(--top-field);
+}
+.inline-cell-sizer {
+  grid-area: 1 / 1; visibility: hidden; pointer-events: none; white-space: pre;
+  padding: 2px 10px 2px 4px; border: 2px solid transparent; font: inherit; letter-spacing: inherit; line-height: inherit;
+}
+.inline-cell-editor-wrap > .inline-cell-input { grid-area: 1 / 1; width: 100%; height: 100%; min-width: 0; }
+.formula-highlight-backdrop {
+  position: absolute; inset: 0; overflow: hidden; pointer-events: none; white-space: pre;
+  color: var(--text); font: inherit; letter-spacing: inherit; line-height: inherit;
+}
+.formula-editor-wrap > .formula-highlight-backdrop { padding: 4px 7px 2px; border: 1px solid transparent; border-radius: 3px; }
+.inline-cell-editor-wrap > .formula-highlight-backdrop { padding: 2px 4px; border: 2px solid transparent; }
+.formula-editor-wrap > .formula-value { width: 100%; height: 100%; }
+.formula-value.has-highlights, .inline-cell-input.has-highlights {
+  position: relative; background: transparent; color: transparent; caret-color: var(--text);
+}
+.formula-value.has-highlights::selection, .inline-cell-input.has-highlights::selection {
+  background: rgb(96 205 255 / 35%); color: transparent;
+}
+@media (forced-colors: active) {
+  .formula-highlight-backdrop { display: none; }
+  .formula-value.has-highlights, .inline-cell-input.has-highlights { background: Field; color: FieldText; caret-color: FieldText; }
+}
 .formula-hint {
   position: fixed; z-index: 5; box-sizing: border-box; max-width: calc(100vw - 8px);
   padding: 4px 7px; border: 1px solid var(--border); border-radius: 4px;
@@ -499,6 +527,8 @@ button:disabled { cursor: default; opacity: .5; }
 /* Ribbon groups and dropdowns use the desktop's stacked commands and lower captions. */
 :root {
   --ribbon-glyph-blue: #0078d4;
+  --ribbon-glyph-green: #2ca85c;
+  --ribbon-glyph-purple: #a76ce6;
   --ribbon-glyph-gold: #e6b842;
   --ribbon-glyph-pink: #ed68b6;
   --ribbon-glyph-red: #e66a6a;
@@ -522,8 +552,8 @@ button:disabled { cursor: default; opacity: .5; }
 .ribbon-glyph { flex: none; display: inline-block; vertical-align: middle; overflow: visible; }
 .ribbon-command { display: inline-flex; align-items: center; gap: 5px; justify-content: center; font-size: 12px; }
 .ribbon-panel .ribbon-large {
-  display: inline-flex; flex-direction: column; justify-content: center; align-items: center;
-  min-height: 72px; padding: 2px 6px; gap: 3px;
+  display: inline-flex; flex-direction: column; justify-content: flex-start; align-items: center;
+  align-self: flex-start; min-height: 72px; padding: 4px 6px 2px; gap: 3px; line-height: 1.15;
 }
 .ribbon-panel .ribbon-stack { display: grid; gap: 1px; align-items: center; justify-items: stretch; }
 .ribbon-panel .ribbon-stack > .ribbon-command:not(.ribbon-large) { justify-content: start; }
@@ -558,7 +588,7 @@ button:disabled { cursor: default; opacity: .5; }
   border-radius: 8px; padding: 5px; box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
   position: fixed; inset: auto; margin: 0; max-width: calc(100vw - 8px); max-height: calc(100dvh - 8px);
 }
-.ribbon-flyout { z-index: 15; min-width: min(176px, calc(100vw - 8px)); overflow: auto; }
+.ribbon-flyout { z-index: 15; min-width: min(176px, calc(100vw - 8px)); max-height: calc(100dvh - 8px); overflow-y: auto; overflow-x: hidden; }
 .ribbon-flyout[aria-label='Font size options'] { min-width: 72px; }
 .ribbon-flyout button, .border-menu button, .border-menu summary, .ribbon-palette-action {
   width: 100%; min-height: 32px; text-align: start; padding: 4px 8px; display: flex; align-items: center; gap: 7px;
@@ -706,7 +736,8 @@ button:disabled { cursor: default; opacity: .5; }
 .total-dropdown-check { width: 16px; display: inline-block; }
 
 @media (forced-colors: active) {
-  :root { --ribbon-glyph-blue: currentColor; --ribbon-glyph-gold: currentColor; --ribbon-glyph-pink: currentColor;
+  :root { --ribbon-glyph-blue: currentColor; --ribbon-glyph-green: currentColor; --ribbon-glyph-purple: currentColor;
+    --ribbon-glyph-gold: currentColor; --ribbon-glyph-pink: currentColor;
     --ribbon-glyph-red: currentColor; --ribbon-glyph-paper: Canvas; --ribbon-glyph-outline: currentColor; --ribbon-glyph-white: Canvas; }
   .ribbon-panel > fieldset, .ribbon-flyout, .ribbon-palette, .shift-dialog .shift-options input { border-color: CanvasText; }
   .shift-dialog .shift-options input:checked, .ribbon-flyout button[aria-checked='true'] .ribbon-flyout-glyph { border-color: Highlight; }
@@ -962,4 +993,100 @@ button:disabled { cursor: default; opacity: .5; }
   .python-divider { background: ButtonFace; }
   .python-divider:focus-visible { outline: 2px solid Highlight; }
   .python-hide { color: ButtonText; background: ButtonFace; border-color: ButtonText; }
+  .insert-function-dialog .dialog-actions button[type='submit'] {
+    background: Highlight; color: HighlightText; border-color: Highlight;
+  }
+  .insert-function-list { border-color: CanvasText; }
+  .insert-function-option.selected { background: Highlight; color: HighlightText; }
+  .function-arguments-dialog .dialog-actions button[type='submit'] {
+    background: Highlight; color: HighlightText; border-color: Highlight;
+  }
+  .function-args-fieldset { border-color: CanvasText; }
 }
+
+/* Excel-style Insert Function modal dialog */
+.insert-function-dialog { width: min(520px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+.insert-function-dialog > form { display: grid; gap: 12px; }
+.insert-function-dialog .format-dialog-heading {
+  display: flex; align-items: center; justify-content: space-between; margin: 0;
+}
+.insert-function-dialog .format-dialog-heading h2 { margin: 0; font-size: 16px; }
+.insert-function-body { display: grid; gap: 10px; }
+.insert-function-field { display: grid; gap: 4px; }
+.insert-function-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.insert-function-search input, .insert-function-category select {
+  height: 32px; padding: 0 8px; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+}
+.insert-function-category { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 10px; }
+.insert-function-list {
+  height: 200px; overflow: auto; background: var(--top-field); border: 1px solid var(--border); border-radius: 4px; padding: 2px;
+}
+.insert-function-list:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.insert-function-option {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 5px 8px; border-radius: 3px; cursor: pointer; font-size: 13px;
+}
+.insert-function-option small { color: var(--muted); font-size: 11px; }
+.insert-function-option:hover { background: var(--raised); }
+.insert-function-option.selected { background: var(--accent); color: var(--top-bar); font-weight: 600; }
+.insert-function-option.selected small { color: inherit; opacity: .85; }
+.insert-function-empty { padding: 12px 8px; color: var(--muted); font-size: 13px; }
+.insert-function-preview {
+  display: grid; gap: 4px; min-height: 54px; padding: 8px 10px;
+  background: var(--sheet); border: 1px solid var(--border); border-radius: 4px;
+}
+.insert-function-signature { font-size: 13px; word-break: break-word; }
+.insert-function-desc { margin: 0; font-size: 12px; color: var(--muted); }
+.insert-function-dialog .dialog-actions button { min-width: 84px; }
+.insert-function-dialog .dialog-actions button[type='submit']:not(:disabled) {
+  background: var(--accent); border-color: var(--accent); color: var(--top-bar); font-weight: 600;
+}
+.insert-function-dialog .dialog-actions button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Excel-style Function Arguments modal dialog */
+.function-arguments-dialog { width: min(640px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); }
+.function-arguments-dialog > form { display: grid; gap: 10px; }
+.function-arguments-dialog .format-dialog-heading {
+  display: flex; align-items: center; justify-content: space-between; margin: 0;
+}
+.function-arguments-dialog .format-dialog-heading h2 { margin: 0; font-size: 16px; }
+.function-args-fieldset {
+  margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 4px;
+  max-height: min(260px, 40dvh); overflow-y: auto; background: var(--sheet);
+}
+.function-args-fieldset > legend { padding: 0 6px; font-weight: 600; font-size: 13px; color: var(--text); }
+.function-args-none { margin: 4px 0; font-size: 13px; color: var(--muted); }
+.function-args-grid { display: grid; gap: 7px; }
+.function-arg-row {
+  display: grid; grid-template-columns: minmax(110px, 145px) minmax(0, 1fr) auto minmax(80px, 140px);
+  align-items: center; gap: 6px;
+}
+.function-arg-row > label {
+  display: block; text-align: right; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.function-arg-row > label.required { font-weight: 700; }
+.function-arg-row > input {
+  height: 28px; min-width: 0; padding: 2px 7px;
+  background: var(--top-field); border: 1px solid var(--border); border-radius: 3px; color: var(--text);
+}
+.function-arg-pick { height: 28px; min-width: 28px; padding: 0 6px; font-size: 12px; }
+.function-arg-preview {
+  font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.function-arg-preview.empty { color: var(--muted); }
+.function-arg-preview.error, .function-args-result .error { color: #ffb4ab; }
+.function-args-info {
+  display: grid; gap: 6px; padding: 8px 10px;
+  background: var(--panel); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+.function-args-desc { margin: 0; font-size: 13px; }
+.function-args-hint { margin: 0; font-size: 12px; color: var(--muted); }
+.function-args-hint strong { color: var(--text); }
+.function-args-result { font-size: 13px; padding: 2px 4px; }
+.function-args-result strong { word-break: break-word; }
+.function-arguments-dialog .dialog-actions button { min-width: 84px; }
+.function-arguments-dialog .dialog-actions button[type='submit'] {
+  background: var(--accent); border-color: var(--accent); color: var(--top-bar); font-weight: 600;
+}
+
+

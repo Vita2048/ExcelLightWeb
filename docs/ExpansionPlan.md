@@ -8,8 +8,8 @@ Live sprint progress, verification counts, and active risks live in [ExpansionPl
 
 ## 1. Phase Overview
 
-1. **Phase 1 — Formula Engine + Core Functions** *(Active; detailed in Section 4)*: Expand the pure TypeScript engine (`src/calculation`) with dynamic array spilling, `LET`/`LAMBDA`, structured table references, 3D references, the Windows Excel COM differential oracle, and ~135 high-impact core functions.
-2. **Phase 2 — PivotTables** *(Planned; detail after Phase 1)*: Core immutable PivotTable model, aggregation engine, Insert → PivotTable dialog, docked dark PivotTable Fields side pane, grid rendering, in-sheet filter/sort dropdowns, `GETPIVOTDATA`, and `.exlt`/XLSX handling.
+1. **Phase 1 — Formula Engine + Core Functions** *(Complete; Section 4)*: Pure TypeScript engine (`src/calculation`) with dynamic array spilling, `LET`/`LAMBDA`, structured table references, 3D references, Windows Excel COM differential oracle (`16.0.17932`), 225 implemented functions, Function Library ribbon & parameter dialogs, and F2 color-coded range highlights.
+2. **Phase 2 — PivotTables** *(Next; detailed in Section 5)*: Core immutable PivotTable model, aggregation engine, Insert → PivotTable dialog, docked dark PivotTable Fields side pane, grid rendering, in-sheet filter/sort dropdowns, contextual `PivotTable Analyze` & `Design` ribbon tabs, `GETPIVOTDATA`, and `.exlt`/XLSX handling.
 3. **Phase 3 — Charts (Full Excel Variety)** *(Planned; detail after Phase 2)*: Floating interactive charts bound to ranges, Tables, dynamic spills, and PivotTables, with Format Chart / Select Data side panes and dark-theme parity across Excel's chart families.
 4. **Phase 4 — Remaining Long-Tail Excel Functions** *(Planned; can batch after Phase 1)*: Remaining ~300+ Excel functions in categorized waves verified against the Excel COM oracle.
 
@@ -103,3 +103,70 @@ Also perform a full cross-doc consistency check at the end of each Phase.
 - **Date & Time**: `NOW`, `TIME`, `HOUR`, `MINUTE`, `SECOND`, `DATEVALUE`, `TIMEVALUE`, `EDATE`, `EOMONTH`, `DATEDIF`, `DAYS`, `DAYS360`, `WEEKDAY`, `WEEKNUM`, `ISOWEEKNUM`, `WORKDAY`, `WORKDAY.INTL`, `NETWORKDAYS`, `NETWORKDAYS.INTL`, `YEARFRAC`.
 - **Core Statistical & Financial**: `MEDIAN`, `MODE`, `MODE.SNGL`, `STDEV.S`, `STDEV.P`, `VAR.S`, `VAR.P`, `LARGE`, `SMALL`, `RANK`, `RANK.EQ`, `RANK.AVG`, `PERCENTILE.INC`, `PERCENTILE.EXC`, `QUARTILE.INC`, `QUARTILE.EXC`, `CORREL`, `COVARIANCE.S`, `SLOPE`, `INTERCEPT`, `FORECAST.LINEAR`, `PMT`, `PV`, `FV`, `NPV`, `XNPV`, `IRR`, `XIRR`, `RATE`, `NPER`, `IPMT`, `PPMT`, `SLN`, `DB`, `DDB`.
 - **Verification**: Excel COM oracle fixtures (`math.json`, `text.json`, `datetime.json`, `stats-financial.json`), `_xlfn.` XLSX import/export tests, `npm run test:performance` (warm 1,000-formula recalc p95 < 500 ms; 10,000-cell edit p95 < 100 ms), full `npm run check`, `npm run test:e2e`, `npm run test:worksheet`, and Phase 1 sync of [Architecture.md](Architecture.md), [Features.md](Features.md), and [Known-Issues.md](Known-Issues.md).
+
+---
+
+## 5. Phase 2 Detailed Sprints: PivotTables (Excel UI)
+
+All PivotTable UI flows follow desktop Excel conventions adapted to ExcelLightWeb's dark palette, forced-colors accessibility, React/canvas split, and session command transactions. Screenshots of Excel's PivotTable dialogs/panes/menus can be used to lock pixel-exact menu labels before executing each UI sprint.
+
+### Sprint 2.1 — PivotTable Core Model, Aggregation Engine & `.exlt` Persistence
+- **Core model (`src/core/pivot.ts`, `src/core/workbook.ts`)**:
+  - Immutable `PivotTableDocument` definitions on `WorkbookDocument` / `SheetDocument` (stable ID, unique case-insensitive name, source range or named Table reference, target anchor cell, `PivotFieldConfig[]` across `filters` / `columns` / `rows` / `values`, layout options, subtotals/grand-totals flags, collapsed keys, filter exclusions, sort rules, and PivotTable style ID).
+  - Reuse the shared generated-region ownership (`spillKind: 'pivot'`) so PivotTable cells are read-only, excluded from authored equality, guarded against overlapping populated cells/merges/Tables/formula spills/other PivotTables, and atomically cleaned on resize or clear.
+- **Aggregation engine (`src/calculation/pivot-engine.ts`)**:
+  - Pure cached field extraction from source sheets/Tables, multi-key grouping for Rows and Columns, Report Filter slicing, and `Values` placement (`Values` virtual field in Rows or Columns).
+  - Core aggregations (`Sum`, `Count`, `Average`, `Max`, `Min`, `Product`, `Count Numbers`, `StdDev`, `StdDevp`, `Var`, `Varp`) plus `Show Values As` (`No Calculation`, `% of Grand Total`, `% of Column Total`, `% of Row Total`, `% of Parent Row/Column Total`, `Difference From`, `% Difference From`, `Running Total In`, `Rank Smallest to Largest`, `Rank Largest to Smallest`, `Index`).
+- **Session commands & persistence (`src/application/pivot-commands.ts`, `src/persistence/native/`)**:
+  - Atomic session commands (`create-pivot`, `update-pivot-layout`, `refresh-pivot`, `toggle-pivot-collapse`, `filter-pivot`, `sort-pivot`, `move-pivot`, `resize-pivot-source`, `delete-pivot`) with full undo/redo and copy/move/sheet/axis reference updates.
+  - Optional/additive `.exlt` v1 serialization preserving PivotTable definitions and cached layout without breaking existing `.exlt` files.
+- **Verification**: Unit tests for grouping, aggregations, `Show Values As`, and collision/undo invariants + Excel COM oracle spot checks for PivotTable numeric aggregates + `npm run check`.
+
+### Sprint 2.2 — Create PivotTable Dialog, Docked `PivotTable Fields` Pane & Value Field Settings
+- **Ribbon entry (`Insert → Tables → PivotTable`)**: Opens the dark **Create PivotTable** modal dialog matching Excel:
+  - *Choose the data that you want to analyze*: `Select a table or range` input with `...` worksheet range picker (auto-detecting the contiguous `currentRegion` or active Table around the active cell) and `OK` / `Cancel`.
+  - *Choose where you want the PivotTable to be placed*: `New Worksheet` (default) or `Existing Worksheet` with `Location` range picker.
+- **Docked dark `PivotTable Fields` side pane (`src/features/pivot/PivotTableFieldsPane.tsx`)**:
+  - Appears docked on the right (resizable splitter, toggleable close `×` button) whenever the active cell is inside a PivotTable (if Field List is enabled).
+  - Search box (`Search` fields), scrollable field list with checkboxes (check adds to `Rows` or `Values` for numeric columns matching Excel heuristic), and 2×2 drop zones (**Filters**, **Columns**, **Rows**, **Values**).
+  - Both pointer drag-and-drop AND full keyboard item menus on each field chip (`Move Up`, `Move Down`, `Move to Beginning`, `Move to End`, `Move to Report Filter` / `Row Labels` / `Column Labels` / `Values`, `Remove Field`, `Value Field Settings...`).
+  - Bottom `Defer Layout Update` checkbox + explicit `Update` button.
+- **`Field Settings` / `Value Field Settings` modal (`src/features/pivot/FieldSettingsDialog.tsx`)**:
+  - `Source Name` (read-only), `Custom Name`, tabs for `Summarize Values By` (11 functions) and `Show Values As` (+ Base Field / Base Item selectors), `Number Format...` button launching `FormatCellsDialog`'s Number tab, and `Subtotals & Filters` tab for row/column fields (`Automatic`, `None`, `Custom`).
+- **Verification**: Keyboard/drag-and-drop/axe accessibility and Playwright journeys in Chromium creating PivotTables from ranges/Tables, moving fields across areas, changing aggregations/number formats, and closing/reopening the pane.
+
+### Sprint 2.3 — Grid Layouts, Expand/Collapse, In-Sheet Filter/Sort & Drill-Down
+- **Report layouts (`src/calculation/pivot-engine.ts`, `src/grid/draw-worksheet.ts`)**:
+  - Support Excel's three layouts: **Compact Form** (default indented hierarchy with `Row Labels` / `Column Labels` headers), **Outline Form**, and **Tabular Form**, plus **Repeat All Item Labels**, **Blank Rows** after items, **Subtotals** (top/bottom/off), and **Grand Totals** (rows/columns/both/off).
+  - Render PivotTable headers, subtotal/total bands, indented items, `+/-` outline buttons, and filter dropdown triggers cleanly on the Canvas 2D grid with forced-colors contrast support.
+- **In-sheet Pivot interaction (`src/grid/Worksheet.tsx`, `src/features/pivot/PivotFilterDropdown.tsx`)**:
+  - Clickable `+/-` expand/collapse toggles on row/column group items.
+  - Report Filter row dropdowns above the PivotTable (`(All)`, single-select, or `Select Multiple Items` checkboxes + search).
+  - `Row Labels` / `Column Labels` filter & sort dropdowns (`Sort A to Z`, `Sort Z to A`, `More Sort Options...`, field selector when multiple fields share compact column, Label/Value filter checklist & search).
+  - Double-clicking a PivotTable data value cell runs **Show Details**, inserting a new worksheet populated with a formatted Excel Table of matching source records (undoable).
+- **Verification**: Unit/integration tests for Compact/Outline/Tabular layouts and drill-down record matching; Playwright tests for expand/collapse, in-sheet report filters, sorting, and drill-down.
+
+### Sprint 2.4 — Contextual `PivotTable Analyze` & `Design` Ribbon Tabs + Styles
+- **Contextual ribbon chrome (`src/features/shell/Ribbon.tsx`, `desktop-glyphs.ts`)**:
+  - Dynamically show green/accent-highlighted **PivotTable Analyze** and **Design** tabs when the active cell is inside a PivotTable (remembering active contextual tab per PivotTable during the session, restoring the prior ordinary tab when leaving).
+  - **PivotTable Analyze** groups following Excel:
+    - `PivotTable`: `PivotTable Name` editable box, `Options...` (layout/display/totals/zero-for-empty/autofit options dialog).
+    - `Active Field`: `Active Field` indicator, `Field Settings`, `Expand Field` / `Collapse Field`.
+    - `Data`: `Refresh` / `Refresh All`, `Change Data Source...` (with range picker).
+    - `Actions`: `Clear` (`Clear All`, `Clear Filters`), `Select` (`Entire PivotTable`), `Move PivotTable...`.
+    - `Show`: toggle buttons for `Field List`, `+/- Buttons`, and `Field Headers`.
+  - **Design** groups following Excel:
+    - `Layout`: `Subtotals`, `Grand Totals`, `Report Layout`, `Blank Rows` flyout menus with custom SVG glyphs matching desktop parity rules.
+    - `PivotTable Style Options`: `Row Headers`, `Column Headers`, `Banded Rows`, `Banded Columns` checkboxes.
+    - `PivotTable Styles`: Light/Medium/Dark-adapted swatch gallery respecting authored cell overrides and forced-colors mode.
+- **Verification**: Extend `tests/fixtures/parity/ribbon-order.json` and `tests/e2e/ribbon-parity.spec.ts` for contextual PivotTable tab appearance, keyboard navigation, and axe checks.
+
+### Sprint 2.5 — `GETPIVOTDATA`, Mixed Recalc Integration, XLSX Boundary & Phase 2 Verification
+- **Formula integration (`src/calculation/functions/`)**:
+  - Implement `GETPIVOTDATA(data_field, pivot_table, [field1, item1], ...)` returning aggregated scalar values or `#REF!` when missing/collapsed, registered across `Lookup & Reference` and `FunctionLibrary`.
+  - Automatic dependency propagation: editing source data + refreshing the PivotTable triggers downstream formulas (including `GETPIVOTDATA` / `SUM` referencing Pivot cells) and downstream Python `xl(...)` cells in a single generation.
+- **XLSX interchange boundary (`src/persistence/xlsx/`)**:
+  - Export materialized PivotTable header/value cells and number formats cleanly so workbooks open accurately in desktop Excel without executing scripts, while adding explicit reviewed XLSX loss notices on PivotTable import/export (`pivotTableDefinition` not round-tripped natively).
+- **Phase 2 Completion Gate**:
+  - Run `npm run check`, Excel COM `GETPIVOTDATA` oracle fixtures, `npm run test:performance` (verify PivotTable refresh & 10k-row aggregation latency), `npm run test:e2e`, and `npm run test:worksheet`.
+  - Update [Features.md](Features.md), [Architecture.md](Architecture.md), [Known-Issues.md](Known-Issues.md), and [ExpansionPlanStatus.md](ExpansionPlanStatus.md).

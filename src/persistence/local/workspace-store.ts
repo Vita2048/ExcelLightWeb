@@ -27,6 +27,7 @@ export interface LocalWorkspacePreferences {
   readonly view: PersistedView;
   readonly searchHistory: { readonly find: readonly string[]; readonly replace: readonly string[] };
   readonly searchLook: SearchLook;
+  readonly recentFunctions?: readonly string[];
 }
 
 export interface WorkspaceFileHandle {
@@ -105,6 +106,11 @@ function validHistory(value: unknown): value is readonly string[] {
     item.length <= 32_767 && !item.includes('\0')) && new Set(value).size === value.length;
 }
 
+function validRecentFunctions(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.length <= 10 &&
+    value.every(item => typeof item === 'string' && /^[A-Z0-9.]+$/u.test(item)) && new Set(value).size === value.length);
+}
+
 export function migrateLegacyPreferences(value: unknown): LocalWorkspacePreferences {
   if (value === undefined) return defaultWorkspacePreferences;
   if (!isRecord(value)) throw new LocalWorkspaceError('Local settings are malformed; existing workspace data was kept.');
@@ -142,6 +148,7 @@ export function migrateLegacyPreferences(value: unknown): LocalWorkspacePreferen
     view: value.view ?? defaultWorkspacePreferences.view,
     searchHistory: { find, replace },
     searchLook: value.searchLook ?? defaultWorkspacePreferences.searchLook,
+    ...(value.recentFunctions !== undefined && { recentFunctions: value.recentFunctions }),
   });
 }
 
@@ -153,7 +160,8 @@ function validatePreferences(value: unknown): LocalWorkspacePreferences {
       !Number.isInteger(value.view.zoom) || (value.view.zoom as number) < 10 || (value.view.zoom as number) > 400 ||
       typeof value.view.headings !== 'boolean' || typeof value.view.gridlines !== 'boolean' ||
       typeof value.view.formulaBar !== 'boolean' || typeof value.view.showFormulas !== 'boolean' ||
-      !isRecord(value.searchHistory) || !validHistory(value.searchHistory.find) || !validHistory(value.searchHistory.replace)) {
+      !isRecord(value.searchHistory) || !validHistory(value.searchHistory.find) || !validHistory(value.searchHistory.replace) ||
+      !validRecentFunctions(value.recentFunctions)) {
     throw new LocalWorkspaceError('Local settings are invalid; existing workspace data was kept.');
   }
   return value as unknown as LocalWorkspacePreferences;

@@ -1,7 +1,11 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { ribbonInsertFunctions, type NativeFunction } from '../../calculation/formula-functions';
+import type { NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
+import {
+  functionsByCategory, moreLibraryCategories, topLibraryCategories,
+  type FunctionLibraryCategory, type InsertFunctionFilter,
+} from '../formulas/function-library';
 import type { CellDocument, CellStyle, TableDesign, WorkbookName } from '../../core/workbook';
 import type { NumberFormatChange } from '../../application/number-format-command';
 import { RibbonFlyout, RibbonGlyph } from './RibbonFlyout';
@@ -56,7 +60,9 @@ interface RibbonProps {
   readonly pythonOpen: boolean;
   readonly onPython: () => void;
   readonly onCalculate: (scope: 'sheet' | 'workbook') => void;
+  readonly recentFunctions: readonly NativeFunction[];
   readonly onInsertFunction: (name: NativeFunction) => void;
+  readonly onOpenInsertFunctionDialog: (category?: InsertFunctionFilter) => void;
   readonly activeTable?: WorkbookName | undefined;
   readonly onTableRename?: (name: string) => void;
   readonly onTableResize?: () => void;
@@ -97,7 +103,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 }
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
-  onCalculationMode, onCalculate, pythonOpen, onPython, onInsertFunction, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
+  onCalculationMode, onCalculate, pythonOpen, onPython, recentFunctions, onInsertFunction, onOpenInsertFunctionDialog, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
   activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
@@ -271,10 +277,50 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
           </> : name === 'Formulas' ? <>
             <fieldset>
               <legend>Function Library</legend>
-              <RibbonFlyout label="Insert Function" icon="Insert Function" large items={ribbonInsertFunctions.map(name => ({
-                label: name + '(…)', select: () => onInsertFunction(name),
-              }))} />
+              <button type="button" className="ribbon-command ribbon-large" onClick={() => onOpenInsertFunctionDialog('Most Recently Used')}>
+                <RibbonGlyph name="Insert Function" size={30} />
+                Insert<br />Function
+              </button>
               <AutoSum onEdit={onEdit} />
+              <RibbonFlyout
+                label="Recently Used"
+                caption={<>Recently<br />Used</>}
+                icon="Recently Used"
+                large
+                items={[
+                  ...recentFunctions.map(fn => ({ label: fn, select: () => onInsertFunction(fn) })),
+                  { label: 'Insert Function...', icon: 'Insert Function', divider: true, select: () => onOpenInsertFunctionDialog('Most Recently Used') },
+                ]}
+              />
+              {topLibraryCategories.map(category => (
+                <RibbonFlyout
+                  key={category}
+                  label={category}
+                  caption={category === 'Date & Time' ? <>Date &amp;<br />Time</> :
+                    category === 'Lookup & Reference' ? <>Lookup &amp;<br />Reference</> :
+                    category === 'Math & Trig' ? <>Math &amp;<br />Trig</> : category}
+                  icon={category === 'Text' ? 'function:Text' : category}
+                  large
+                  items={[
+                    ...functionsByCategory[category].map(fn => ({ label: fn, select: () => onInsertFunction(fn) })),
+                    { label: 'Insert Function...', icon: 'Insert Function', divider: true, select: () => onOpenInsertFunctionDialog(category) },
+                  ]}
+                />
+              ))}
+              <RibbonFlyout
+                label="More Functions"
+                caption={<>More<br />Functions</>}
+                icon="More Functions"
+                large
+                items={moreLibraryCategories.map((category: FunctionLibraryCategory) => ({
+                  label: category,
+                  icon: category,
+                  children: [
+                    ...functionsByCategory[category].map(fn => ({ label: fn, select: () => onInsertFunction(fn) })),
+                    { label: 'Insert Function...', icon: 'Insert Function', divider: true, select: () => onOpenInsertFunctionDialog(category) },
+                  ],
+                }))}
+              />
             </fieldset>
             <fieldset>
               <legend>Formula Auditing</legend>

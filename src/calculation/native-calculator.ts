@@ -382,7 +382,7 @@ export function calculateNative(document: WorkbookDocument, options: Calculation
 const emptyEnv: ReadonlyMap<string, FormulaValue> = new Map();
 
 export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, graph: ReturnType<typeof prepareNativeGraph>,
-  selected: ReadonlySet<FormulaNode> | undefined, options: CalculationOptions): NativeCalculation {
+  selected: ReadonlySet<FormulaNode> | undefined, options: CalculationOptions, previewMode = false): NativeCalculation {
   const clockDate = options.clock?.() ?? new Date();
   const today = todaySerial(clockDate);
   const now = nowSerial(clockDate);
@@ -952,7 +952,18 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
         cache = error('#CALC!');
       } else if (isArray(raw)) {
         if (raw.rows * raw.columns > 1) {
-          ({ cache, spill } = trySpillResult(sheet, cell, raw.rows, raw.columns, (r, c) => raw.at(r, c)));
+          if (previewMode) {
+            const rLim = Math.min(raw.rows, 4), cLim = Math.min(raw.columns, 4);
+            const cells: (CellCache | null)[] = [];
+            for (let r = 0; r < rLim; r++) for (let c = 0; c < cLim; c++) {
+              const val = raw.at(r, c);
+              cells.push(val === null ? null : scalarCache(val));
+            }
+            cache = cells[0] ?? { kind: 'number', value: 0 };
+            spill = { rows: raw.rows, columns: raw.columns, cells };
+          } else {
+            ({ cache, spill } = trySpillResult(sheet, cell, raw.rows, raw.columns, (r, c) => raw.at(r, c)));
+          }
         } else {
           cache = scalarCache(raw.at(0, 0));
         }
@@ -964,7 +975,18 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
           const rows = area.bottom - area.top + 1;
           const columns = area.right - area.left + 1;
           if (rows * columns > 1) {
-            ({ cache, spill } = trySpillResult(sheet, cell, rows, columns, (r, c) => read(area, area.top + r, area.left + c)));
+            if (previewMode) {
+              const rLim = Math.min(rows, 4), cLim = Math.min(columns, 4);
+              const cells: (CellCache | null)[] = [];
+              for (let r = 0; r < rLim; r++) for (let c = 0; c < cLim; c++) {
+                const val = read(area, area.top + r, area.left + c);
+                cells.push(val === null ? null : scalarCache(val));
+              }
+              cache = cells[0] ?? { kind: 'number', value: 0 };
+              spill = { rows, columns, cells };
+            } else {
+              ({ cache, spill } = trySpillResult(sheet, cell, rows, columns, (r, c) => read(area, area.top + r, area.left + c)));
+            }
           } else {
             cache = scalarCache(read(area, area.top, area.left));
           }
@@ -1041,4 +1063,92 @@ function evaluateBinary(operator: string, left: Exclude<Scalar, FormulaError>, r
     case '^': return finite(a ** b);
     default: return error('#VALUE!');
   }
+}
+
+function formatPreviewCache(cache: CellCache | null | undefined, quoteStrings: boolean): { readonly text: string; readonly isError: boolean } {
+  if (!cache) return { text: quoteStrings ? '""' : '', isError: false };
+  if (cache.kind === 'error') return { text: cache.value, isError: true };
+  if (cache.kind === 'boolean') return { text: cache.value ? 'TRUE' : 'FALSE', isError: false };
+  if (cache.kind === 'text') return { text: quoteStrings ? `"${cache.value}"` : cache.value, isError: false };
+  return { text: String(cache.value), isError: false };
+}
+
+export function previewFormula(
+  document: WorkbookDocument,
+  target: CellReference,
+  source: string,
+  locale?: string,
+  quoteStrings = true,
+): { readonly text: string; readonly isError: boolean } | undefined {
+  if (!source.startsWith('=')) return undefined;
+  const targetSheet = document.sheets.find(s => s.id === target.sheetId);
+  if (!targetSheet) return undefined;
+  let parsed: ReturnType<typeof parseFormula>;
+  try {
+    parsed = parseFormula(source);
+  } catch {
+    return undefined;
+  }
+
+  const sheets = new Map(document.sheets.map(sheet => [ordinalNameKey(sheet.name), sheet]));
+  const resolvedReferences = new Map<FormulaReference, Range>();
+  for (const ref of parsed.references) {
+    if (ref.endSheet !== undefined) return { text: '#VALUE!', isError: true };
+    const refSheet = ref.sheet === undefined ? targetSheet : sheets.get(ordinalNameKey(ref.sheet));
+    const bounds = referenceBox(ref);
+    if (!refSheet || bounds.bottom > documentLimits.rows || bounds.right > documentLimits.columns) continue;
+    resolvedReferences.set(ref, { sheetId: refSheet.id, ...bounds });
+  }
+
+  const previewCell: CellDocument = {
+    id: '__preview__',
+    row: target.row,
+    column: target.column,
+    content: { kind: 'formula', source },
+  };
+  const inputs = indexNativeInputs(document);
+  const sheetInputs = inputs.get(targetSheet.id);
+  if (!sheetInputs) return undefined;
+  sheetInputs.cells.set(cellKey(previewCell), previewCell);
+
+  const node: FormulaNode = {
+    id: previewCell.id,
+    target,
+    expression: parsed.expression,
+    ranges: [...resolvedReferences.values()],
+    inputs: [],
+    dependents: [],
+    containsSubtotal: false,
+    volatile: false,
+    hasSpillRef: false,
+  };
+  const graph = {
+    nodes: new Map([[node.id, node]]),
+    resolvedReferences,
+    dependencies: new Map<string, readonly CellReference[]>(),
+    names: document.names,
+    order: [node],
+    cycles: new Set<FormulaNode>(),
+  };
+  const result = evaluateNative(inputs, graph, undefined, locale !== undefined ? { locale } : {}, true);
+  const update = result.updates[0];
+  if (!update) return undefined;
+  if (update.spill) {
+    const { cells, rows, columns } = update.spill;
+    const rLim = Math.min(rows, 4), cLim = Math.min(columns, 4);
+    const flatLimit = 6;
+    let count = 0;
+    const rowStrings: string[] = [];
+    for (let r = 0; r < rLim && count < flatLimit; r++) {
+      const cols: string[] = [];
+      for (let c = 0; c < cLim && count < flatLimit; c++) {
+        cols.push(formatPreviewCache(cells[r * cLim + c], true).text);
+        count++;
+      }
+      rowStrings.push(cols.join(', '));
+    }
+    const truncated = rows * columns > count ? '; …' : '';
+    return { text: `{${rowStrings.join('; ')}${truncated}}`, isError: false };
+  }
+  return formatPreviewCache(update.cache, quoteStrings);
 }
