@@ -108,7 +108,7 @@ Also perform a full cross-doc consistency check at the end of each Phase.
 
 ## 5. Phase 2 Detailed Sprints: PivotTables (Excel UI)
 
-All PivotTable UI flows follow desktop Excel conventions adapted to ExcelLightWeb's dark palette, forced-colors accessibility, React/canvas split, and session command transactions. Screenshots of Excel's PivotTable dialogs/panes/menus can be used to lock pixel-exact menu labels before executing each UI sprint.
+All PivotTable UI flows follow desktop Excel conventions adapted to ExcelLightWeb's dark palette, forced-colors accessibility, React/canvas split, and session command transactions — **exposing only controls that are backed by real implementation** (no disabled/placeholder OLAP, Data Model, Slicer, Timeline, Relationships, Recommended PivotTables, or `More Tables...` items). Screenshots of Excel's PivotTable dialogs/panes/menus lock the exact layout and labels below.
 
 ### Sprint 2.1 — PivotTable Core Model, Aggregation Engine & `.exlt` Persistence
 - **Core model (`src/core/pivot.ts`, `src/core/workbook.ts`)**:

@@ -68,6 +68,7 @@ interface RibbonProps {
   readonly onTableResize?: () => void;
   readonly onTableChangeDesign?: (patch: Partial<TableDesign>) => void;
   readonly onTableClick?: () => void;
+  readonly onPivotTableClick?: () => void;
   readonly onNameManagerClick?: () => void;
   readonly onDefineNameClick?: () => void;
   readonly filter: FilterCommands;
@@ -104,7 +105,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, pythonOpen, onPython, recentFunctions, onInsertFunction, onOpenInsertFunctionDialog, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
-  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
@@ -195,6 +196,12 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
           ) : name === 'Insert' ? (
             <fieldset>
               <legend>Tables</legend>
+              <RibbonFlyout
+                label="PivotTable"
+                icon="PivotTable"
+                large
+                items={[{ label: 'From Table/Range', icon: 'Table', select: onPivotTableClick ?? (() => {}) }]}
+              />
               <button type="button" className="ribbon-command ribbon-large" onClick={onTableClick}>
                 <RibbonGlyph name="Table" size={32} />Table
               </button>

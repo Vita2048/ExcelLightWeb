@@ -35,7 +35,8 @@ export function sameAuthoredCell(left: CellDocument, right: CellDocument): boole
 export function sameAuthoredWorkbook(left: WorkbookDocument, right: WorkbookDocument): boolean {
   if (left === right) return true;
   if (left.id !== right.id || left.formatVersion !== right.formatVersion || left.dateSystem !== right.dateSystem ||
-      !equalDto(left.names, right.names) || left.sheets.length !== right.sheets.length) return false;
+      !equalDto(left.names, right.names) || !equalDto(left.pivots ?? [], right.pivots ?? []) ||
+      left.sheets.length !== right.sheets.length) return false;
   return left.sheets.every((sheet, index) => {
     const other = right.sheets[index]!;
     if (sheet === other) return true;
@@ -139,7 +140,8 @@ export function invertDelta(delta: WorkbookDelta): WorkbookDelta {
 
 export function diffWorkbook(before: WorkbookDocument, after: WorkbookDocument): WorkbookDelta {
   if (before.id !== after.id || before.dateSystem !== after.dateSystem || before.formatVersion !== after.formatVersion ||
-      !equalDto(before.names, after.names) || before.sheets.length !== after.sheets.length ||
+      !equalDto(before.names, after.names) || !equalDto(before.pivots ?? [], after.pivots ?? []) ||
+      before.sheets.length !== after.sheets.length ||
       before.sheets.some((sheet, i) => sheet !== after.sheets[i] &&
         !equalDto(exactSheetState(sheet), exactSheetState(after.sheets[i]!)))) {
     return ownDto({ kind: 'structure', before, after });

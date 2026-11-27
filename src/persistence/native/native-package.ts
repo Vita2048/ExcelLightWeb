@@ -5,6 +5,10 @@ import type {
   PythonBinding, PythonBlock, PythonFigure, PythonTable, SheetDocument, SheetFilter,
   TableDesign, WorkbookDocument, WorkbookName,
 } from '../../core/workbook';
+import type {
+  PivotAggregation, PivotAxisField, PivotFilterField, PivotReportLayout, PivotShowValuesAs,
+  PivotSortRule, PivotStyleId, PivotSubtotalPosition, PivotTableDocument, PivotValueField,
+} from '../../core/pivot';
 import { DocumentError, documentLimits, formulaErrors, ownDto } from '../../core/workbook';
 import { equalDto } from '../../core/workbook-delta';
 import { migrateDetachedHeaders } from '../../core/workbook-names';
@@ -250,7 +254,7 @@ function readDocument(manifestBytes: Uint8Array, workbookBytes: Uint8Array, shee
   }
 
   const workbookRoot = requireObject(workbook, 'workbook.json');
-  rejectUnknown(workbookRoot, 'workbookId', 'sheets', 'names');
+  rejectUnknown(workbookRoot, 'workbookId', 'sheets', 'names', 'pivots');
 
   if (requireGuid(requireProperty(workbookRoot, 'workbookId'), 'workbookId') !== workbookId) {
     throw new PackageException('Workbook id does not match the manifest.');
@@ -299,12 +303,27 @@ function readDocument(manifestBytes: Uint8Array, workbookBytes: Uint8Array, shee
     }
   }
 
+  let pivots: PivotTableDocument[] | undefined;
+  if (Object.hasOwn(workbookRoot, 'pivots')) {
+    const pivotsVal = workbookRoot.pivots;
+    if (!Array.isArray(pivotsVal)) {
+      throw new PackageException('Invalid workbook pivots: pivots must be an array.');
+    }
+    try {
+      pivots = pivotsVal.map(readPivotTable);
+    } catch (ex) {
+      if (ex instanceof PackageException) throw ex;
+      throw new PackageException('Invalid workbook pivots: ' + (ex instanceof Error ? ex.message : String(ex)));
+    }
+  }
+
   const doc: WorkbookDocument = {
     id: workbookId,
     formatVersion: 1,
     dateSystem: '1900',
     sheets,
     names,
+    ...(pivots && pivots.length > 0 ? { pivots } : {}),
   };
 
   return migrateDetachedHeaders(doc);
@@ -364,6 +383,160 @@ function readWorkbookName(raw: unknown): WorkbookName {
     isTable: Object.hasOwn(obj, 'IsTable') ? requireBool(obj.IsTable, 'IsTable') : false,
     ...(design ? { design } : {}),
     ...(headerLabels ? { headerLabels } : {}),
+  };
+}
+
+function readPivotStringList(raw: unknown, prop: string): readonly string[] {
+  if (!Array.isArray(raw)) throw new PackageException(`${prop} must be an array.`);
+  return raw.map((item, idx) => requireString(item, `${prop}[${idx}]`));
+}
+
+function readPivotAxisField(raw: unknown): PivotAxisField {
+  const obj = requireObject(raw, 'axisField');
+  rejectUnknown(obj, 'fieldName', 'subtotal', 'sort', 'hiddenItems');
+  const fieldName = requireString(requireProperty(obj, 'fieldName'), 'fieldName');
+  let subtotal: PivotAxisField['subtotal'];
+  if (Object.hasOwn(obj, 'subtotal')) {
+    const val = requireString(obj.subtotal, 'subtotal');
+    if (val !== 'automatic' && val !== 'none') throw new PackageException('Invalid axis subtotal.');
+    subtotal = val;
+  }
+  let sort: PivotSortRule | undefined;
+  if (Object.hasOwn(obj, 'sort')) {
+    const sObj = requireObject(obj.sort, 'sort');
+    rejectUnknown(sObj, 'direction', 'byValueFieldId');
+    const dir = requireString(requireProperty(sObj, 'direction'), 'direction');
+    if (dir !== 'asc' && dir !== 'desc') throw new PackageException('Invalid pivot sort direction.');
+    sort = {
+      direction: dir,
+      ...(Object.hasOwn(sObj, 'byValueFieldId') ? { byValueFieldId: requireGuid(sObj.byValueFieldId, 'byValueFieldId') } : {}),
+    };
+  }
+  return {
+    fieldName,
+    ...(subtotal !== undefined ? { subtotal } : {}),
+    ...(sort !== undefined ? { sort } : {}),
+    ...(Object.hasOwn(obj, 'hiddenItems') ? { hiddenItems: readPivotStringList(obj.hiddenItems, 'hiddenItems') } : {}),
+  };
+}
+
+function readPivotValueField(raw: unknown): PivotValueField {
+  const obj = requireObject(raw, 'valueField');
+  rejectUnknown(obj, 'id', 'fieldName', 'customName', 'aggregation', 'showValuesAs', 'baseField', 'baseItem', 'numberFormat');
+  return {
+    id: requireGuid(requireProperty(obj, 'id'), 'id'),
+    fieldName: requireString(requireProperty(obj, 'fieldName'), 'fieldName'),
+    ...(Object.hasOwn(obj, 'customName') ? { customName: requireString(obj.customName, 'customName') } : {}),
+    aggregation: requireString(requireProperty(obj, 'aggregation'), 'aggregation') as PivotAggregation,
+    ...(Object.hasOwn(obj, 'showValuesAs') ? { showValuesAs: requireString(obj.showValuesAs, 'showValuesAs') as PivotShowValuesAs } : {}),
+    ...(Object.hasOwn(obj, 'baseField') ? { baseField: requireString(obj.baseField, 'baseField') } : {}),
+    ...(Object.hasOwn(obj, 'baseItem') ? { baseItem: requireString(obj.baseItem, 'baseItem') } : {}),
+    ...(Object.hasOwn(obj, 'numberFormat') ? { numberFormat: requireString(obj.numberFormat, 'numberFormat') } : {}),
+  };
+}
+
+function readPivotFilterField(raw: unknown): PivotFilterField {
+  const obj = requireObject(raw, 'filterField');
+  rejectUnknown(obj, 'fieldName', 'hiddenItems', 'multiSelect');
+  return {
+    fieldName: requireString(requireProperty(obj, 'fieldName'), 'fieldName'),
+    ...(Object.hasOwn(obj, 'hiddenItems') ? { hiddenItems: readPivotStringList(obj.hiddenItems, 'hiddenItems') } : {}),
+    ...(Object.hasOwn(obj, 'multiSelect') ? { multiSelect: requireBool(obj.multiSelect, 'multiSelect') } : {}),
+  };
+}
+
+function readPivotExtent(raw: unknown, prop: string): CellExtent {
+  const obj = requireObject(raw, prop);
+  rejectUnknown(obj, 'row', 'column', 'rows', 'columns');
+  return {
+    row: requireInt(requireProperty(obj, 'row'), `${prop}.row`),
+    column: requireInt(requireProperty(obj, 'column'), `${prop}.column`),
+    rows: requireInt(requireProperty(obj, 'rows'), `${prop}.rows`),
+    columns: requireInt(requireProperty(obj, 'columns'), `${prop}.columns`),
+  };
+}
+
+function readPivotTable(raw: unknown): PivotTableDocument {
+  const obj = requireObject(raw, 'pivot');
+  rejectUnknown(
+    obj,
+    'id', 'name', 'source', 'target', 'extent', 'filters', 'columns', 'rows', 'values',
+    'valuesInRows', 'reportLayout', 'subtotals', 'grandTotals', 'repeatLabels', 'blankRows',
+    'showButtons', 'showFieldHeaders', 'style', 'styleOptions', 'collapsedKeys',
+  );
+  const srcObj = requireObject(requireProperty(obj, 'source'), 'source');
+  const srcKind = requireString(requireProperty(srcObj, 'kind'), 'source.kind');
+  let source: PivotTableDocument['source'];
+  if (srcKind === 'range') {
+    rejectUnknown(srcObj, 'kind', 'area');
+    const aObj = requireObject(requireProperty(srcObj, 'area'), 'source.area');
+    rejectUnknown(aObj, 'sheetId', 'row', 'column', 'rows', 'columns', 'invalid');
+    source = {
+      kind: 'range',
+      area: {
+        sheetId: requireGuid(requireProperty(aObj, 'sheetId'), 'source.area.sheetId'),
+        row: requireInt(requireProperty(aObj, 'row'), 'source.area.row'),
+        column: requireInt(requireProperty(aObj, 'column'), 'source.area.column'),
+        rows: requireInt(requireProperty(aObj, 'rows'), 'source.area.rows'),
+        columns: requireInt(requireProperty(aObj, 'columns'), 'source.area.columns'),
+        ...(Object.hasOwn(aObj, 'invalid') ? { invalid: requireBool(aObj.invalid, 'source.area.invalid') } : {}),
+      },
+    };
+  } else if (srcKind === 'table') {
+    rejectUnknown(srcObj, 'kind', 'tableId');
+    source = { kind: 'table', tableId: requireGuid(requireProperty(srcObj, 'tableId'), 'source.tableId') };
+  } else {
+    throw new PackageException(`Invalid pivot source kind '${srcKind}'.`);
+  }
+
+  const targetObj = requireObject(requireProperty(obj, 'target'), 'target');
+  rejectUnknown(targetObj, 'sheetId', 'row', 'column');
+  const gtObj = requireObject(requireProperty(obj, 'grandTotals'), 'grandTotals');
+  rejectUnknown(gtObj, 'rows', 'columns');
+  const soObj = requireObject(requireProperty(obj, 'styleOptions'), 'styleOptions');
+  rejectUnknown(soObj, 'rowHeaders', 'columnHeaders', 'bandedRows', 'bandedColumns');
+
+  const filtersRaw = requireProperty(obj, 'filters');
+  const colsRaw = requireProperty(obj, 'columns');
+  const rowsRaw = requireProperty(obj, 'rows');
+  const valuesRaw = requireProperty(obj, 'values');
+  if (!Array.isArray(filtersRaw) || !Array.isArray(colsRaw) || !Array.isArray(rowsRaw) || !Array.isArray(valuesRaw)) {
+    throw new PackageException('PivotTable filters, columns, rows, and values must be arrays.');
+  }
+
+  return {
+    id: requireGuid(requireProperty(obj, 'id'), 'id'),
+    name: requireString(requireProperty(obj, 'name'), 'name'),
+    source,
+    target: {
+      sheetId: requireGuid(requireProperty(targetObj, 'sheetId'), 'target.sheetId'),
+      row: requireInt(requireProperty(targetObj, 'row'), 'target.row'),
+      column: requireInt(requireProperty(targetObj, 'column'), 'target.column'),
+    },
+    ...(Object.hasOwn(obj, 'extent') ? { extent: readPivotExtent(obj.extent, 'extent') } : {}),
+    filters: filtersRaw.map(readPivotFilterField),
+    columns: colsRaw.map(readPivotAxisField),
+    rows: rowsRaw.map(readPivotAxisField),
+    values: valuesRaw.map(readPivotValueField),
+    ...(Object.hasOwn(obj, 'valuesInRows') ? { valuesInRows: requireBool(obj.valuesInRows, 'valuesInRows') } : {}),
+    reportLayout: requireString(requireProperty(obj, 'reportLayout'), 'reportLayout') as PivotReportLayout,
+    subtotals: requireString(requireProperty(obj, 'subtotals'), 'subtotals') as PivotSubtotalPosition,
+    grandTotals: {
+      rows: requireBool(requireProperty(gtObj, 'rows'), 'grandTotals.rows'),
+      columns: requireBool(requireProperty(gtObj, 'columns'), 'grandTotals.columns'),
+    },
+    ...(Object.hasOwn(obj, 'repeatLabels') ? { repeatLabels: requireBool(obj.repeatLabels, 'repeatLabels') } : {}),
+    ...(Object.hasOwn(obj, 'blankRows') ? { blankRows: requireBool(obj.blankRows, 'blankRows') } : {}),
+    ...(Object.hasOwn(obj, 'showButtons') ? { showButtons: requireBool(obj.showButtons, 'showButtons') } : {}),
+    ...(Object.hasOwn(obj, 'showFieldHeaders') ? { showFieldHeaders: requireBool(obj.showFieldHeaders, 'showFieldHeaders') } : {}),
+    style: requireString(requireProperty(obj, 'style'), 'style') as PivotStyleId,
+    styleOptions: {
+      rowHeaders: requireBool(requireProperty(soObj, 'rowHeaders'), 'styleOptions.rowHeaders'),
+      columnHeaders: requireBool(requireProperty(soObj, 'columnHeaders'), 'styleOptions.columnHeaders'),
+      bandedRows: requireBool(requireProperty(soObj, 'bandedRows'), 'styleOptions.bandedRows'),
+      bandedColumns: requireBool(requireProperty(soObj, 'bandedColumns'), 'styleOptions.bandedColumns'),
+    },
+    ...(Object.hasOwn(obj, 'collapsedKeys') ? { collapsedKeys: readPivotStringList(obj.collapsedKeys, 'collapsedKeys') } : {}),
   };
 }
 
@@ -956,6 +1129,9 @@ export async function saveNativePackage(document: WorkbookDocument, request?: Sa
         } : {}),
         ...(name.headerLabels !== undefined ? { HeaderLabels: name.headerLabels } : {}),
       }));
+    }
+    if (owned.pivots && owned.pivots.length > 0) {
+      workbookObj.pivots = owned.pivots;
     }
     workbookObj.sheets = owned.sheets.map(sheet => ({
       id: sheet.id,

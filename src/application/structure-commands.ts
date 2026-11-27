@@ -18,6 +18,7 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
   const { document } = basis;
   let sheets = [...document.sheets];
   let names = document.names;
+  let pivots = document.pivots;
   const index = sheets.findIndex(sheet => sheet.id === id);
   requireDocument(index >= 0, 'The worksheet no longer exists.');
   const target = sheets[index]!;
@@ -30,6 +31,14 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
     active = sheets[Math.min(index, sheets.length - 1)]!.id;
     sheets = sheets.map(sheet => rewriteCells(sheet, source => rewriteSheetReferences(source, target.name, undefined, originalOrder)));
     names = names.map(name => name.area.sheetId === id ? { ...name, area: { ...name.area, invalid: true } } : name);
+    if (pivots) {
+      const kept = pivots
+        .filter(pivot => pivot.target.sheetId !== id)
+        .map(pivot => pivot.source.kind === 'range' && pivot.source.area.sheetId === id
+          ? { ...pivot, source: { kind: 'range' as const, area: { ...pivot.source.area, invalid: true } } }
+          : pivot);
+      pivots = kept.length > 0 ? kept : undefined;
+    }
     label = 'Delete Sheet';
   } else if (change.kind === 'rename') {
     const name = change.name.trim();
@@ -64,6 +73,10 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
       requireDocument(before >= 0, 'The destination worksheet no longer exists.');
       const copy = rewriteCells(target, source => rewriteSheetReferences(source, target.name, name));
       next = { ...copy, id: active, name, cells: copy.cells.map(cell => {
+        if (cell.spillKind === 'pivot') {
+          const { spillOwner: _owner, spillKind: _kind, ...rest } = cell;
+          return { ...rest, id: makeId() };
+        }
         let content = cell.content;
         if (content.kind === 'python') {
           const blockId = makeId();
@@ -86,7 +99,9 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
     }
     sheets.splice(before, 0, next);
   }
-  return { active, command: { kind: 'structure', label, document: { ...document, sheets, names } } satisfies StructureCommand };
+  const { pivots: _oldPivots, ...restDoc } = document;
+  const nextDoc = { ...restDoc, sheets, names, ...(pivots ? { pivots } : {}) };
+  return { active, command: { kind: 'structure', label, document: nextDoc } satisfies StructureCommand };
 }
 
 function rewriteCell(cell: CellDocument, rewrite: (source: string) => string): CellDocument {

@@ -25,6 +25,7 @@
     { "tab": "Home", "trigger": "Clear", "items": ["Clear All", "Clear Formats", "Clear Contents"] },
     { "tab": "Home", "trigger": "Sort & Filter", "items": ["Sort A to Z", "Sort Z to A", "Custom Sort...", "Filter", "Clear", "Reapply"] },
     { "tab": "Home", "trigger": "Find & Select", "items": ["Find...", "Replace..."] },
+    { "tab": "Insert", "trigger": "PivotTable", "items": ["From Table/Range"] },
     { "tab": "Formulas", "trigger": "AutoSum options", "iconlessItems": ["Average", "Count Numbers", "Max", "Min"], "items": ["Sum", "Average", "Count Numbers", "Max", "Min"] },
     { "tab": "Formulas", "trigger": "Recently Used", "textOnly": true, "items": ["SUM", "AVERAGE", "IF", "XLOOKUP", "VLOOKUP", "FILTER", "COUNT", "MAX", "SUMIF", "TEXTJOIN", "Insert Function..."] },
     { "tab": "Formulas", "trigger": "Financial", "textOnly": true, "items": ["DB", "DDB", "FV", "IPMT", "IRR", "NPER", "NPV", "PMT", "PPMT", "PV", "RATE", "SLN", "XIRR", "XNPV", "Insert Function..."] },

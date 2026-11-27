@@ -5,7 +5,8 @@ import {
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
 import { mergeAt } from '../application/border-commands';
 import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
-import { findCell, resolvedCellStyle, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument, type WorkbookName } from '../core/workbook';
+import { findCell, resolvedCellStyle, worksheetViewport, type CellBorder, type CellReference, type Coordinate, type DocumentId, type SheetDocument, type WorkbookName } from '../core/workbook';
+import type { PivotInteractiveOverlay } from '../calculation/pivot-engine';
 import { extentContains, lastColumn, lastRow, tableDesign } from '../core/workbook-names';
 import { filteredRows, headerLabel } from '../application/data-commands';
 import { totalFunction } from '../application/table-commands';
@@ -69,6 +70,15 @@ interface WorksheetProps {
   readonly onResizeTable?: (table: WorkbookName, rows: number, columns: number) => void;
   readonly onTotalFunction?: (tableId: string, column: number, code: number) => void;
   readonly onFilter?: (row: number, column: number, x: number, y: number) => void;
+  readonly pivotOverlays?: readonly PivotInteractiveOverlay[];
+  readonly onPivotToggle?: (pivotId: DocumentId, key: string) => void;
+  readonly onPivotFilter?: (
+    pivotId: DocumentId,
+    kind: 'reportFilter' | 'rowLabel' | 'colLabel',
+    fieldNames: readonly string[],
+    anchor: { readonly x: number; readonly y: number },
+  ) => void;
+  readonly onPivotDrillDown?: (target: CellReference) => boolean;
   readonly figures?: readonly WorksheetFigure[];
   readonly pendingFigure?: { readonly ownerId: string; readonly figure: PythonFigure };
   readonly figureStatus?: { readonly ownerId: string; readonly message: string };
@@ -1026,8 +1036,13 @@ export function Worksheet(props: WorksheetProps) {
             props.onHeaderFit(header.axis, header.track.index);
             return;
           }
-          if (!props.referenceArea && !props.borderTool && x >= left && y >= top && x < node.clientWidth && y < node.clientHeight &&
-              pointAt(x, y, 'cells')) props.onEdit();
+          if (!props.referenceArea && !props.borderTool && x >= left && y >= top && x < node.clientWidth && y < node.clientHeight) {
+            const point = pointAt(x, y, 'cells');
+            if (point) {
+              if (props.onPivotDrillDown?.({ sheetId: sheet.id, row: point.row, column: point.column })) return;
+              props.onEdit();
+            }
+          }
         }}
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
         <div aria-hidden="true" className="worksheet-spacer" style={{ width: scrollSpacer(columns.total, left), height: scrollSpacer(rows.total, top) }} />
@@ -1153,6 +1168,63 @@ export function Worksheet(props: WorksheetProps) {
             fill={control.active ? 'var(--accent)' : 'currentColor'} stroke="none" />
         </svg>
       </button>)}
+      {!props.rangePicking && (props.pivotOverlays ?? []).flatMap(overlay => [
+        ...overlay.toggles.map(toggle => {
+          const bounds = cellBounds(toggle.row, toggle.column);
+          if (!bounds) return null;
+          const size = Math.max(11, Math.min(13 * scale, bounds.width - 4, bounds.height - 4));
+          const btnLeft = bounds.left + 3 * scale + toggle.level * 19 * scale;
+          const btnTop = bounds.top + (bounds.height - size) / 2;
+          if (btnLeft < left || btnLeft + size > view.width || btnTop < top || btnTop + size > view.height) return null;
+          return (
+            <button
+              key={`pt-${overlay.pivotId}-${toggle.row}-${toggle.column}-${toggle.key}`}
+              type="button"
+              className="pivot-toggle-button"
+              aria-label={(toggle.collapsed ? 'Expand ' : 'Collapse ') + toggle.label}
+              aria-expanded={!toggle.collapsed}
+              style={{ transform: `translate3d(${btnLeft}px, ${btnTop}px, 0)`, width: size, height: size }}
+              onPointerDown={e => e.stopPropagation()}
+              onDoubleClick={e => e.stopPropagation()}
+              onClick={() => props.onPivotToggle?.(overlay.pivotId, toggle.key)}
+            >
+              {toggle.collapsed ? '+' : '−'}
+            </button>
+          );
+        }),
+        ...overlay.filters.map(flt => {
+          const bounds = cellBounds(flt.row, flt.column);
+          if (!bounds) return null;
+          const intendedWidth = Math.min(bounds.width, (flt.sort ? 27.5 : 18) * scale);
+          const controlLeft = bounds.right - intendedWidth;
+          const height = bounds.bottom - bounds.top;
+          if (intendedWidth < 8 || height < 8) return null;
+          if (controlLeft < left || bounds.right > view.width || bounds.top < top || bounds.bottom > view.height) return null;
+          return (
+            <button
+              key={`pf-${overlay.pivotId}-${flt.row}-${flt.column}-${flt.kind}`}
+              type="button"
+              className={'filter-button pivot-filter-button' + (flt.active ? ' filter-active' : '')}
+              aria-label={'Pivot filter ' + flt.label}
+              title={'Pivot filter ' + flt.label}
+              style={{ transform: `translate3d(${controlLeft}px, ${bounds.top}px, 0)`, width: intendedWidth, height }}
+              onPointerDown={e => e.stopPropagation()}
+              onDoubleClick={e => e.stopPropagation()}
+              onClick={event => {
+                const b = event.currentTarget.getBoundingClientRect();
+                props.onPivotFilter?.(overlay.pivotId, flt.kind, flt.fieldNames, { x: b.left, y: b.bottom });
+              }}
+            >
+              <svg width={12 * scale} height={12 * scale} viewBox="0 0 16 16" aria-hidden="true">
+                {flt.sort && <path d={flt.sort === 'asc' ? 'M2 13 V3 M.5 6 L2 4.5 L3.5 6' : 'M2 3 V13 M.5 10 L2 11.5 L3.5 10'}
+                  fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />}
+                <path d={flt.sort ? 'M6 3 H15 V4.5 L11 8 V12.5 H8 V8 L6 4.5 Z' : 'M5 3 H15 V4.5 L11 8 V12.5 H8 V8 L5 4.5 Z'}
+                  fill={flt.active ? 'var(--accent)' : 'currentColor'} stroke="none" />
+              </svg>
+            </button>
+          );
+        }),
+      ])}
       {!props.rangePicking && props.tables?.filter(t => !t.area.invalid && t.area.sheetId === sheet.id).map(table => {
         const lastR = lastRow(table.area);
         const lastC = lastColumn(table.area);

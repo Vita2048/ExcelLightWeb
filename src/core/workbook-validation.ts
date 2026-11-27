@@ -1,3 +1,6 @@
+import {
+  pivotAggregations, pivotReportLayouts, pivotShowValuesAsModes, pivotStyles, pivotSubtotalPositions,
+} from './pivot';
 import { borderStyles, borderEdges } from './formats/borders';
 import { fillPatterns, fillShadings, isFontFamily } from './formats/appearance';
 import {
@@ -380,10 +383,15 @@ function equalContentToCache(content: CellContent, expected: CellCache | null): 
 function validateSpills(document: WorkbookDocument): void {
   const pythonChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
   const formulaChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
+  const pivotChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
   for (const sheet of document.sheets) {
     for (const cell of sheet.cells) {
       if (cell.spillOwner !== undefined) {
-        const target = cell.spillKind === 'formula' ? formulaChildren : pythonChildren;
+        const target = cell.spillKind === 'formula'
+          ? formulaChildren
+          : cell.spillKind === 'pivot'
+            ? pivotChildren
+            : pythonChildren;
         const list = target.get(cell.spillOwner) ?? [];
         list.push({ sheetId: sheet.id, cell });
         target.set(cell.spillOwner, list);
@@ -453,6 +461,19 @@ function validateSpills(document: WorkbookDocument): void {
     }
   }
 
+  const pivotsById = new Map((document.pivots ?? []).map(pivot => [pivot.id, pivot]));
+  for (const [ownerId, children] of pivotChildren) {
+    const owner = pivotsById.get(ownerId);
+    requireDocument(owner && owner.extent, 'PivotTable spill owner is missing.');
+    const lastR = owner.extent.row + owner.extent.rows - 1;
+    const lastC = owner.extent.column + owner.extent.columns - 1;
+    for (const { sheetId, cell } of children) {
+      requireDocument(sheetId === owner.target.sheetId && cell.row >= owner.extent.row && cell.row <= lastR &&
+        cell.column >= owner.extent.column && cell.column <= lastC,
+      'Cannot change part of a PivotTable; modify or refresh the PivotTable instead.');
+    }
+  }
+
   for (const sheet of document.sheets) {
     for (const cell of sheet.cells) {
       if (cell.content.kind === 'formula' && cell.spillExtent) {
@@ -471,6 +492,11 @@ function validateSpills(document: WorkbookDocument): void {
             requireDocument(!overlaps(name.area, extent), 'Formula spill cannot overlap a workbook table.');
           }
         }
+        for (const pivot of document.pivots ?? []) {
+          if (pivot.target.sheetId === sheet.id && pivot.extent) {
+            requireDocument(!overlaps(pivot.extent, extent), 'Formula spill cannot overlap a PivotTable.');
+          }
+        }
       }
       if (cell.content.kind !== 'python' || !cell.content.block?.spillActive) continue;
       const table = cell.content.block.lastTable;
@@ -484,11 +510,17 @@ function validateSpills(document: WorkbookDocument): void {
       if (children.length !== table.cells.length - 1) {
         throw new DocumentError('Cannot split a Python spill; select its complete output or its anchor.');
       }
+      const pyExtent = { row: startRow, column: startCol, rows: table.rows, columns: table.columns };
       for (const name of document.names) {
         if (name.isTable && !name.area.invalid && name.area.sheetId === sheet.id) {
-          if (overlaps(name.area, { row: startRow, column: startCol, rows: table.rows, columns: table.columns })) {
+          if (overlaps(name.area, pyExtent)) {
             throw new DocumentError('Python spill cannot overlap a workbook table.');
           }
+        }
+      }
+      for (const pivot of document.pivots ?? []) {
+        if (pivot.target.sheetId === sheet.id && pivot.extent && overlaps(pivot.extent, pyExtent)) {
+          throw new DocumentError('Python spill cannot overlap a PivotTable.');
         }
       }
     }
@@ -536,6 +568,65 @@ function validateFigures(document: WorkbookDocument): void {
   }
 }
 
+function validatePivots(document: WorkbookDocument, addId: (id: DocumentId) => void): void {
+  if (document.pivots === undefined) return;
+  requireDocument(Array.isArray(document.pivots) && document.pivots.length <= 200,
+    'A workbook may contain at most 200 PivotTables.');
+  const sheetIds = new Set(document.sheets.map(sheet => sheet.id));
+  const pivotNames = new Set<string>();
+  const placed: { readonly sheetId: DocumentId; readonly extent: CellExtent }[] = [];
+
+  for (const pivot of document.pivots) {
+    requireDocument(pivot && typeof pivot === 'object', 'Invalid PivotTable entry.');
+    addId(pivot.id);
+    requireDocument(typeof pivot.name === 'string' && pivot.name.trim().length > 0 && validText(pivot.name, 255),
+      'PivotTable requires a valid name.');
+    const nameKey = ordinalNameKey(pivot.name.trim());
+    requireDocument(!pivotNames.has(nameKey), 'Duplicate PivotTable name.');
+    pivotNames.add(nameKey);
+
+    validateTarget(pivot.target, sheetIds);
+    const sheet = document.sheets.find(s => s.id === pivot.target.sheetId)!;
+
+    if (pivot.source.kind === 'range') {
+      validateExtent(pivot.source.area);
+      requireDocument(pivot.source.area.invalid || sheetIds.has(pivot.source.area.sheetId),
+        'PivotTable source refers to a missing sheet.');
+    } else {
+      validateId(pivot.source.tableId);
+    }
+
+    if (pivot.extent !== undefined) {
+      validateExtent(pivot.extent);
+      requireDocument(pivot.target.row >= pivot.extent.row &&
+        pivot.target.row < pivot.extent.row + pivot.extent.rows &&
+        pivot.target.column >= pivot.extent.column &&
+        pivot.target.column < pivot.extent.column + pivot.extent.columns,
+      'PivotTable target must lie inside its extent.');
+      requireDocument(!sheet.merges.some(merge => overlaps(merge, pivot.extent!)),
+        'PivotTable cannot overlap merged cells.');
+      for (const name of document.names) {
+        if (name.isTable && !name.area.invalid && name.area.sheetId === sheet.id) {
+          requireDocument(!overlaps(name.area, pivot.extent), 'PivotTable cannot overlap a workbook table.');
+        }
+      }
+      requireDocument(!placed.some(other => other.sheetId === sheet.id && overlaps(other.extent, pivot.extent!)),
+        'PivotTables cannot overlap each other.');
+      placed.push({ sheetId: sheet.id, extent: pivot.extent });
+    }
+
+    requireDocument(pivotReportLayouts.includes(pivot.reportLayout), 'Invalid PivotTable report layout.');
+    requireDocument(pivotSubtotalPositions.includes(pivot.subtotals), 'Invalid PivotTable subtotals position.');
+    requireDocument(pivotStyles.includes(pivot.style), 'Invalid PivotTable style.');
+    for (const vf of pivot.values) {
+      validateId(vf.id);
+      requireDocument(pivotAggregations.includes(vf.aggregation), 'Invalid PivotTable aggregation.');
+      requireDocument(vf.showValuesAs === undefined || pivotShowValuesAsModes.includes(vf.showValuesAs),
+        'Invalid PivotTable Show Values As calculation.');
+    }
+  }
+}
+
 export function validateWorkbook(document: WorkbookDocument): void {
   requireDocument(document?.formatVersion === 1 && document.dateSystem === '1900', 'Unsupported document version or date system.');
   requireDocument(Array.isArray(document.sheets) && inRange(document.sheets.length, 1, limits.sheets),
@@ -549,6 +640,7 @@ export function validateWorkbook(document: WorkbookDocument): void {
   addId(document.id);
   validateSheets(document, addId);
   validateNames(document, addId);
+  validatePivots(document, addId);
   validateSpills(document);
   validateFigures(document);
 }

@@ -47,7 +47,7 @@ export function applyPythonResult(document: WorkbookDocument, anchor: CellRefere
   const sheets = document.sheets.map(current => ({
     ...current,
     cells: current.cells.flatMap<CellDocument>(cell => {
-      if (cell.spillOwner !== block.id || cell.spillKind === 'formula') return [cell];
+      if (cell.spillOwner !== block.id || cell.spillKind === 'formula' || cell.spillKind === 'pivot') return [cell];
       oldChildren.set(`${current.id}:${cell.row}:${cell.column}`, cell);
       return revertGeneratedCell(cell);
     }),
@@ -68,6 +68,8 @@ export function applyPythonResult(document: WorkbookDocument, anchor: CellRefere
     requireDocument(!sheet.merges.some(merge => overlaps(merge, extent)), '#SPILL! Output overlaps merged cells.');
     requireDocument(!document.names.some(name => name.isTable && !name.area.invalid && name.area.sheetId === sheet.id &&
       overlaps(name.area, extent)), '#SPILL! Output overlaps a workbook table.');
+    requireDocument(!(document.pivots ?? []).some(pivot => pivot.target.sheetId === sheet.id && pivot.extent &&
+      overlaps(pivot.extent, extent)), '#SPILL! Output overlaps a PivotTable.');
 
     const byPosition = new Map(updatedSheet.cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
     for (let rowOffset = 0; rowOffset < table.rows; rowOffset++) for (let columnOffset = 0; columnOffset < table.columns; columnOffset++) {
@@ -77,7 +79,7 @@ export function applyPythonResult(document: WorkbookDocument, anchor: CellRefere
       const existing = byPosition.get(`${row}:${column}`);
       const oldSpillCell = oldChildren.get(`${sheet.id}:${row}:${column}`);
       requireDocument(!existing || (existing.content.kind === 'blank' && !existing.spillOwner && !(existing.spillKind === 'formula' && existing.cache)) ||
-        (existing.spillOwner === block.id && existing.spillKind !== 'formula'),
+        (existing.spillOwner === block.id && existing.spillKind !== 'formula' && existing.spillKind !== 'pivot'),
         '#SPILL! Destination contains data; clear it and Run again.');
       const value = table.cells[rowOffset * table.columns + columnOffset] ?? null;
       const resultCell: CellDocument = {
@@ -103,7 +105,23 @@ export function removeOrphanedPythonSpillCells(document: WorkbookDocument): Work
   const sheets = document.sheets.map(sheet => {
     let sheetChanged = false;
     const cells = sheet.cells.flatMap<CellDocument>(cell => {
-      if (!cell.spillOwner || cell.spillKind === 'formula' || active.has(cell.spillOwner)) return [cell];
+      if (!cell.spillOwner || cell.spillKind === 'formula' || cell.spillKind === 'pivot' || active.has(cell.spillOwner)) return [cell];
+      changed = sheetChanged = true;
+      return revertGeneratedCell(cell);
+    });
+    return sheetChanged ? { ...sheet, cells } : sheet;
+  });
+  return changed ? { ...document, sheets } : document;
+}
+
+/** Remove generated PivotTable cells whose owning PivotTable was deleted. */
+export function removeOrphanedPivotSpillCells(document: WorkbookDocument): WorkbookDocument {
+  const active = new Set((document.pivots ?? []).map(pivot => pivot.id));
+  let changed = false;
+  const sheets = document.sheets.map(sheet => {
+    let sheetChanged = false;
+    const cells = sheet.cells.flatMap<CellDocument>(cell => {
+      if (cell.spillKind !== 'pivot' || (cell.spillOwner && active.has(cell.spillOwner))) return [cell];
       changed = sheetChanged = true;
       return revertGeneratedCell(cell);
     });
@@ -120,6 +138,8 @@ function canSpillInto(document: WorkbookDocument, sheet: SheetDocument, occupied
   if (sheet.merges.some(merge => overlaps(merge, extent))) return false;
   if (document.names.some(name => name.isTable && !name.area.invalid && name.area.sheetId === sheet.id &&
       overlaps(name.area, extent))) return false;
+  if ((document.pivots ?? []).some(pivot => pivot.target.sheetId === sheet.id && pivot.extent &&
+      overlaps(pivot.extent, extent))) return false;
   for (let rowOffset = 0; rowOffset < rows; rowOffset++) for (let colOffset = 0; colOffset < columns; colOffset++) {
     if (rowOffset === 0 && colOffset === 0) continue;
     const existing = occupied.get(cellKey({ row: anchor.row + rowOffset, column: anchor.column + colOffset }));
