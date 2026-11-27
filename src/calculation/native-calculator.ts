@@ -6,7 +6,7 @@ import { cellKey, documentLimits, resolvedCellStyle, type CellDocument, type Cel
 import { lastColumn, lastRow, resolveWorkbookName } from '../core/workbook-names';
 import { ordinalNameKey } from '../core/workbook-validation';
 import { todaySerial } from './formula-dates';
-import { evaluateFunction, sumIfRange, supportedFunctions } from './formula-functions';
+import { evaluateFunction, isVolatileFunction, sumIfRange, supportedFunctions } from './formula-functions';
 import { compare, error, finite, formulaNodes, isArray, isError, isRange, matchesComparison, numberValue, scalarCache, textValue,
   type FormulaArray, type FormulaError, type FormulaValue, type Range, type Scalar } from './formula-values';
 
@@ -170,7 +170,7 @@ export function prepareNativeGraph(document: WorkbookDocument) {
       if (node.kind === 'call') {
         if (!supportedFunctions.has(node.name)) unsupported = true;
         if (node.name === 'SUBTOTAL') containsSubtotal = true;
-        if (node.name === 'TODAY') volatile = true;
+        if (isVolatileFunction(node.name)) volatile = true;
       }
     }
     const ranges = parsed.references.flatMap(ref => {

@@ -1,0 +1,35 @@
+{
+  "id": "smoke-excel",
+  "description": "Smoke fixture for Sprint 1.1 Excel COM differential oracle",
+  "cells": [
+    [1, 1, 4],
+    [2, 1, 8],
+    [3, 1, "12"],
+    [4, 1, true],
+    [5, 1, ""],
+    [1, 2, "alpha"],
+    [2, 2, 100],
+    [3, 2, "beta"],
+    [4, 2, 200]
+  ],
+  "other": [
+    [1, 1, 9]
+  ],
+  "expressions": [
+    "=SUM(A1:A6)",
+    "=AVERAGE(A1:A6)",
+    "=SUM(TRUE,\"2\",3)",
+    "=VLOOKUP(8,A1:B4,2,FALSE)",
+    "='O''Brien data'!$A$1+A1*2^2",
+    "=LEFT(B1,3)",
+    "=DATE(2024,2,29)",
+    "=SUBTOTAL(9,A1:A4)",
+    "=1/0",
+    "='Missing'!A1",
+    "=FILTER(A1:A4,A1:A4=999)",
+    "=IFERROR(FILTER(A1:A4,A1:A4=999),\"caught\")",
+    { "expression": "=SEQUENCE(2)", "setup": [[2, 20, "blocker"]] },
+    { "expression": "=IFERROR(SEQUENCE(2),\"caught\")", "setup": [[2, 20, "blocker"]] },
+    "=SEQUENCE(2,2,1,1)"
+  ]
+}

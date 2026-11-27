@@ -117,6 +117,22 @@ After the production build, `npm run test:e2e -- tests/e2e/offline.spec.ts` runs
 
 The fixture manifest records source path, SHA-256, expected-value source, permitted use and capture date. Use the existing expected-values JSON and captured assertions; never generate the expected result with the implementation under test. Tests cover cancellation and error paths as well as happy paths. Reference transformations include generated inputs; native archive readers get corrupt and decompression-limit fixtures. Deterministic fake clocks cover TODAY/debounce, and real workers cover concurrency races. Real Pyodide tests run in browser workers against packaged same-origin assets; protocol mocks are supplementary. Figure checks compare dimensions and structural image properties, not byte-exact PNG equality across Matplotlib versions.
 
+### Excel formula oracle
+
+On Windows with desktop Excel installed, generate differential oracle fixtures under `tests/fixtures/formulas/` from category spec files (`tests/fixtures/formulas/specs/*.spec.json`):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/generate-excel-oracle.ps1 -SpecPath tests/fixtures/formulas/specs/smoke.spec.json -OutPath tests/fixtures/formulas/smoke-excel.json
+```
+
+If COM automation is unavailable, save an `.xlsx` workbook with the spec expressions in column `T` (`T1`, `T2`, ...) from Excel so cached `<v>` values are present, then extract the fixture JSON with:
+
+```powershell
+node scripts/extract-xlsx-oracle.mjs --xlsx path/to/evaluated.xlsx --spec tests/fixtures/formulas/specs/smoke.spec.json --out tests/fixtures/formulas/smoke-excel.json
+```
+
+Vitest (`tests/parity/native-formulas.test.ts`) runs the checked-in oracle JSON files locally and in CI without requiring Excel.
+
 ## Performance
 
 Record OS/CPU/RAM/browser/runtime, fixture dimensions, warm/cold state and sample count. Report p50/p95 over at least 20 warm interactions.

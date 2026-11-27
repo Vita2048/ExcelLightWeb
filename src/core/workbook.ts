@@ -103,7 +103,7 @@ export interface CellStyle {
   readonly justifyLastLine?: boolean;
 }
 
-export const formulaErrors = Object.freeze(['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A'] as const);
+export const formulaErrors = Object.freeze(['#NULL!', '#DIV/0!', '#VALUE!', '#REF!', '#NAME?', '#NUM!', '#N/A', '#SPILL!', '#CALC!'] as const);
 export type CellScalar =
   | { readonly kind: 'number'; readonly value: number }
   | { readonly kind: 'text'; readonly value: string }

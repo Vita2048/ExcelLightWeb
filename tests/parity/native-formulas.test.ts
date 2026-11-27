@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../fixtures/formulas/S08-desktop.json';
+import smokeExcel from '../fixtures/formulas/smoke-excel.json';
 import { calculateNative } from '../../src/calculation/native-calculator';
-import { nativeFunctions } from '../../src/calculation/formula-functions';
+import { nativeFunctions, supportedFunctions } from '../../src/calculation/formula-functions';
 import { emptySheet, ownDto, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
 
 function formula(id: string, row: number, column: number, source: string): CellDocument {
@@ -43,6 +44,29 @@ for (const input of fixture) {
     });
   });
 }
+
+describe(smokeExcel.id, () => {
+  const main = cells('smoke-main', smokeExcel.cells as (number | boolean | string)[][]);
+  const other = cells('smoke-other', smokeExcel.other as (number | boolean | string)[][]);
+  const usesUnsupported = (expression: string) =>
+    [...expression.matchAll(/([A-Z.]+)\s*\(/giu)].some(match => !supportedFunctions.has(match[1]!.toUpperCase()));
+
+  for (const entry of smokeExcel.cases) {
+    if (entry.kind === 'array' || usesUnsupported(entry.expression)) {
+      it.skip(`${entry.expression} matches Excel oracle (pending dynamic array / function sprint)`, () => {});
+      continue;
+    }
+    it(`${entry.expression} matches Excel ${smokeExcel.excelVersion} build ${smokeExcel.excelBuild}`, () => {
+      const document = workbook([...main, formula('test', 1, 20, entry.expression)], other);
+      const result = calculateNative(document, { locale: 'cs-CZ' });
+      const cache = result.updates.find(update => update.target.column === 20)?.cache;
+      expect(cache?.kind).toBe(entry.kind);
+      if (entry.kind === 'number') expect(cache?.value).toBeCloseTo(Number(entry.value), 11);
+      else if (entry.kind === 'boolean') expect(cache?.value).toBe(entry.value === 'true');
+      else expect(cache?.value).toBe(entry.value);
+    });
+  }
+});
 
 it('exercises valid and invalid arguments for all 31 functions and evaluates TODAY from a deterministic clock', () => {
   const cases = fixture.flatMap(input => input.cases);

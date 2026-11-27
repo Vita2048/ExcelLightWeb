@@ -44,7 +44,7 @@ const col = '\\$?[A-Za-z]{1,3}';
 const range = `(?:${cell}(?:\\s*:\\s*${cell})?|${row}\\s*:\\s*${row}|${col}\\s*:\\s*${col})`;
 const references = new RegExp(`(?:(${sheet})!)?(${range})(?![\\p{L}\\p{N}_.\\$]|\\s*\\()`, 'uy');
 const unsupportedReference = new RegExp(`(?:\\[\\d+\\]${sheet}!?|(?:${sheet}:${sheet}|'[^']+:[^']+')!)`, 'uy');
-const other = /\s+|"(?:[^"]|"")*"|#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A)|(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[\p{L}_][\p{L}\p{N}_.]*(?:\[[^\[\]]+\])?|<=|>=|<>|[(){};+*/%^&=<>,-]/iuy;
+const other = /\s+|"(?:[^"]|"")*"|#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A|SPILL!|CALC!)|(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?|[\p{L}_][\p{L}\p{N}_.]*(?:\[[^\[\]]+\])?|<=|>=|<>|[(){};+*/%^&=<>,-]/iuy;
 const precedence: Readonly<Record<string, number>> = { '=': 1, '<>': 1, '<': 1, '>': 1, '<=': 1, '>=': 1, '&': 2, '+': 3, '-': 3, '*': 4, '/': 4, '^': 5 };
 const malformed = () => new DocumentError('Clipboard operation cannot transform malformed or unsupported reference syntax.');
 export class UnsupportedFormulaReference extends DocumentError {}
