@@ -120,7 +120,7 @@ function cacheValue(cache: CellCache): { readonly value: string; readonly type?:
 
 function cellXml(cell: CellDocument, styleIndex: number, strings: SharedStrings, report: XlsxReport): string {
   const reference = address(cell.row, cell.column);
-  const style = cell.style ? ` s="${styleIndex}"` : '';
+  const style = cell.style !== undefined ? ` s="${styleIndex}"` : '';
   const content = cell.content;
   if (content.kind === 'formula') {
     const formula = `<f>${escapeText(content.source.startsWith('=') ? content.source.slice(1) : content.source)}</f>`;
@@ -180,18 +180,40 @@ function worksheetXml(sheet: SheetDocument, styleIndexes: (style: CellStyle | un
       attributes.push(`ht="${Math.min(maxRowPoints, dimension.size * .75)}"`, 'customHeight="1"');
     }
     if (dimension?.hidden) attributes.push('hidden="1"');
+    if (dimension?.style !== undefined) {
+      attributes.push(`s="${styleIndexes(dimension.style)}"`, 'customFormat="1"');
+    }
     const rowCells = (cellsByRow.get(index) ?? [])
       .sort((left, right) => left.column - right.column)
       .map(cell => cellXml(cell, styleIndexes(cell.style), strings, report)).join('');
     return `<row ${attributes.join(' ')}>${rowCells}</row>`;
   }).join('');
 
-  const columnsXml = [...dimensionColumns.values()].sort((left, right) => left.index - right.index).map(column => {
-    const width = column.size === undefined ? undefined : column.size < 12 ? column.size / 12 : (column.size - 5) / 7;
-    return `<col min="${column.index}" max="${column.index}"` +
-      (width !== undefined ? ` width="${Math.min(maxColumnWidth, width)}" customWidth="1"` : '') +
-      (column.hidden ? ' hidden="1"' : '') + '/>';
-  }).join('');
+  const colGroups: { min: number; max: number; width?: number; hidden: boolean; styleIndex?: number }[] = [];
+  for (const column of [...dimensionColumns.values()].sort((left, right) => left.index - right.index)) {
+    const width = column.size === undefined ? undefined :
+      Math.min(maxColumnWidth, column.size < 12 ? column.size / 12 : (column.size - 5) / 7);
+    const hidden = !!column.hidden;
+    const styleIndex = column.style !== undefined ? styleIndexes(column.style) : undefined;
+    const prev = colGroups.at(-1);
+    if (prev && column.index === prev.max + 1 && prev.width === width && prev.hidden === hidden && prev.styleIndex === styleIndex) {
+      prev.max = column.index;
+    } else {
+      colGroups.push({
+        min: column.index,
+        max: column.index,
+        ...(width !== undefined ? { width } : {}),
+        hidden,
+        ...(styleIndex !== undefined ? { styleIndex } : {}),
+      });
+    }
+  }
+  const columnsXml = colGroups.map(group =>
+    `<col min="${group.min}" max="${group.max}"` +
+    (group.width !== undefined ? ` width="${group.width}" customWidth="1"` : '') +
+    (group.hidden ? ' hidden="1"' : '') +
+    (group.styleIndex !== undefined ? ` style="${group.styleIndex}"` : '') + '/>',
+  ).join('');
 
   for (const row of sheet.rows) if (row.index > maxRow) maxRow = row.index;
   for (const column of sheet.columns) if (column.index > maxColumn) maxColumn = column.index;

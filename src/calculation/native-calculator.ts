@@ -2,7 +2,7 @@ import { formatCellValue } from '../core/formats/cell-format';
 import type { CacheUpdate } from '../application/workbook-protocol';
 import { parseFormula, referenceBox, UnsupportedFormulaReference, type FormulaExpression, type FormulaReference } from '../core/formula-references';
 import { maskRows, RowMask } from '../core/row-mask';
-import { cellKey, documentLimits, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
+import { cellKey, documentLimits, resolvedCellStyle, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
 import { lastColumn, lastRow, resolveWorkbookName } from '../core/workbook-names';
 import { ordinalNameKey } from '../core/workbook-validation';
 import { todaySerial } from './formula-dates';
@@ -110,7 +110,7 @@ function evaluationOrder(nodes: Iterable<FormulaNode>) {
   return { order, cycles };
 }
 
-function filterVisibility(sheet: SheetDocument, keyOf: (cell: CellDocument | undefined) => string): RowMask {
+function filterVisibility(sheet: SheetDocument, keyOf: (cell: CellDocument | undefined, sheet?: SheetDocument) => string): RowMask {
   const filter = sheet.filter;
   if (!filter?.criteria.length) return RowMask.none();
   const from = filter.row + 1;
@@ -120,13 +120,13 @@ function filterVisibility(sheet: SheetDocument, keyOf: (cell: CellDocument | und
   const cells = [];
   for (const cell of sheet.cells) {
     if (cell.row < from || cell.row > to || !columns.has(cell.column)) continue;
-    cells.push({ row: cell.row, column: cell.column, key: keyOf(cell) });
+    cells.push({ row: cell.row, column: cell.column, key: keyOf(cell, sheet) });
   }
-  return maskRows(from, to, rules, keyOf(undefined), cells);
+  return maskRows(from, to, rules, keyOf(undefined, sheet), cells);
 }
 
-function defaultFilterText(cell: CellDocument | undefined): string {
-  return formatCellValue(cell).text;
+function defaultFilterText(cell: CellDocument | undefined, sheet?: SheetDocument): string {
+  return formatCellValue(cell, cell && sheet ? resolvedCellStyle(sheet, cell, cell)?.numberFormat : undefined).text;
 }
 
 export interface CalculationOptions {

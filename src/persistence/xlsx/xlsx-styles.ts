@@ -504,7 +504,7 @@ export function createStyleWriter(): StyleWriter {
   };
 
   const indexOf = (style: CellStyle | undefined): number => {
-    if (!style) return 0;
+    if (!style || Object.keys(style).length === 0) return 0;
     const key = JSON.stringify(style);
     const existing = xfIndex.get(key);
     if (existing !== undefined) return existing;

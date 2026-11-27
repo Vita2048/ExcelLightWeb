@@ -48,11 +48,11 @@ import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePic
 import type { FigurePlacement, PythonFigure, TableDesign, WorkbookName } from '../core/workbook';
 import { putFigurePlacement, removeFigurePlacement } from '../application/figure-commands';
 import { OfflineStatus } from '../offline/OfflineStatus';
-import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
+import { WorkbookSession, type SetCellsCommand, type StructureCommand, type WorkbookCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
 import type { NativeFunction } from '../calculation/formula-functions';
 import { NativeScheduler, type CalculationMode, type CalculationStatus } from '../calculation/native-scheduler';
-import { documentLimits, findCell, findReferencedCell, newWorkbook, worksheetViewport, type CellReference, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
+import { documentLimits, findCell, findReferencedCell, newWorkbook, resolvedCellStyle, worksheetViewport, type CellReference, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
 import { requireDocument } from '../core/workbook-validation';
 import { Ribbon, type SheetView } from '../features/shell/Ribbon';
 import { CellEditor, type CellEditorProps } from '../features/editing/CellEditor';
@@ -300,8 +300,11 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [searchLook, setSearchLook] = useState<SearchLook>('values');
   const [zoomDialog, setZoomDialog] = useState(false);
   const textOrder = useMemo(() => localeTextOrder(locale), [locale]);
-  const usedNumberCodes = useMemo(() => [...new Set(formatDraft?.basis.document.sheets.flatMap(item =>
-    item.cells.flatMap(cell => cell.style?.numberFormat ?? [])))], [formatDraft]);
+  const usedNumberCodes = useMemo(() => [...new Set(formatDraft?.basis.document.sheets.flatMap(item => [
+    ...item.cells.flatMap(cell => cell.style?.numberFormat ?? []),
+    ...item.rows.flatMap(dim => dim.style?.numberFormat ?? []),
+    ...item.columns.flatMap(dim => dim.style?.numberFormat ?? []),
+  ]))], [formatDraft]);
   const renaming = useRef(false);
   const sheet = sheets.find(candidate => candidate.id === activeSheetId) ?? sheets[0]!;
   const sheetIndex = sheets.indexOf(sheet);
@@ -623,7 +626,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     editing.clearCut();
     editing.clearStatus();
     scheduler.current?.changed(true);
-    requestAnimationFrame(() => worksheet.current?.focus());
+    requestedFocus.current = true;
+    requestAnimationFrame(() => {
+      const focused = globalThis.document.activeElement;
+      if (!(focused instanceof HTMLElement && focused.dataset.cellEditor)) {
+        worksheet.current?.focus();
+      }
+    });
   }
 
   async function verifyActiveWorkspace(workbookId: string) {
@@ -814,6 +823,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     };
     setActiveFile(active);
     resetWorkbookUi(document);
+    setBackstageOpen(false);
     try {
       if (saved) await localStore.saveWorkspace(record, lease.owner);
       await refreshRecent();
@@ -822,7 +832,6 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (error instanceof WorkspaceConflictError) throw error;
       setStorageError('The workbook opened, but its local Recent entry could not be updated. ' + (error instanceof Error ? error.message : String(error)));
     }
-    setBackstageOpen(false);
     setFileStatus((saved ? 'Opened ' : 'Recovered ') + record.name + '.');
   }
 
@@ -1778,7 +1787,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return session.capture();
   }
 
-  function applyStyleCommand(command: SetCellsCommand) {
+  function applyStyleCommand(command: WorkbookCommand) {
     const outcome = session.execute(command);
     editing.clearStatus();
     if (outcome.changed) {
@@ -1798,7 +1807,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (formatting) {
         const formatted = formatStyles({ ...current, document: command.document }, [expanded],
           formatting.patch, formatting.code, formatting.borders, formatting.alignment);
-        applyStructure(current, { ...command, label: 'Format Cells', edits: formatted.edits });
+        applyStructure(current, formatted.kind === 'set-cells'
+          ? { ...command, label: 'Format Cells', edits: formatted.edits }
+          : { ...command, label: 'Format Cells', document: formatted.document, ...(formatted.edits && { edits: formatted.edits }) });
         setFormatDraft(undefined);
       } else applyStructure(current, command);
       setMergeConfirmation(undefined);
@@ -1822,7 +1833,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!editing.commit()) return;
     try {
       const basis = session.capture();
-      applyStyleCommand(changeAlignment(basis, ranges(), action, findReferencedCell(basis.document, activeTarget)?.style));
+      const targetSheet = basis.document.sheets.find(item => item.id === activeTarget.sheetId);
+      const style = targetSheet ? resolvedCellStyle(targetSheet, activeTarget) : findReferencedCell(basis.document, activeTarget)?.style;
+      applyStyleCommand(changeAlignment(basis, ranges(), action, style));
       requestAnimationFrame(focusGrid);
     } catch (error) { editing.reject(error); }
   }
@@ -2350,10 +2363,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }
     if (event.altKey && key !== '=' && !event.getModifierState('AltGraph')) return false;
     let handle: (() => void) | undefined;
-    if (painter && key === 'enter' && !control && selection.kind === 'cells' && !selection.additional.length) {
+    if (painter && key === 'enter' && !control && !selection.additional.length) {
       handle = () => paint(primaryArea(selection));
     } else if (control && ['b', 'i', 'u'].includes(key)) {
-      const style = findCell(sheet, selection.anchor)?.style;
+      const style = resolvedCellStyle(sheet, selection.anchor);
       handle = () => runAppearance(key === 'b' ? { bold: style?.bold ? undefined : true } :
         key === 'i' ? { italic: style?.italic ? undefined : true } : underlinePatch(style?.underline ? 'None' : 'Single'));
     } else if (control && key === '1') {
@@ -2413,7 +2426,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       functionDraft: editing.draft?.surface === surface && editing.draft.functionDraft,
       ...(editing.draft?.surface === surface && editing.draft.selectText && { selectText: editing.draft.selectText }),
       separator,
-      textFormat: cell?.style?.numberFormat === '@',
+      textFormat: (editing.draft ? editing.draft.originalStyle : resolvedCellStyle(sheet, selection.anchor, cell))?.numberFormat === '@',
       onKeepCaret: editing.keepCaret,
     };
   }
@@ -2569,6 +2582,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onColor: ribbonHandlers.onBorderColor, onDialog: ribbonHandlers.onBorderDialog,
   }), [borderAction, lineStyle, lineColor, borderTool?.mode, ribbonHandlers]);
   const activeCell = findCell(sheet, selection.anchor);
+  const activeStyle = resolvedCellStyle(sheet, selection.anchor, activeCell);
   const activeMerged = !!mergeAt(sheet, selection.anchor.row, selection.anchor.column);
   const painterMode = painter ? painter.locked ? 'locked' : 'single' : undefined;
   const sheetFrozen = sheet.frozenPanes.rows > 0 || sheet.frozenPanes.columns > 0;
@@ -2615,7 +2629,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
       <Ribbon inert={backstageOpen || !!workspaceConflict} fileBackstageOpen={backstageOpen} onFileBackstage={ribbonHandlers.onFileBackstage}
         onAlign={ribbonHandlers.onAlign} onMerge={ribbonHandlers.onMerge} merged={activeMerged} borders={ribbonBorders}
-        cell={activeCell} onNumberFormat={ribbonHandlers.onNumberFormat} onAppearance={ribbonHandlers.onAppearance}
+        cell={activeCell} style={activeStyle} onNumberFormat={ribbonHandlers.onNumberFormat} onAppearance={ribbonHandlers.onAppearance}
         onAppearanceError={ribbonHandlers.onAppearanceError} onFormatDialog={ribbonHandlers.onFormatDialog}
         painter={painterMode} onPainter={ribbonHandlers.onPainter} view={view} onView={ribbonHandlers.onView}
         onEdit={ribbonHandlers.onEdit} onStructure={ribbonHandlers.onStructure}
@@ -2829,10 +2843,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onSubmit={editing.submitManualPaste} onClose={editing.closeManualPaste} />}
       {menu && <StructureMenu {...menu} onAction={action => openStructure(action, menu.target)}
         onClose={() => { setMenu(undefined); requestAnimationFrame(focusGrid); }} />}
-      {formatDraft && <FormatCellsDialog cell={findReferencedCell(snapshot.document, formatDraft.cell)} locale={locale}
-        usedCodes={usedNumberCodes} initialTab={formatDraft.tab} borderEditor={borderEditor}
-        mergeEnabled={formatDraft.ranges.length === 1} merged={formatDraft.ranges.length === 1 ?
-          mergeState(formatDraft.basis.document.sheets.find(item => item.id === formatDraft.cell.sheetId)!, formatDraft.ranges[0]!) : undefined}
+      {formatDraft && (() => {
+        const draftSheet = formatDraft.basis.document.sheets.find(item => item.id === formatDraft.cell.sheetId);
+        const draftCell = findReferencedCell(snapshot.document, formatDraft.cell);
+        const draftStyle = draftSheet ? resolvedCellStyle(draftSheet, formatDraft.cell, draftCell) : draftCell?.style;
+        return <FormatCellsDialog cell={draftCell} style={draftStyle} locale={locale}
+          usedCodes={usedNumberCodes} initialTab={formatDraft.tab} borderEditor={borderEditor}
+          mergeEnabled={formatDraft.ranges.length === 1} merged={formatDraft.ranges.length === 1 ?
+            mergeState(draftSheet!, formatDraft.ranges[0]!) : undefined}
         onCancel={() => { setFormatDraft(undefined); requestAnimationFrame(focusGrid); }}
         onSubmit={(patch, code, borders, alignment, merge) => {
           try {
@@ -2847,7 +2865,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             setFormatDraft(undefined);
             requestAnimationFrame(focusGrid);
           } catch (error) { return error instanceof Error ? error.message : 'The number format could not be applied.'; }
-        }} />}
+        }} />;
+      })()}
       {mergeConfirmation && <MergeConfirmation onConfirm={mergeConfirmation.confirm} onCancel={() => {
         setMergeConfirmation(undefined);
         if (!formatDraft) requestAnimationFrame(focusGrid);

@@ -1,8 +1,10 @@
 import { expect, it } from 'vitest';
+import { clear } from '../../src/application/editing-commands';
+import { changeDimensions, editAxis } from '../../src/application/structure-commands';
 import { activeFormatBrush, captureFormatBrush, formatStyles, paintStyles } from '../../src/application/style-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { fillPatterns, fillShadings, underlineOptions, underlinePatch } from '../../src/core/formats/appearance';
-import { documentLimits, emptySheet, findCell, type CellStyle, type WorkbookDocument } from '../../src/core/workbook';
+import { documentLimits, emptySheet, findCell, resolvedCellStyle, type CellStyle, type WorkbookDocument } from '../../src/core/workbook';
 
 function fixture() {
   const original: WorkbookDocument = { id: 'book', formatVersion: 1, dateSystem: '1900', names: [],
@@ -103,4 +105,71 @@ it('paints the detached style pattern across sheets while preserving content, ca
   expect(() => paintStyles(session.capture(), target, brush)).toThrow(/different workbook/);
   expect(session.active).toEqual(original);
   expect(session.canUndo).toBe(false);
+});
+
+it('applies whole-column, whole-row, and whole-sheet styles with precedence, intersections, explicit overrides, Format Painter, and Clear Formats', () => {
+  const { session, range, cell } = fixture();
+  const colB = range(1, 2, documentLimits.rows, 1);
+  const row3 = range(3, 1, 1, documentLimits.columns);
+  const sheetAll = range(1, 1, documentLimits.rows, documentLimits.columns);
+
+  session.execute({ kind: 'set-cells', edits: [{ target: range(2, 2), content: { kind: 'number', value: 10 },
+    preserveStyle: false, style: { italic: true } }] });
+
+  // Style whole Column B
+  session.execute(formatStyles(session.capture(), [colB], { fillRgb: 'FFFF00', bold: true }));
+  const sheet = () => session.active.sheets[0]!;
+  expect(sheet().columns).toEqual([{ index: 2, style: { fillRgb: 'FFFF00', bold: true } }]);
+  expect(resolvedCellStyle(sheet(), { row: 500_000, column: 2 })).toEqual({ fillRgb: 'FFFF00', bold: true });
+  expect(cell(2, 2)?.style).toEqual({ italic: true, fillRgb: 'FFFF00', bold: true });
+
+  // Style whole Row 3: cross-axis intersection at B3 preserves Column B fill+bold + Row 3 textRgb
+  session.execute(formatStyles(session.capture(), [row3], { textRgb: 'FF0000' }));
+  expect(sheet().rows).toEqual([{ index: 3, style: { textRgb: 'FF0000' } }]);
+  expect(resolvedCellStyle(sheet(), { row: 3, column: 1 })).toEqual({ textRgb: 'FF0000' });
+  expect(cell(3, 2)?.style).toEqual({ fillRgb: 'FFFF00', bold: true, textRgb: 'FF0000' });
+
+  // Clear Formats on single cell B5 writes explicit empty override {} so it no longer inherits Column B
+  session.execute(clear(session.capture(), [range(5, 2)], 'formats'));
+  expect(cell(5, 2)?.style).toEqual({});
+  expect(resolvedCellStyle(sheet(), { row: 5, column: 2 })).toEqual({});
+  expect(resolvedCellStyle(sheet(), { row: 6, column: 2 })).toEqual({ fillRgb: 'FFFF00', bold: true });
+
+  // Resizing and hiding a styled column preserves its style; inserting a column shifts it cleanly
+  session.execute(changeDimensions(session.capture(), 'inputs', 'column', [{ index: 2, size: 140 }]));
+  expect(sheet().columns.find(c => c.index === 2)?.style).toEqual({ fillRgb: 'FFFF00', bold: true });
+  session.execute(editAxis(session.capture(), 'inputs', { axis: 'column', start: 2, count: 1, delete: false }));
+  expect(sheet().columns.find(c => c.index === 3)?.style).toEqual({ fillRgb: 'FFFF00', bold: true });
+  session.execute(editAxis(session.capture(), 'inputs', { axis: 'column', start: 2, count: 1, delete: true }));
+  expect(sheet().columns.find(c => c.index === 2)?.style).toEqual({ fillRgb: 'FFFF00', bold: true });
+
+  // Format Painter from whole Column B onto Column D
+  const colBrush = captureFormatBrush(session.capture(), colB);
+  const colD = range(1, 4, documentLimits.rows, 1);
+  session.execute(paintStyles(session.capture(), colD, colBrush));
+  expect(sheet().columns.find(c => c.index === 4)?.style).toEqual({ fillRgb: 'FFFF00', bold: true });
+  const twoRowBrush = captureFormatBrush(session.capture(), range(1, 1, 2, 1));
+  expect(() => paintStyles(session.capture(), colD, twoRowBrush)).toThrow(/too large/);
+
+  // Clear Formats on Column B removes column style while preserving column width, and clears B3's Column B formatting while leaving Row 3 intact
+  const beforeClearCol = session.active;
+  session.execute(clear(session.capture(), [colB], 'formats'));
+  expect(sheet().columns.find(c => c.index === 2)).toEqual({ index: 2, size: 140 });
+  expect(cell(5, 2)).toBeUndefined();
+  expect(cell(3, 2)?.style).toEqual({});
+  expect(resolvedCellStyle(sheet(), { row: 3, column: 1 })).toEqual({ textRgb: 'FF0000' });
+  expect(session.undo()).toBe(true);
+  expect(session.active).toEqual(beforeClearCol);
+
+  // Whole-sheet formatting + undo + Clear Formats
+  const beforeSheet = session.active;
+  session.execute(formatStyles(session.capture(), [sheetAll], { bold: true }));
+  expect(resolvedCellStyle(sheet(), { row: 1, column: 1 })?.bold).toBe(true);
+  expect(resolvedCellStyle(sheet(), { row: 1_048_576, column: 16_384 })?.bold).toBe(true);
+  expect(session.undo()).toBe(true);
+  expect(session.active).toEqual(beforeSheet);
+  expect(session.redo()).toBe(true);
+  session.execute(clear(session.capture(), [sheetAll], 'formats'));
+  expect(sheet().columns.filter(c => c.style)).toEqual([]);
+  expect(sheet().rows.filter(r => r.style)).toEqual([]);
 });

@@ -30,6 +30,7 @@ export interface AxisDimension {
   readonly index: number;
   readonly size?: number;
   readonly hidden?: boolean;
+  readonly style?: CellStyle;
 }
 export interface FrozenPanes {
   readonly rows: number;
@@ -215,6 +216,43 @@ export function cellKey({ row, column }: Coordinate): number {
 }
 
 const indexes = new WeakMap<SheetDocument, ReadonlyMap<number, CellDocument>>();
+const rowStyleIndexes = new WeakMap<SheetDocument, ReadonlyMap<number, CellStyle>>();
+const columnStyleIndexes = new WeakMap<SheetDocument, ReadonlyMap<number, CellStyle>>();
+
+function axisStyleMap(
+  cache: WeakMap<SheetDocument, ReadonlyMap<number, CellStyle>>,
+  sheet: SheetDocument,
+  key: 'rows' | 'columns',
+): ReadonlyMap<number, CellStyle> {
+  let map = cache.get(sheet);
+  if (!map) {
+    const built = new Map<number, CellStyle>();
+    for (const dim of sheet[key]) {
+      if (dim.style !== undefined) built.set(dim.index, dim.style);
+    }
+    cache.set(sheet, built);
+    map = built;
+  }
+  return map;
+}
+
+export function findRowStyle(sheet: SheetDocument, row: number): CellStyle | undefined {
+  if (!inRange(row, 1, documentLimits.rows)) return undefined;
+  if (!isOwned(sheet)) return sheet.rows.find(dim => dim.index === row)?.style;
+  return axisStyleMap(rowStyleIndexes, sheet, 'rows').get(row);
+}
+
+export function findColumnStyle(sheet: SheetDocument, column: number): CellStyle | undefined {
+  if (!inRange(column, 1, documentLimits.columns)) return undefined;
+  if (!isOwned(sheet)) return sheet.columns.find(dim => dim.index === column)?.style;
+  return axisStyleMap(columnStyleIndexes, sheet, 'columns').get(column);
+}
+
+export function resolvedCellStyle(sheet: SheetDocument, point: Coordinate, cell?: CellDocument): CellStyle | undefined {
+  const target = cell !== undefined ? cell : findCell(sheet, point);
+  if (target?.style !== undefined) return target.style;
+  return findRowStyle(sheet, point.row) ?? findColumnStyle(sheet, point.column);
+}
 
 export function findCell(sheet: SheetDocument, point: Coordinate): CellDocument | undefined {
   if (!isCoordinate(point)) return undefined;

@@ -179,6 +179,45 @@ it('exporting does not mark the workbook saved or clear its dirty state', async 
   expect(session.active.sheets[0]!.cells[0]!.content).toEqual({ kind: 'text', value: 'Draft' });
 });
 
+it('round trips whole-column, whole-row, coalesced sheet styles, and explicit normal cell overrides through XLSX', async () => {
+  const sheetId = makeId();
+  const document: WorkbookDocument = {
+    id: makeId(),
+    formatVersion: 1,
+    dateSystem: '1900',
+    names: [],
+    sheets: [{
+      id: sheetId,
+      name: 'Styled',
+      cells: [
+        { id: makeId(), row: 2, column: 2, content: { kind: 'number', value: 5 }, style: {} },
+        { id: makeId(), row: 3, column: 2, content: { kind: 'number', value: 10 } },
+      ],
+      rows: [{ index: 4, size: 32, hidden: false, style: { italic: true, textRgb: 'FF0000' } }],
+      columns: [
+        { index: 2, hidden: false, style: { bold: true, fillRgb: 'FFFF00' } },
+        { index: 3, hidden: false, style: { bold: true, fillRgb: 'FFFF00' } },
+      ],
+      merges: [],
+      frozenPanes: { rows: 0, columns: 0 },
+    }],
+  };
+  const { blob, report } = await writeXlsx(document);
+  const parts = await partsOf(blob);
+  const sheetXml = parts.get('xl/worksheets/sheet1.xml')!;
+  expect(sheetXml).toContain('<col min="2" max="3"');
+  expect(sheetXml).toContain('customFormat="1"');
+  expect(report.has('axis-styles')).toBe(false);
+
+  const reimported = await importXlsx(blob);
+  expect(reimported.report.has('axis-styles')).toBe(false);
+  const reSheet = reimported.document.sheets[0]!;
+  expect(reSheet.columns).toEqual(document.sheets[0]!.columns);
+  expect(reSheet.rows).toEqual(document.sheets[0]!.rows);
+  expect(reSheet.cells.find(c => c.row === 2 && c.column === 2)?.style).toEqual({});
+  expect(reSheet.cells.find(c => c.row === 3 && c.column === 2)?.style).toBeUndefined();
+});
+
 it('writes exports for the desktop XLSX oracle when S19_XLSX_OUT is set', async () => {
   const output = process.env.S19_XLSX_OUT;
   if (!output) return;

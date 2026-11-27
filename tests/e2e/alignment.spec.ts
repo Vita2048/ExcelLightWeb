@@ -57,8 +57,9 @@ test('confirms discards from the Alignment tab and commits merge, font and numbe
   await expect(grid).toHaveAttribute('aria-activedescendant', /-B2$/);
   await grid.press('ArrowRight');
   await expect(grid).toHaveAttribute('aria-activedescendant', /-D2$/);
+  const header = Number(await grid.getAttribute('data-row-header'));
   const bounds = (await grid.boundingBox())!;
-  await page.mouse.click(bounds.x + 260, bounds.y + 90, { button: 'right' });
+  await page.mouse.click(bounds.x + header + 96 * 2 + 20, bounds.y + 90, { button: 'right' });
   await page.getByRole('group', { name: 'Structure commands' }).getByRole('button', { name: 'Format Cells…' }).click();
   await format.getByRole('tab', { name: 'Alignment', exact: true }).click();
   await expect(align.getByRole('combobox', { name: 'Horizontal alignment' })).toHaveValue('right');

@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 const appPath = '/ExcelLightWeb/';
 const nativeFixture = fileURLToPath(new URL('../../docs/showcase/Showcase.exlt', import.meta.url));
+test.describe.configure({ timeout: 60_000 });
 
 test.beforeEach(async ({ page }) => {
   page.on('dialog', dialog => { void dialog.accept(); });
@@ -30,6 +31,7 @@ async function openShowcase(page: Page) {
   await page.getByRole('button', { name: 'Open', exact: true }).click();
   await (await chooser).setFiles(nativeFixture);
   await expect(page.locator('.workbook-title')).toHaveText('Showcase');
+  await expect(page.getByRole('dialog', { name: 'File Home' })).toHaveCount(0);
 }
 
 async function setActiveWorkspaceLeaseExpired(page: Page): Promise<number> {
@@ -269,8 +271,10 @@ test('opens a native workbook, saves locally, lists Recent and exports without m
   await openShowcase(page);
   const grid = page.getByRole('grid');
   await grid.focus();
+  await expect(grid).toBeFocused();
   await page.keyboard.type('Saved in browser');
   await page.keyboard.press('Enter');
+  await expect(page.getByRole('gridcell', { name: 'A1, Saved in browser' })).toBeAttached();
   await openFileBackstage(page);
   await page.getByRole('dialog', { name: 'File Home' }).getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('.workbook-title')).toHaveText('Showcase');

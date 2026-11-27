@@ -1,4 +1,4 @@
-import { findCell, type CellBorder, type CellDocument, type CellExtent, type CellStyle, type SheetDocument, type WorkbookName } from '../core/workbook';
+import { findCell, findColumnStyle, findRowStyle, type CellBorder, type CellDocument, type CellExtent, type CellStyle, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { mergeAt } from '../application/border-commands';
 import { cellBorders, type BorderSegment } from '../core/formats/borders';
 import { displayCellValue } from '../core/formats/cell-format';
@@ -162,10 +162,11 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
 
     const drawn = new Set<CellExtent>();
     const centered = new Set<CellDocument>();
-    const entries: { cell: CellDocument; style: CellStyle | undefined; x: number; y: number; width: number; height: number; selected: boolean; active: boolean }[] = [];
+    const entries: { cell: CellDocument; style: CellStyle | undefined; numberFormat: string | undefined; x: number; y: number; width: number; height: number; selected: boolean; active: boolean }[] = [];
     const bordered: { style: CellStyle; merge: CellExtent | undefined; row: Track; column: Track; rect: { x: number; y: number; width: number; height: number } }[] = [];
     const singleArea = areas.length === 1 ? areas[0] : undefined;
     for (const row of rows) {
+      const rowStyle = findRowStyle(frame.sheet, row.index);
       for (const column of columns) {
         const point = { row: row.index, column: column.index };
         const merge = mergeAt(frame.sheet, point.row, point.column);
@@ -173,14 +174,15 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
         if (merge) drawn.add(merge);
         const cellPoint = merge ?? point;
         const cell = findCell(frame.sheet, cellPoint);
-        const cellStyle = effectiveCellStyle(cell?.style, cellPoint, visibleTables);
+        const authoredStyle = cell?.style !== undefined ? cell.style :
+          (merge ? findRowStyle(frame.sheet, cellPoint.row) : rowStyle) ?? findColumnStyle(frame.sheet, cellPoint.column);
+        const cellStyle = effectiveCellStyle(authoredStyle, cellPoint, visibleTables);
         const selected = includeSelectionTint ? (singleArea ? includes(singleArea, cellPoint) : areas.some(area => includes(area, cellPoint))) : false;
         const active = includeSelectionTint ? (cellPoint.row === selection.anchor.row && cellPoint.column === selection.anchor.column) : false;
         const rect = merge ? extentRect(merge, row, column) :
           { x: x(column), y: y(row), width: column.size, height: row.size };
-        const cellOwnStyle = cell?.style;
-        if (cellOwnStyle && (cellOwnStyle.borders || cellOwnStyle.borderDetails)) {
-          bordered.push({ style: cellOwnStyle, merge, row, column, rect });
+        if (authoredStyle && (authoredStyle.borders || authoredStyle.borderDetails)) {
+          bordered.push({ style: authoredStyle, merge, row, column, rect });
         }
         if (!forced) drawCellFill(target, cellStyle, rect.x, rect.y, rect.width, rect.height, scale);
         if (selected && !active) {
@@ -189,42 +191,47 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
         }
         if (!cell) continue;
         if (!merge && cellStyle?.alignment === 'centerContinuous') {
-          const hasText = (item: CellDocument) => !!presentCell(item, frame.showFormulas, frame.separator).text;
-          const across = (index: number): { cell: CellDocument; style: CellStyle | undefined } | undefined => {
+          const hasText = (item: CellDocument, itemStyle: CellStyle | undefined) =>
+            !!presentCell(item, frame.showFormulas, frame.separator, itemStyle?.numberFormat).text;
+          const across = (index: number): { cell: CellDocument; style: CellStyle | undefined; rawStyle: CellStyle | undefined } | undefined => {
             const candidate = findCell(frame.sheet, { row: row.index, column: index });
-            const candidateStyle = effectiveCellStyle(candidate?.style, { row: row.index, column: index }, visibleTables);
+            const rawStyle = candidate?.style !== undefined ? candidate.style : rowStyle ?? findColumnStyle(frame.sheet, index);
+            const candidateStyle = effectiveCellStyle(rawStyle, { row: row.index, column: index }, visibleTables);
             return candidate && candidateStyle?.alignment === 'centerContinuous' && !mergeAt(frame.sheet, row.index, index) ?
-              { cell: candidate, style: candidateStyle } : undefined;
+              { cell: candidate, style: candidateStyle, rawStyle } : undefined;
           };
           let anchor = cell;
           let anchorStyle: CellStyle | undefined = cellStyle;
-          if (!hasText(anchor)) {
+          let anchorRawStyle: CellStyle | undefined = authoredStyle;
+          if (!hasText(anchor, anchorRawStyle)) {
             for (let prior = column.index - 1; prior >= 1; prior--) {
               const candidate = across(prior);
               if (!candidate) break;
-              if (hasText(candidate.cell)) { anchor = candidate.cell; anchorStyle = candidate.style; break; }
+              if (hasText(candidate.cell, candidate.rawStyle)) {
+                anchor = candidate.cell; anchorStyle = candidate.style; anchorRawStyle = candidate.rawStyle; break;
+              }
             }
           }
-          if (!hasText(anchor) || centered.has(anchor)) continue;
+          if (!hasText(anchor, anchorRawStyle) || centered.has(anchor)) continue;
           centered.add(anchor);
           let end = anchor.column;
           const lastIndex = frame.columnAxis.last?.index ?? end;
           for (let next = end + 1; next <= lastIndex; next++) {
             const candidate = across(next);
-            if (!candidate || hasText(candidate.cell)) break;
+            if (!candidate || hasText(candidate.cell, candidate.rawStyle)) break;
             end = next;
           }
           const bounds = extentRect({ row: row.index, column: anchor.column, rows: 1, columns: end - anchor.column + 1 }, row, column);
-          entries.push({ cell: anchor, style: anchorStyle, ...bounds, selected, active });
-        } else entries.push({ cell, style: cellStyle, ...rect, selected, active });
+          entries.push({ cell: anchor, style: anchorStyle, numberFormat: anchorRawStyle?.numberFormat, ...bounds, selected, active });
+        } else entries.push({ cell, style: cellStyle, numberFormat: authoredStyle?.numberFormat, ...rect, selected, active });
       }
     }
     const defaultFont = cellFont(undefined, fontFamily, scale).css;
     target.font = defaultFont;
     target.direction = 'ltr';
     target.textBaseline = 'middle';
-    for (const { cell, style, x: cellX, y: cellY, width, height, selected, active } of entries) {
-      const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator);
+    for (const { cell, style, numberFormat, x: cellX, y: cellY, width, height, selected, active } of entries) {
+      const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator, numberFormat);
       const value = displayCellValue(cell, frame.showFormulas);
       clip(target, cellX, cellY, width, height);
       const authoredColor = color ?? style?.textRgb;

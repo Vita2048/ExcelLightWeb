@@ -1,7 +1,7 @@
 import { entryText, parseEntry } from './editing-commands';
 import { formatCellValue } from '../core/formats/cell-format';
 import { columnLetters } from '../core/formula-references';
-import { documentLimits, findCell, type CellDocument, type SheetDocument, type WorkbookDocument } from '../core/workbook';
+import { documentLimits, findCell, resolvedCellStyle, type CellDocument, type SheetDocument, type WorkbookDocument } from '../core/workbook';
 import { requireDocument } from '../core/workbook-validation';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { CellEdit, SetCellsCommand } from './workbook-session';
@@ -37,9 +37,9 @@ export const emptySearchHistory: SearchHistory = Object.freeze({ find: [], repla
 export const searchHistoryLimit = 15;
 
 /** Cell text searched by the dialog: worksheet source, or the text the worksheet displays. */
-export function searchText(cell: CellDocument | undefined, lookIn: SearchLook): string {
+export function searchText(cell: CellDocument | undefined, lookIn: SearchLook, numberFormat?: string): string {
   if (!cell) return '';
-  return lookIn === 'formulas' ? entryText(cell) : formatCellValue(cell).text;
+  return lookIn === 'formulas' ? entryText(cell) : formatCellValue(cell, numberFormat).text;
 }
 
 function matches(text: string, options: SearchOptions): boolean {
@@ -63,7 +63,7 @@ export function findMatches(document: WorkbookDocument, scope: readonly string[]
   for (const sheet of scopeSheets(document, scope)) {
     const cells = sheet.cells.filter(cell => cell.content.kind !== 'blank' &&
       (options.lookIn !== 'formulas' || options.includeConstants || cell.content.kind === 'formula') &&
-      matches(searchText(cell, options.lookIn), options));
+      matches(searchText(cell, options.lookIn, resolvedCellStyle(sheet, cell, cell)?.numberFormat), options));
     if (options.order === 'columns') cells.sort((left, right) => left.column - right.column || left.row - right.row);
     else cells.sort((left, right) => left.row - right.row || left.column - right.column);
     for (const cell of cells) found.push({ sheetId: sheet.id, row: cell.row, column: cell.column });
@@ -101,7 +101,7 @@ export function searchResultRows(basis: WorkbookSnapshot, book: string, matches:
       sheet: sheet?.name ?? '',
       name: '',
       cell: absolute(match),
-      value: searchText(cell, 'values'),
+      value: searchText(cell, 'values', sheet ? resolvedCellStyle(sheet, match, cell)?.numberFormat : undefined),
       formula: cell?.content.kind === 'formula' ? cell.content.source : '',
       match,
     };
@@ -124,8 +124,8 @@ export function replaceMatches(basis: WorkbookSnapshot, targets: readonly Search
   const edits: CellEdit[] = targets.map(target => {
     const sheet = basis.document.sheets.find(item => item.id === target.sheetId);
     const cell = sheet && findCell(sheet, target);
-    requireDocument(cell, 'Search result is no longer available.');
-    const text = searchText(cell, options.lookIn);
+    requireDocument(sheet && cell, 'Search result is no longer available.');
+    const text = searchText(cell, options.lookIn, resolvedCellStyle(sheet, target, cell)?.numberFormat);
     requireDocument(matches(text, options), 'Search result changed. Find again.');
     const replaced = replaceText(text, options, replacement);
     const content = cell.content.kind === 'text' ? { kind: 'text' as const, value: replaced } : parseEntry(replaced);

@@ -244,8 +244,9 @@ test('applies the desktop Zoom dialog presets, custom percentages and Fit select
   await page.getByRole('button', { name: '100%', exact: true }).click();
   await expect(zoom).toHaveAttribute('aria-valuetext', '100%');
   await go(page, 'A1');
+  const header = Number(await grid.getAttribute('data-row-header'));
   const bounds = (await grid.boundingBox())!;
-  await page.mouse.click(bounds.x + 175, bounds.y + 10, { button: 'right' });
+  await page.mouse.click(bounds.x + header + 96 + 40, bounds.y + 10, { button: 'right' });
   await page.getByRole('group', { name: 'Structure commands' }).getByRole('button', { name: 'Hide Columns', exact: true }).click();
   await page.mouse.click(bounds.x + 20, bounds.y + 65, { button: 'right' });
   await page.getByRole('group', { name: 'Structure commands' }).getByRole('button', { name: 'Hide Rows', exact: true }).click();

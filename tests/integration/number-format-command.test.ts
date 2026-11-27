@@ -1,8 +1,10 @@
 import { expect, it } from 'vitest';
 import { captureClipboard, clipboardText, editorEntryText, parseEntry, pasteText, type EditRange } from '../../src/application/editing-commands';
 import { applyNumberFormat } from '../../src/application/number-format-command';
+import { setFilter } from '../../src/application/data-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
-import { findCell, newWorkbook } from '../../src/core/workbook';
+import { runNativeGeneration } from '../../src/calculation/native-generation';
+import { documentLimits, findCell, newWorkbook, resolvedCellStyle } from '../../src/core/workbook';
 
 function fixture() {
   let id = 0;
@@ -59,4 +61,30 @@ it('rejects invalid formats atomically and can preformat empty cells for dates a
   expect(parseEntry('60.5', { numberFormat: date })).toEqual({ kind: 'number', value: 60.5 });
   expect(parseEntry('29.02.1900', { numberFormat: '@' })).toEqual({ kind: 'text', value: '29.02.1900' });
   expect(parseEntry('=A1', { numberFormat: date })).toEqual({ kind: 'formula', source: '=A1' });
+});
+
+it('formats whole columns cleanly and invalidates filtered SUBTOTAL formulas when a column number format changes', () => {
+  const { session, target, cell } = fixture();
+  const sheetId = session.active.sheets[0]!.id;
+  const colB: EditRange = { sheetId, row: 1, column: 2, rows: documentLimits.rows, columns: 1 };
+  session.execute({ kind: 'set-cells', edits: [
+    { target: target(1, 2), content: { kind: 'text', value: 'Amount' } },
+    { target: target(2, 2), content: { kind: 'number', value: 1.5 } },
+    { target: target(3, 2), content: { kind: 'number', value: 2.5 } },
+    { target: target(4, 2), content: { kind: 'formula', source: '=SUBTOTAL(9,B2:B3)' } },
+  ] });
+  session.execute(setFilter(session.capture(), sheetId, {
+    row: 1, column: 2, rows: 3, columns: 1, criteria: [{ column: 2, allowed: ['1.5'] }],
+  }));
+  const gen1 = runNativeGeneration(session.active, 'automatic');
+  expect(gen1.updates[0]?.cache).toEqual({ kind: 'number', value: 1.5 });
+  const basis = session.beginNativeCalculation('fmt');
+  session.tryCommitNativeCalculation({ ...basis, kind: 'native-calculated', updates: gen1.updates });
+
+  // Change Column B number format so '1.5' formats as '1.50' and no longer matches criterion '1.5'
+  session.execute(applyNumberFormat(session.capture(), [colB], { code: '0.00' }));
+  expect(resolvedCellStyle(session.active.sheets[0]!, { row: 2, column: 2 })?.numberFormat).toBe('0.00');
+  expect(cell(2, 2)?.style).toBeUndefined();
+  const gen2 = runNativeGeneration(session.active, 'automatic', gen1.generation);
+  expect(gen2.updates[0]?.cache).toEqual({ kind: 'number', value: 0 });
 });

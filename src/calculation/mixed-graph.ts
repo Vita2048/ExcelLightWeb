@@ -1,4 +1,4 @@
-import { cellKey, documentLimits, type CellContent, type CellDocument, type CellExtent, type CellReference, type WorkbookDocument } from '../core/workbook';
+import { cellKey, documentLimits, resolvedCellStyle, type CellContent, type CellDocument, type CellExtent, type CellReference, type WorkbookDocument } from '../core/workbook';
 import { equalDto } from '../core/workbook-delta';
 import { pythonInputRanges } from '../python/python-inputs';
 import { prepareNativeGraph } from './native-calculator';
@@ -173,16 +173,30 @@ export class MixedGraph {
       const next = after.sheets[index]!;
       const left = new Map(sheet.cells.map(cell => [cellKey(cell), cell]));
       const right = new Map(next.cells.map(cell => [cellKey(cell), cell]));
+      const prevColFmt = new Map(sheet.columns.map(c => [c.index, c.style?.numberFormat]));
+      const nextColFmt = new Map(next.columns.map(c => [c.index, c.style?.numberFormat]));
+      const prevRowFmt = new Map(sheet.rows.map(r => [r.index, r.style?.numberFormat]));
+      const nextRowFmt = new Map(next.rows.map(r => [r.index, r.style?.numberFormat]));
+      const colFmtChanged = new Set<number>();
+      for (const c of new Set([...prevColFmt.keys(), ...nextColFmt.keys()])) {
+        if (prevColFmt.get(c) !== nextColFmt.get(c)) colFmtChanged.add(c);
+      }
+      const rowFmtChanged = new Set<number>();
+      for (const r of new Set([...prevRowFmt.keys(), ...nextRowFmt.keys()])) {
+        if (prevRowFmt.get(r) !== nextRowFmt.get(r)) rowFmtChanged.add(r);
+      }
       for (const key of new Set([...left.keys(), ...right.keys()])) {
         const oldCell = left.get(key), newCell = right.get(key);
+        const row = (key / documentLimits.columns | 0) + 1;
+        const column = key % documentLimits.columns + 1;
         const stablePython = samePythonSource(oldCell?.content, newCell?.content);
         const changedInput = !stablePython && !equalDto(oldCell?.content, newCell?.content) ||
-          oldCell?.style?.numberFormat !== newCell?.style?.numberFormat || oldCell?.spillOwner !== newCell?.spillOwner;
+          resolvedCellStyle(sheet, { row, column }, oldCell)?.numberFormat !== resolvedCellStyle(next, { row, column }, newCell)?.numberFormat ||
+          rowFmtChanged.has(row) || colFmtChanged.has(column) || oldCell?.spillOwner !== newCell?.spillOwner;
         if (changedInput) {
           let points = changed.get(sheet.id);
           if (!points) changed.set(sheet.id, points = new Map());
-          points.set(key, { sheetId: sheet.id, row: (key / documentLimits.columns | 0) + 1,
-            column: key % documentLimits.columns + 1 });
+          points.set(key, { sheetId: sheet.id, row, column });
         }
       }
       if (!equalDto(sheet.rows, next.rows) || !equalDto(sheet.filter, next.filter)) {
@@ -196,10 +210,12 @@ export class MixedGraph {
     }
     const roots = new Set<string>();
     for (const node of this.nodes.values()) {
-      const oldCell = before.sheets.flatMap(sheet => sheet.cells).find(cell => cell.id === node.id);
+      const oldSheet = before.sheets.find(sheet => sheet.id === node.target.sheetId);
+      const newSheet = after.sheets.find(sheet => sheet.id === node.target.sheetId);
+      const oldCell = oldSheet?.cells.find(cell => cell.id === node.id);
       const stablePython = samePythonSource(oldCell?.content, node.cell.content);
-      if (!oldCell || (!stablePython && !equalDto(oldCell.content, node.cell.content)) ||
-          oldCell.style?.numberFormat !== node.cell.style?.numberFormat) {
+      if (!oldCell || !oldSheet || !newSheet || (!stablePython && !equalDto(oldCell.content, node.cell.content)) ||
+          resolvedCellStyle(oldSheet, node.target, oldCell)?.numberFormat !== resolvedCellStyle(newSheet, node.target, node.cell)?.numberFormat) {
         roots.add(node.id);
         continue;
       }

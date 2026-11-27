@@ -1,11 +1,12 @@
-import type { CellDocument } from '../../core/workbook';
+import type { CellDocument, CellStyle } from '../../core/workbook';
 import { formatCellValue } from '../../core/formats/cell-format';
 import { commaStyle, currencyChoices, currencies, currencyFormat, formatName, presets } from '../../core/formats/number-catalog';
 import type { NumberFormatChange } from '../../application/number-format-command';
 import { RibbonFlyout, RibbonGlyph } from '../shell/RibbonFlyout';
 
-export function NumberRibbon({ cell, onFormat, onDialog }: {
+export function NumberRibbon({ cell, style = cell?.style, onFormat, onDialog }: {
   cell: CellDocument | undefined;
+  style?: CellStyle | undefined;
   onFormat: (change: NumberFormatChange) => void;
   onDialog: () => void;
 }) {
@@ -13,7 +14,7 @@ export function NumberRibbon({ cell, onFormat, onDialog }: {
     ['Increase Decimal', { decimals: 1 }], ['Decrease Decimal', { decimals: -1 }]] as const;
   return <fieldset className="number-ribbon"><legend>Number</legend>
     <div className="ribbon-stack number-ribbon-stack">
-      <RibbonFlyout label="Number Format" caption={formatName(cell?.style?.numberFormat)} items={[
+      <RibbonFlyout label="Number Format" caption={formatName(style?.numberFormat)} items={[
         ...Object.entries(presets).map(([label, code]) => ({ label, icon: label,
           detail: label === 'General' ? 'No specific format' : formatCellValue(cell, code).text,
           select: () => onFormat({ code }) })),

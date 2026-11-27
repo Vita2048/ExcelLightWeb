@@ -1,5 +1,5 @@
 import type { Axis } from '../core/axis-edit';
-import type { AxisDimension, SheetDocument } from '../core/workbook';
+import { resolvedCellStyle, type AxisDimension, type SheetDocument } from '../core/workbook';
 import { gridMetrics, clamp } from './grid-geometry';
 import { cellFont } from './cell-appearance';
 import { cellDisplay } from './grid-selection';
@@ -15,14 +15,15 @@ export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonl
     const index = cell[axis];
     const previous = sizes.get(index);
     if (previous === undefined) continue;
-    const value = cellDisplay(cell, showFormulas, separator);
+    const style = resolvedCellStyle(sheet, cell, cell);
+    const value = cellDisplay(cell, showFormulas, separator, style?.numberFormat);
     if (!value) continue;
     const merge = sheet.merges.find(merge => merge.row === cell.row && merge.column === cell.column);
     if (axis === 'column' && merge && merge.columns > 1) continue;
-    const measured = cellFont(cell.style, font);
+    const measured = cellFont(style, font);
     context.font = measured.css;
     const size = measured.size + Math.abs(measured.shift);
-    const indent = (cell.style?.indent ?? 0) * size * 1.5;
+    const indent = (style?.indent ?? 0) * size * 1.5;
     const lines = value.split(/\r\n|\r|\n/u);
     let needed: number;
     if (axis === 'column') {
@@ -35,7 +36,7 @@ export function fitDimensions(sheet: SheetDocument, axis: Axis, indexes: readonl
       }
       let lineCount = 0;
       for (const line of lines) {
-        lineCount += cell.style?.wrap ? Math.max(1, Math.ceil(context.measureText(line).width / Math.max(1, width - 10 - indent))) : 1;
+        lineCount += style?.wrap ? Math.max(1, Math.ceil(context.measureText(line).width / Math.max(1, width - 10 - indent))) : 1;
       }
       needed = size * 1.25 * lineCount + 6;
       for (let row = cell.row + 1; row < cell.row + (merge?.rows ?? 1); row++) {

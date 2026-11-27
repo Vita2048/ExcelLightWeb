@@ -5,7 +5,7 @@ import { autoSum, captureClipboard, clear, clipboardText, editorEntryText, expan
 import type { WorkbookSession } from '../../application/workbook-session';
 import type { WorkbookSnapshot } from '../../application/workbook-protocol';
 import { equalDto } from '../../core/workbook-delta';
-import { documentLimits, findReferencedCell, type CellDocument, type CellReference, type SheetDocument } from '../../core/workbook';
+import { documentLimits, findReferencedCell, resolvedCellStyle, type CellDocument, type CellReference, type CellStyle, type SheetDocument } from '../../core/workbook';
 import { formulaAddress, quoteSheet, type ReferenceBox } from '../../core/formula-references';
 import { requireDocument } from '../../core/workbook-validation';
 import { presentFormula } from '../formulas/formula-presentation';
@@ -25,6 +25,7 @@ interface Draft {
   readonly sessionId: string;
   readonly target: CellReference;
   readonly original: CellDocument | undefined;
+  readonly originalStyle: CellStyle | undefined;
   readonly text: string;
   readonly direct: boolean;
   readonly functionDraft: boolean;
@@ -62,8 +63,13 @@ export function useWorksheetEditing(
     renderDraft(next);
   }
 
-  function editorText(cell: CellDocument | undefined) {
-    const source = editorEntryText(cell, locale);
+  function resolvedStyleAt(document = session.active, target: CellReference, cell: CellDocument | undefined): CellStyle | undefined {
+    const sheet = document.sheets.find(item => item.id === target.sheetId);
+    return sheet ? resolvedCellStyle(sheet, target, cell) : cell?.style;
+  }
+
+  function editorText(cell: CellDocument | undefined, style: CellStyle | undefined = cell?.style) {
+    const source = editorEntryText(cell, locale, style);
     return cell?.content.kind === 'formula' ? presentFormula(source, ',', separator) : source;
   }
 
@@ -79,11 +85,12 @@ export function useWorksheetEditing(
     intent.current++;
     setStatus('');
     const original = findReferencedCell(session.active, target);
-    const text = replacement ?? editorText(original);
+    const originalStyle = resolvedStyleAt(session.active, target, original);
+    const text = replacement ?? editorText(original, originalStyle);
     // F2 and double-click open the existing content selected, matching the desktop grid editor.
     const selectText = surface === 'inline' && replacement === undefined && text.length > 0
       ? { start: 0, end: text.length } : undefined;
-    showDraft({ surface, sessionId: session.sessionId, target, original, text,
+    showDraft({ surface, sessionId: session.sessionId, target, original, originalStyle, text,
       direct: surface === 'inline' && replacement !== undefined && !functionDraft, functionDraft, ...(selectText && { selectText }) });
   }
 
@@ -97,7 +104,7 @@ export function useWorksheetEditing(
 
   function pickSlot(selection: TextSelection) {
     const current = liveDraft.current;
-    if (!current || composing.current || current.original?.style?.numberFormat === '@') return;
+    if (!current || composing.current || current.originalStyle?.numberFormat === '@') return;
     const last = current.pick;
     return referenceSlot(current.text, last && selection.start === last.end && selection.end === last.end ? last : selection);
   }
@@ -143,15 +150,17 @@ export function useWorksheetEditing(
     if (!current) return true;
     if (composing.current) return false;
     try {
-      if (current.text !== editorText(current.original)) {
+      if (current.text !== editorText(current.original, current.originalStyle)) {
         const basis = session.capture();
         const actual = findReferencedCell(basis.document, current.target);
+        const actualStyle = resolvedStyleAt(basis.document, current.target, actual);
         requireDocument(current.sessionId === basis.sessionId && actual?.id === current.original?.id &&
-          equalDto(actual?.content, current.original?.content) && equalDto(actual?.style, current.original?.style),
+          equalDto(actual?.content, current.original?.content) && equalDto(actual?.style, current.original?.style) &&
+          equalDto(actualStyle, current.originalStyle),
         'The cell changed while you were editing it.');
         const outcome = session.execute({ kind: 'set-cells', label: 'Edit cell', edits: [{
-          target: current.target, content: parseEntry(actual?.style?.numberFormat === '@' ? current.text :
-            presentFormula(current.text, separator, ','), actual?.style, locale, { makeId, existing: actual?.content }),
+          target: current.target, content: parseEntry(actualStyle?.numberFormat === '@' ? current.text :
+            presentFormula(current.text, separator, ','), actualStyle, locale, { makeId, existing: actual?.content }),
         }] });
         if (outcome.changed) changed(false);
       }

@@ -242,9 +242,10 @@ test('clipboard event keeps overlapping moves atomic and multi-area clear leaves
   await expect(cell(page, 'D1', '1')).toBeAttached();
   await grid.press('Control+z');
   await go(page, 'A1');
+  const header = Number(await grid.getAttribute('data-row-header'));
   const { x, y } = (await grid.boundingBox())!;
   await page.keyboard.down('Control');
-  await page.mouse.click(x + 257, y + 37);
+  await page.mouse.click(x + header + 96 * 2 + 20, y + 37);
   await page.keyboard.up('Control');
   await copyEvent(page, 'copy');
   await expect(page.getByText(/one contiguous selection/)).toBeVisible();

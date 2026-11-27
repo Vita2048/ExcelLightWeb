@@ -1,12 +1,13 @@
-import { cellKey, defaultPythonSource, documentLimits as limits, findCell, ownDto, worksheetViewport,
-  type CellContent, type CellDocument, type CellExtent, type CellReference, type CellStyle, type Coordinate, type PythonBlock, type SheetDocument,
+import { cellKey, defaultPythonSource, documentLimits as limits, findCell, findColumnStyle, findRowStyle, ownDto, resolvedCellStyle, worksheetViewport,
+  type AxisDimension, type CellContent, type CellDocument, type CellExtent, type CellReference, type CellStyle, type Coordinate, type PythonBlock, type SheetDocument,
 } from '../core/workbook';
+import { equalDto } from '../core/workbook-delta';
 import { parseTemporalEntry, temporalEntry } from '../core/formats/temporal';
 import { requireDocument } from '../core/workbook-validation';
 import { copyReferences, formulaAddress, intersection, moveReferences, type ReferenceBox, type ReferenceMove } from '../core/formula-references';
 import { transformPythonBlock } from '../python/references';
 import type { WorkbookSnapshot } from './workbook-protocol';
-import type { CellEdit, SetCellsCommand } from './workbook-session';
+import type { CellEdit, SetCellsCommand, WorkbookCommand } from './workbook-session';
 
 export type PasteMode = 'all' | 'values' | 'formulas';
 export type ClearMode = 'all' | 'contents' | 'formats';
@@ -55,9 +56,17 @@ export function parseEntry(text: string, style?: CellStyle, locale?: string,
   return { kind: 'text', value: text };
 }
 
-export function editorEntryText(cell: CellDocument | undefined, locale?: string): string {
+export type SelectionSpanKind = 'cells' | 'rows' | 'columns' | 'sheet';
+
+export function rangeSpanKind(range: CellExtent): SelectionSpanKind {
+  const allRows = range.row === 1 && range.rows === limits.rows;
+  const allColumns = range.column === 1 && range.columns === limits.columns;
+  return allRows && allColumns ? 'sheet' : allRows ? 'columns' : allColumns ? 'rows' : 'cells';
+}
+
+export function editorEntryText(cell: CellDocument | undefined, locale?: string, style: CellStyle | undefined = cell?.style): string {
   return cell?.content.kind === 'number' ?
-    temporalEntry(cell.content.value, cell.style?.numberFormat, locale) ?? entryText(cell) : entryText(cell);
+    temporalEntry(cell.content.value, style?.numberFormat, locale) ?? entryText(cell) : entryText(cell);
 }
 
 export function entryText(cell: CellDocument | undefined): string {
@@ -208,7 +217,7 @@ export function pasteText(basis: WorkbookSnapshot, target: EditRange, text: stri
     if (mode === 'formulas' && !formula) return;
     const at = point(range.sheetId, range.row + y, range.column + x);
     const content: CellContent = field.quoted || mode === 'values' && formula ? { kind: 'text', value: field.text } :
-      parseEntry(field.text, mode === 'formulas' ? undefined : findCell(sheet, at)?.style, locale, { makeId });
+      parseEntry(field.text, mode === 'formulas' ? undefined : resolvedCellStyle(sheet, at), locale, { makeId });
     edits.push({ target: at, content, resetCache: true });
   }));
   return command('Paste text', edits);
@@ -351,28 +360,284 @@ export function fill(basis: WorkbookSnapshot, range: EditRange, direction: FillD
   return command('Fill ' + direction, edits);
 }
 
-export function clear(basis: WorkbookSnapshot, selections: readonly EditRange[], mode: ClearMode): SetCellsCommand {
-  const bySheet = new Map<SheetDocument, ReferenceBox[]>();
+function stripBorderSides(style: CellStyle, sides: readonly ('top' | 'bottom' | 'left' | 'right')[]): CellStyle | undefined {
+  if (!style.borderDetails && !style.borders) return style;
+  const details = { ...style.borderDetails };
+  let legacy = style.borders ?? '';
+  const originalLegacy = legacy;
+  let changed = false;
+  for (const side of sides) {
+    if (details[side]) { delete details[side]; changed = true; }
+    legacy = legacy.replace(side[0]!, '');
+  }
+  if (!changed && legacy === originalLegacy) return style;
+  const { borders: _legacy, borderDetails: _details, ...remaining } = style;
+  const result = { ...remaining, ...(legacy && { borders: legacy }),
+    ...(Object.keys(details).length > 0 && { borderDetails: details }) };
+  return Object.keys(result).length ? result : undefined;
+}
+
+function reconcileClearedStyle(style: CellStyle | undefined, inherited: CellStyle | undefined): CellStyle | undefined {
+  const normalized = style && Object.keys(style).length ? style : undefined;
+  if (normalized) return equalDto(normalized, inherited) ? undefined : normalized;
+  return inherited ? {} : undefined;
+}
+
+export function clear(basis: WorkbookSnapshot, selections: readonly EditRange[], mode: ClearMode): WorkbookCommand {
+  const label = mode === 'all' ? 'Clear All' : mode === 'contents' ? 'Clear Contents' : 'Clear Formats';
+  const bySheet = new Map<SheetDocument, EditRange[]>();
+  let hasAxisSpan = false;
   for (const selection of selections) {
     const sheet = checkedSheet(basis, selection);
+    const area = expandMerges(selection, sheet);
+    if (mode !== 'contents' && rangeSpanKind(area) !== 'cells') hasAxisSpan = true;
     const areas = bySheet.get(sheet) ?? [];
-    areas.push(box(expandMerges(selection, sheet)));
+    areas.push(area);
     bySheet.set(sheet, areas);
   }
-  const edits: CellEdit[] = [];
-  for (const [sheet, areas] of bySheet) {
-    for (const cell of sheet.cells) {
-      const target = point(sheet.id, cell.row, cell.column);
-      if (areas.some(area => includes(area, cell))) {
-        edits.push({ target, content: mode === 'formats' ? cell.content : blank, preserveStyle: mode === 'contents' });
-      } else if (mode !== 'contents' && cell.style) {
-        const merge = sheet.merges.find(merge => merge.row === cell.row && merge.column === cell.column);
-        const style = clearAdjacentBorders(cell.style, box(merge ?? { ...cell, rows: 1, columns: 1 }), areas);
-        if (style !== cell.style) edits.push({ target, content: cell.content, preserveStyle: false, ...(style && { style }) });
+  if (!hasAxisSpan) {
+    const edits: CellEdit[] = [];
+    for (const [sheet, sheetAreas] of bySheet) {
+      const areas = sheetAreas.map(box);
+      const cellMap = new Map(sheet.cells.map(cell => [cellKey(cell), cell]));
+      const touched = new Set<number>();
+      for (const cell of sheet.cells) {
+        const target = point(sheet.id, cell.row, cell.column);
+        if (areas.some(area => includes(area, cell))) {
+          touched.add(cellKey(cell));
+          if (mode === 'contents') {
+            edits.push({ target, content: blank, preserveStyle: true });
+          } else {
+            const inherited = findRowStyle(sheet, cell.row) ?? findColumnStyle(sheet, cell.column);
+            edits.push({ target, content: mode === 'formats' ? cell.content : blank, preserveStyle: false,
+              ...(inherited && { style: {} }) });
+          }
+        } else if (mode !== 'contents') {
+          const effective = resolvedCellStyle(sheet, cell, cell);
+          if (!effective) continue;
+          const merge = sheet.merges.find(merge => merge.row === cell.row && merge.column === cell.column);
+          const stripped = clearAdjacentBorders(effective, box(merge ?? { ...cell, rows: 1, columns: 1 }), areas);
+          const inherited = findRowStyle(sheet, cell.row) ?? findColumnStyle(sheet, cell.column);
+          const next = reconcileClearedStyle(stripped, inherited);
+          if (!equalDto(next, cell.style)) {
+            touched.add(cellKey(cell));
+            edits.push({ target, content: cell.content, preserveStyle: false, ...(next !== undefined && { style: next }) });
+          }
+        }
+      }
+      if (mode !== 'contents' && (sheet.rows.some(r => r.style) || sheet.columns.some(c => c.style))) {
+        for (const area of areas) {
+          const hasStyledAxis = (() => {
+            for (const r of sheet.rows) if (r.style && r.index >= area.top && r.index <= area.bottom) return true;
+            for (const c of sheet.columns) if (c.style && c.index >= area.left && c.index <= area.right) return true;
+            return false;
+          })();
+          if (hasStyledAxis) {
+            const areaRows = area.bottom - area.top + 1;
+            const areaCols = area.right - area.left + 1;
+            requireDocument(areaRows * areaCols <= limits.cells, 'Format selection is too large.');
+            for (let row = area.top; row <= area.bottom; row++) {
+              for (let column = area.left; column <= area.right; column++) {
+                const key = cellKey({ row, column });
+                if (touched.has(key)) continue;
+                const inherited = findRowStyle(sheet, row) ?? findColumnStyle(sheet, column);
+                if (!inherited) continue;
+                touched.add(key);
+                edits.push({ target: point(sheet.id, row, column), content: blank, preserveStyle: false, style: {} });
+              }
+            }
+          }
+          // Clear adjacent borders on unpopulated cells inheriting an axis border along the outer edges.
+          const perimeterEdges: { row: number; column: number; side: 'top' | 'bottom' | 'left' | 'right' }[] = [];
+          if (area.top > 1 && area.right - area.left + 1 <= limits.cells) {
+            for (let c = area.left; c <= area.right; c++) perimeterEdges.push({ row: area.top - 1, column: c, side: 'bottom' });
+          }
+          if (area.bottom < limits.rows && area.right - area.left + 1 <= limits.cells) {
+            for (let c = area.left; c <= area.right; c++) perimeterEdges.push({ row: area.bottom + 1, column: c, side: 'top' });
+          }
+          if (area.left > 1 && area.bottom - area.top + 1 <= limits.cells) {
+            for (let r = area.top; r <= area.bottom; r++) perimeterEdges.push({ row: r, column: area.left - 1, side: 'right' });
+          }
+          if (area.right < limits.columns && area.bottom - area.top + 1 <= limits.cells) {
+            for (let r = area.top; r <= area.bottom; r++) perimeterEdges.push({ row: r, column: area.right + 1, side: 'left' });
+          }
+          for (const { row, column, side } of perimeterEdges) {
+            const key = cellKey({ row, column });
+            if (touched.has(key) || cellMap.has(key)) continue;
+            const inherited = findRowStyle(sheet, row) ?? findColumnStyle(sheet, column);
+            if (!inherited?.borderDetails && !inherited?.borders) continue;
+            const stripped = stripBorderSides(inherited, [side]);
+            if (equalDto(stripped, inherited)) continue;
+            touched.add(key);
+            const next = reconcileClearedStyle(stripped, inherited);
+            edits.push({ target: point(sheet.id, row, column), content: blank, preserveStyle: false,
+              ...(next !== undefined && { style: next }) });
+          }
+        }
       }
     }
+    return command(label, edits);
   }
-  return command(mode === 'all' ? 'Clear All' : mode === 'contents' ? 'Clear Contents' : 'Clear Formats', edits);
+
+  const edits: CellEdit[] = [];
+  const nextSheets = new Map<string, SheetDocument>();
+  for (const [sheet, sheetAreas] of bySheet) {
+    const areas = sheetAreas.map(box);
+    const rowDims = new Map(sheet.rows.map(dim => [dim.index, dim]));
+    const colDims = new Map(sheet.columns.map(dim => [dim.index, dim]));
+    const clearedCellKeys = new Set<number>();
+    const pending = new Map<number, { row: number; column: number; prior: CellDocument | undefined; content: CellContent; style: CellStyle | undefined }>();
+
+    function recordPending(row: number, column: number, content: CellContent, style: CellStyle | undefined) {
+      const key = cellKey({ row, column });
+      const existing = pending.get(key);
+      const prior = existing ? existing.prior : findCell(sheet, { row, column });
+      pending.set(key, { row, column, prior, content, style });
+      requireDocument(pending.size <= limits.cells, 'Format selection is too large.');
+    }
+
+    for (const area of areas) {
+      const span = rangeSpanKind({ row: area.top, column: area.left, rows: area.bottom - area.top + 1, columns: area.right - area.left + 1 });
+      if (span === 'sheet') {
+        for (const [idx, dim] of rowDims) {
+          if (dim.style === undefined) continue;
+          const { style: _removed, ...rest } = dim;
+          if (rest.size === undefined && !rest.hidden) rowDims.delete(idx);
+          else rowDims.set(idx, rest);
+        }
+        for (const [idx, dim] of colDims) {
+          if (dim.style === undefined) continue;
+          const { style: _removed, ...rest } = dim;
+          if (rest.size === undefined && !rest.hidden) colDims.delete(idx);
+          else colDims.set(idx, rest);
+        }
+      } else if (span === 'columns') {
+        for (let c = area.left; c <= area.right; c++) {
+          const dim = colDims.get(c);
+          if (dim?.style !== undefined) {
+            const { style: _removed, ...rest } = dim;
+            if (rest.size === undefined && !rest.hidden) colDims.delete(c);
+            else colDims.set(c, rest);
+          }
+        }
+        for (const [r] of rowDims) {
+          if (rowDims.get(r)?.style === undefined) continue;
+          for (let c = area.left; c <= area.right; c++) {
+            const key = cellKey({ row: r, column: c });
+            clearedCellKeys.add(key);
+            const existing = pending.get(key)?.prior ?? findCell(sheet, { row: r, column: c });
+            const content = mode === 'formats' ? existing?.content ?? blank : blank;
+            recordPending(r, c, content, undefined);
+          }
+        }
+        if (area.left > 1) {
+          const prevDim = colDims.get(area.left - 1);
+          if (prevDim?.style) {
+            const stripped = stripBorderSides(prevDim.style, ['right']);
+            const { style: _old, ...rest } = prevDim;
+            const nextDim: AxisDimension = { ...rest, ...(stripped && { style: stripped }) };
+            if (nextDim.size === undefined && !nextDim.hidden && !nextDim.style) colDims.delete(prevDim.index);
+            else colDims.set(prevDim.index, nextDim);
+          }
+        }
+        if (area.right < limits.columns) {
+          const nextAxis = colDims.get(area.right + 1);
+          if (nextAxis?.style) {
+            const stripped = stripBorderSides(nextAxis.style, ['left']);
+            const { style: _old, ...rest } = nextAxis;
+            const nextDim: AxisDimension = { ...rest, ...(stripped && { style: stripped }) };
+            if (nextDim.size === undefined && !nextDim.hidden && !nextDim.style) colDims.delete(nextAxis.index);
+            else colDims.set(nextAxis.index, nextDim);
+          }
+        }
+      } else if (span === 'rows') {
+        for (let r = area.top; r <= area.bottom; r++) {
+          const dim = rowDims.get(r);
+          if (dim?.style !== undefined) {
+            const { style: _removed, ...rest } = dim;
+            if (rest.size === undefined && !rest.hidden) rowDims.delete(r);
+            else rowDims.set(r, rest);
+          }
+        }
+        for (const [c] of colDims) {
+          if (colDims.get(c)?.style === undefined) continue;
+          for (let r = area.top; r <= area.bottom; r++) {
+            const key = cellKey({ row: r, column: c });
+            clearedCellKeys.add(key);
+            const existing = pending.get(key)?.prior ?? findCell(sheet, { row: r, column: c });
+            const content = mode === 'formats' ? existing?.content ?? blank : blank;
+            recordPending(r, c, content, undefined);
+          }
+        }
+        if (area.top > 1) {
+          const prevDim = rowDims.get(area.top - 1);
+          if (prevDim?.style) {
+            const stripped = stripBorderSides(prevDim.style, ['bottom']);
+            const { style: _old, ...rest } = prevDim;
+            const nextDim: AxisDimension = { ...rest, ...(stripped && { style: stripped }) };
+            if (nextDim.size === undefined && !nextDim.hidden && !nextDim.style) rowDims.delete(prevDim.index);
+            else rowDims.set(prevDim.index, nextDim);
+          }
+        }
+        if (area.bottom < limits.rows) {
+          const nextAxis = rowDims.get(area.bottom + 1);
+          if (nextAxis?.style) {
+            const stripped = stripBorderSides(nextAxis.style, ['top']);
+            const { style: _old, ...rest } = nextAxis;
+            const nextDim: AxisDimension = { ...rest, ...(stripped && { style: stripped }) };
+            if (nextDim.size === undefined && !nextDim.hidden && !nextDim.style) rowDims.delete(nextAxis.index);
+            else rowDims.set(nextAxis.index, nextDim);
+          }
+        }
+      } else {
+        const areaRows = area.bottom - area.top + 1;
+        const areaCols = area.right - area.left + 1;
+        requireDocument(areaRows * areaCols <= limits.cells, 'Format selection is too large.');
+        for (let r = area.top; r <= area.bottom; r++) {
+          for (let c = area.left; c <= area.right; c++) {
+            const key = cellKey({ row: r, column: c });
+            clearedCellKeys.add(key);
+            const existing = pending.get(key)?.prior ?? findCell(sheet, { row: r, column: c });
+            const content = mode === 'formats' ? existing?.content ?? blank : blank;
+            recordPending(r, c, content, undefined);
+          }
+        }
+      }
+    }
+
+    for (const cell of sheet.cells) {
+      const key = cellKey(cell);
+      if (areas.some(area => includes(area, cell))) {
+        clearedCellKeys.add(key);
+        const content = mode === 'formats' ? cell.content : blank;
+        recordPending(cell.row, cell.column, content, undefined);
+      } else if (!clearedCellKeys.has(key) && cell.style) {
+        const merge = sheet.merges.find(merge => merge.row === cell.row && merge.column === cell.column);
+        const style = clearAdjacentBorders(cell.style, box(merge ?? { ...cell, rows: 1, columns: 1 }), areas);
+        if (style !== cell.style) recordPending(cell.row, cell.column, cell.content, style);
+      }
+    }
+
+    for (const { row, column, prior, content, style } of pending.values()) {
+      const inherited = rowDims.get(row)?.style ?? colDims.get(column)?.style;
+      const finalStyle = reconcileClearedStyle(style, inherited);
+      if (equalDto(content, prior?.content ?? blank) && equalDto(finalStyle, prior?.style)) continue;
+      edits.push({ target: point(sheet.id, row, column), content, preserveStyle: false,
+        ...(finalStyle !== undefined && { style: finalStyle }) });
+    }
+
+    nextSheets.set(sheet.id, {
+      ...sheet,
+      rows: [...rowDims.values()].sort((a, b) => a.index - b.index),
+      columns: [...colDims.values()].sort((a, b) => a.index - b.index),
+    });
+  }
+  return {
+    kind: 'structure',
+    label,
+    document: { ...basis.document, sheets: basis.document.sheets.map(s => nextSheets.get(s.id) ?? s) },
+    edits,
+  };
 }
 
 function clearAdjacentBorders(style: CellStyle, cell: ReferenceBox, areas: readonly ReferenceBox[]): CellStyle | undefined {

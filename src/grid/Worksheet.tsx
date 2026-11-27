@@ -5,7 +5,7 @@ import {
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
 import { mergeAt } from '../application/border-commands';
 import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
-import { findCell, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument, type WorkbookName } from '../core/workbook';
+import { findCell, resolvedCellStyle, worksheetViewport, type CellBorder, type Coordinate, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { extentContains, lastColumn, lastRow, tableDesign } from '../core/workbook-names';
 import { filteredRows, headerLabel } from '../application/data-commands';
 import { totalFunction } from '../application/table-commands';
@@ -154,7 +154,7 @@ const ProjectedRow = memo(function ProjectedRow({
         const merge = sheet.merges.length ? mergeAt(sheet, row, column) : undefined;
         if (merge && (merge.row !== row || merge.column !== column)) return null;
         const cell = findCell(sheet, point);
-        const value = cellDisplay(cell, showFormulas, separator);
+        const value = cellDisplay(cell, showFormulas, separator, resolvedCellStyle(sheet, point, cell)?.numberFormat);
         const labelAddress = address(point);
         const selected = selectedColumn === -1 ? false :
           selectedColumn > 0 ? column === selectedColumn :
@@ -668,7 +668,12 @@ export function Worksheet(props: WorksheetProps) {
     const next = select(selection, point, kind, event.shiftKey, additive);
     if (!onSelection(next)) return;
     focus();
-    const paint = props.paintActive && kind === 'cells' && !next.additional.length && !additive;
+    const paint = props.paintActive && !next.additional.length && !additive;
+    if (paint && kind === 'sheet') {
+      event.preventDefault();
+      props.onPaint(primaryArea(next));
+      return;
+    }
     if (event.pointerType === 'touch' && !paint || kind === 'sheet' || hitSelected) return;
     event.preventDefault();
     node.setPointerCapture(event.pointerId);

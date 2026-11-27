@@ -33,7 +33,8 @@ it('moves the first populated value to a stable anchor and combines all edited f
   expect(session.active).toBe(before);
   const edit = formatStyles({ ...basis, document: proposal.command.document }, [range], { bold: true }, undefined, { top: { style: 'thin' } },
     { alignment: 'right', textRotation: -45, indent: 3, readingOrder: 'rtl', verticalAlignment: 'top' });
-  expect(session.tryExecute(basis, { ...proposal.command, edits: edit.edits })).toBe(true);
+  expect(edit.kind).toBe('set-cells');
+  expect(session.tryExecute(basis, { ...proposal.command, edits: edit.kind === 'set-cells' ? edit.edits : (edit.edits ?? []) })).toBe(true);
   expect(mergeState(sheet(), extent)).toBe(true);
   expect(cell(2, 2)).toMatchObject({ id: before.sheets[0]!.cells[0]!.id, content: { value: 7 },
     style: { bold: true, italic: true, numberFormat: '0.00', alignment: 'right', textRotation: -45, indent: 3,

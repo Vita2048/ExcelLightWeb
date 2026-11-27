@@ -95,16 +95,16 @@ export function parseAddress(text: string): Coordinate | undefined {
   return { row, column };
 }
 
-export function cellDisplay(cell: CellDocument | undefined, source = false, separator: ',' | ';' = ','): string {
-  return presentCell(cell, source, separator).text;
+export function cellDisplay(cell: CellDocument | undefined, source = false, separator: ',' | ';' = ',', numberFormat?: string): string {
+  return presentCell(cell, source, separator, numberFormat).text;
 }
 
-export function presentCell(cell: CellDocument | undefined, source: boolean, separator: ',' | ';'): FormattedCell {
+export function presentCell(cell: CellDocument | undefined, source: boolean, separator: ',' | ';', numberFormat?: string): FormattedCell {
   if (cell?.content.kind === 'formula' && (source || !cell.cache)) {
     return { text: presentFormula(cell.content.source, ',', separator) };
   }
   if (cell?.content.kind === 'python' && source) return { text: '=PY()' };
-  return formatCellValue(cell);
+  return formatCellValue(cell, numberFormat);
 }
 
 export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[], filtered: RowMask = filteredRows(sheet)) {

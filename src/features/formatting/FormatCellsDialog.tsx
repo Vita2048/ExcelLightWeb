@@ -4,7 +4,7 @@ import { isNumberFormat, withoutLocale } from '../../core/formats/format-code';
 import { formatLocale, formatLocales, explicitFormatLocale } from '../../core/formats/format-locales';
 import { categories, currencies, currencyChoices, formatName, localeForCategory, numericFormat, numericOptions,
   presets, specialLocales, typeChoices, type CurrencyChoice, type NumberCategory } from '../../core/formats/number-catalog';
-import { documentLimits, type CellDocument } from '../../core/workbook';
+import { documentLimits, type CellDocument, type CellStyle } from '../../core/workbook';
 import { isFontFamily, normalFont, parseFontSize, updateAppearance, type AppearancePatch } from '../../core/formats/appearance';
 import { AlignmentTab, alignmentValue } from './AlignmentTab';
 import type { AlignmentPatch } from '../../application/alignment-commands';
@@ -28,8 +28,9 @@ function available(item: typeof tabs[number]): item is FormatTab {
   return availableTabs.some(tab => tab === item);
 }
 
-export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderEditor, mergeEnabled, merged, onSubmit, onCancel }: {
+export function FormatCellsDialog({ cell, style = cell?.style, locale, usedCodes, initialTab, borderEditor, mergeEnabled, merged, onSubmit, onCancel }: {
   cell: CellDocument | undefined;
+  style?: CellStyle | undefined;
   locale: string;
   usedCodes: readonly string[];
   initialTab: FormatTab;
@@ -47,12 +48,12 @@ export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderE
   const [merge, setMerge] = useState<boolean>();
   const enabledTabs: readonly FormatTab[] = borderEditor ? availableTabs : availableTabs.filter(item => item !== 'Border');
   const [patch, setPatch] = useState<AppearancePatch>({});
-  const [family, setFamily] = useState(cell?.style?.fontFamily ?? 'Segoe UI');
-  const [size, setSize] = useState(String(cell?.style?.fontSize ?? 11));
-  const appearance = updateAppearance(cell?.style, patch);
+  const [family, setFamily] = useState(style?.fontFamily ?? 'Segoe UI');
+  const [size, setSize] = useState(String(style?.fontSize ?? 11));
+  const appearance = updateAppearance(style, patch);
   const validFont = isFontFamily(family) && parseFontSize(size) !== undefined;
   function updatePatch(change: AppearancePatch) { setPatch(current => ({ ...current, ...change })); }
-  const original = cell?.style?.numberFormat ?? 'General';
+  const original = style?.numberFormat ?? 'General';
   const name = formatName(original);
   const [category, setCategory] = useState<NumberCategory>(name === 'Short Date' || name === 'Long Date' ? 'Date' : name);
   const [code, setCode] = useState(original);
@@ -197,7 +198,7 @@ export function FormatCellsDialog({ cell, locale, usedCodes, initialTab, borderE
           </div>
         </div>
         <div role="tabpanel" id={tabId + '-panel-Alignment'} aria-labelledby={tabId + '-Alignment'} hidden={tab !== 'Alignment'}>
-          <AlignmentTab style={alignmentValue(cell?.style, alignment)} mergeEnabled={mergeEnabled} merged={merge ?? merged}
+          <AlignmentTab style={alignmentValue(style, alignment)} mergeEnabled={mergeEnabled} merged={merge ?? merged}
             onMerge={setMerge} onChange={change => setAlignment(current => ({ ...current, ...change }))} />
         </div>
         <div role="tabpanel" id={tabId + '-panel-Font'} aria-labelledby={tabId + '-Font'} hidden={tab !== 'Font'}>

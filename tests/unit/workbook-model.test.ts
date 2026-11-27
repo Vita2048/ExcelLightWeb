@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { applyDelta, diffWorkbook, invertDelta, sameAuthoredWorkbook } from '../../src/core/workbook-delta';
 import { columnLetters } from '../../src/core/formula-references';
 import {
-  DocumentError, documentLimits, emptySheet, findCell, newWorkbook, ownDto, worksheetViewport, type CellDocument, type WorkbookDocument,
+  DocumentError, documentLimits, emptySheet, findCell, newWorkbook, ownDto, resolvedCellStyle, worksheetViewport, type CellDocument, type WorkbookDocument,
 } from '../../src/core/workbook';
 import { validateWorkbook } from '../../src/core/workbook-validation';
 
@@ -126,4 +126,26 @@ it('round-trips exact deltas over generated mixed edits, additions, deletions an
     expect(applyDelta(before, delta)).toEqual(after);
     expect(applyDelta(after, invertDelta(delta))).toEqual(before);
   }
+});
+
+it('resolves axis styles with cell > row > column precedence, explicit {} overrides, and validates dimension styles', () => {
+  const styledSheet = ownDto({
+    ...sheet,
+    rows: [{ index: 2, style: { italic: true } }],
+    columns: [{ index: 3, style: { fillRgb: 'FFFF00' } }],
+    cells: [
+      { id: 'c-override', row: 3, column: 3, content: { kind: 'blank' as const }, style: {} },
+      { id: 'c-explicit', row: 2, column: 3, content: { kind: 'number' as const, value: 1 }, style: { bold: true } },
+    ],
+  });
+  expect(resolvedCellStyle(styledSheet, { row: 1, column: 3 })).toEqual({ fillRgb: 'FFFF00' });
+  expect(resolvedCellStyle(styledSheet, { row: 2, column: 1 })).toEqual({ italic: true });
+  expect(resolvedCellStyle(styledSheet, { row: 2, column: 3 })).toEqual({ bold: true });
+  expect(resolvedCellStyle(styledSheet, { row: 3, column: 3 })).toEqual({});
+  expect(resolvedCellStyle(styledSheet, { row: 1, column: 1 })).toBeUndefined();
+  expect(() => validateWorkbook({ ...book, sheets: [styledSheet] })).not.toThrow();
+  expect(() => validateWorkbook({
+    ...book,
+    sheets: [{ ...sheet, columns: [{ index: 1, style: { fontSize: 100 } }] }],
+  })).toThrow(/6 to 72/);
 });

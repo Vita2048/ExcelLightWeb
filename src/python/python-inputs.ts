@@ -2,7 +2,7 @@ import type { WorkbookSnapshot } from '../application/workbook-protocol';
 import { parseFormula } from '../core/formula-references';
 import { excelDateParts } from '../core/date-serial-probe';
 import { temporalParts } from '../core/formats/format-code';
-import { DocumentError, documentLimits, findCell, type CellCache, type CellDocument, type CellExtent, type PythonBlock, type WorkbookDocument, type WorkbookName } from '../core/workbook';
+import { DocumentError, documentLimits, findCell, resolvedCellStyle, type CellCache, type CellDocument, type CellExtent, type PythonBlock, type SheetDocument, type WorkbookDocument, type WorkbookName } from '../core/workbook';
 import { tableDesign, tableInputExtent } from '../core/workbook-names';
 import { ordinalNameKey, requireDocument } from '../core/workbook-validation';
 import { discoverPythonReferences, pythonNameKey } from './references';
@@ -94,8 +94,8 @@ function validateHeaders(labels: readonly string[], reference: string) {
     new Set(labels).size === labels.length, `Python input ${reference} needs nonblank unique text headers.`);
 }
 
-function dateTime(value: number, cell: CellDocument, document: WorkbookDocument): PythonInputValue {
-  const parts = temporalParts(cell.style?.numberFormat);
+function dateTime(value: number, cell: CellDocument, sheet: SheetDocument): PythonInputValue {
+  const parts = temporalParts(resolvedCellStyle(sheet, cell, cell)?.numberFormat);
   if (!parts.date && !parts.time) return value;
   requireDocument(Number.isFinite(value), 'Python date/time input is invalid.');
   if (parts.date) requireDocument(value >= 1 && value < 2_958_466 && Math.floor(value) !== 60,
@@ -121,7 +121,7 @@ function dateTime(value: number, cell: CellDocument, document: WorkbookDocument)
   return dateText + (parts.time ? `T${time}` : '');
 }
 
-function cacheValue(cache: CellCache | null | undefined, cell: CellDocument | undefined, document: WorkbookDocument,
+function cacheValue(cache: CellCache | null | undefined, cell: CellDocument | undefined, sheet: SheetDocument,
   staleFormulaIds: ReadonlySet<string>, pythonBlocks: ReadonlyMap<string, PythonBlock>): PythonInputValue {
   if (!cell) return null;
   if (cell.requiresExternalCalculation) throw new Error('Python input contains an unverified formula; correct it before running.');
@@ -149,7 +149,7 @@ function cacheValue(cache: CellCache | null | undefined, cell: CellDocument | un
   if (cell.content.kind === 'number' || cache.kind === 'number') {
     const number = cache.kind === 'number' ? cache.value : undefined;
     if (number === undefined || !Number.isFinite(number)) throw new DocumentError('Python input number is invalid.');
-    return dateTime(number, cell, document);
+    return dateTime(number, cell, sheet);
   }
   if (cache.kind === 'boolean') return cache.value;
   return cache.value;
@@ -165,7 +165,7 @@ function readRange(snapshot: WorkbookSnapshot, range: ResolvedRange, call: { ref
     const valuesRow: PythonInputValue[] = [];
     for (let column = range.area.column; column < range.area.column + range.area.columns; column++) {
       const cell = cells.get(`${row}:${column}`);
-      const value = cacheValue(cell?.cache, cell, snapshot.document, staleFormulaIds, pythonBlocks);
+      const value = cacheValue(cell?.cache, cell, sheet, staleFormulaIds, pythonBlocks);
       valuesRow.push(value);
       count++;
     }

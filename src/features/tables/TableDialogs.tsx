@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import type { CellDocument, WorkbookDocument, WorkbookName } from '../../core/workbook';
+import { resolvedCellStyle, type CellDocument, type WorkbookDocument, type WorkbookName } from '../../core/workbook';
 import { refersTo } from '../../application/table-commands';
 import { DialogActions } from '../dialogs/DialogActions';
 import { DialogTitleBar } from '../dialogs/DialogTitleBar';
@@ -231,7 +231,7 @@ export function NameManagerDialog({
     if (name.area.rows === 1 && name.area.columns === 1) {
       const sheet = document.sheets.find(s => s.id === name.area.sheetId);
       const cell = sheet?.cells.find(c => c.row === name.area.row && c.column === name.area.column);
-      return formatCellValue(cell).text;
+      return formatCellValue(cell, sheet ? resolvedCellStyle(sheet, name.area, cell)?.numberFormat : undefined).text;
     }
     return `${name.area.rows} × ${name.area.columns}`;
   }

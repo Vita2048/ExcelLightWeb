@@ -2,7 +2,7 @@ import type { Element } from '@xmldom/xmldom';
 import { BlobReader, ZipReader } from '@zip.js/zip.js';
 import { parseFormula, copyReferences } from '../../core/formula-references';
 import type {
-  CellCache, CellDocument, CellExtent, IdFactory, SheetDocument, WorkbookDocument,
+  CellCache, CellDocument, CellExtent, CellStyle, IdFactory, SheetDocument, WorkbookDocument,
 } from '../../core/workbook';
 import { documentLimits, DocumentError, formulaErrors } from '../../core/workbook';
 import { validateWorkbook } from '../../core/workbook-validation';
@@ -323,10 +323,23 @@ function readWorksheet(raw: Element, sheetName: string, shared: readonly string[
     }
   }
 
+  let usedMaxRow = 1;
+  let usedMaxColumn = 1;
+  for (const record of rawCells) {
+    if (record.row > usedMaxRow) usedMaxRow = record.row;
+    if (record.column > usedMaxColumn) usedMaxColumn = record.column;
+  }
+  const dimensions = readDimensions(raw, usedMaxRow, usedMaxColumn, styles, report);
+  const styledRows = new Set(dimensions.rows.filter(r => r.style !== undefined).map(r => r.index));
+  const styledColumns = new Set(dimensions.columns.filter(c => c.style !== undefined).map(c => c.index));
+
   const cells: CellDocument[] = [];
   for (const record of rawCells) {
-    const style = styles.cellStyle(record.styleIndex);
-    const dateFormatted = styles.isDateFormatted(record.styleIndex);
+    const rawStyle = styles.cellStyle(record.styleIndex);
+    const hasAxisStyle = styledRows.has(record.row) || styledColumns.has(record.column);
+    const style = rawStyle ?? (record.styleIndex !== undefined && hasAxisStyle ? {} : undefined);
+    const effectiveStyleIndex = record.styleIndex ?? dimensions.rowStyleByIndex.get(record.row) ?? dimensions.colStyleByIndex.get(record.column);
+    const dateFormatted = styles.isDateFormatted(effectiveStyleIndex);
     let cache: CellCache | undefined;
     let content: CellDocument['content'];
     let requiresExternal = false;
@@ -397,7 +410,7 @@ function readWorksheet(raw: Element, sheetName: string, shared: readonly string[
       }
     }
 
-    if (content.kind === 'blank' && !style) continue;
+    if (content.kind === 'blank' && style === undefined) continue;
     if (content.kind === 'text' && content.value.length > documentLimits.textLength) {
       throw new PackageException(`Text at ${sheetName}!${record.address} exceeds ${documentLimits.textLength} characters. No document was adopted.`);
     }
@@ -437,9 +450,6 @@ function readWorksheet(raw: Element, sheetName: string, shared: readonly string[
     return false;
   });
 
-  const usedMaxRow = cells.reduce((max, cell) => Math.max(max, cell.row), 1);
-  const usedMaxColumn = cells.reduce((max, cell) => Math.max(max, cell.column), 1);
-  const dimensions = readDimensions(raw, usedMaxRow, usedMaxColumn, report);
   const freeze = readFreeze(raw, report);
   if (firstChild(raw, 'autoFilter')) {
     report.add(exchangeCodes.filterFreeze, 'Excel AutoFilter criteria/sort indicators are omitted; manually hidden rows remain hidden.');
@@ -470,11 +480,16 @@ function cellTextFromValue(raw: string, shared: readonly string[]): string {
   return shared[index]!;
 }
 
-function readDimensions(raw: Element, usedMaxRow: number, usedMaxColumn: number, report: XlsxReport): {
+function readDimensions(raw: Element, usedMaxRow: number, usedMaxColumn: number,
+  styles: ReturnType<typeof readStyles>, report: XlsxReport): {
   rows: SheetDocument['rows'];
   columns: SheetDocument['columns'];
+  rowStyleByIndex: ReadonlyMap<number, number>;
+  colStyleByIndex: ReadonlyMap<number, number>;
 } {
-  const rows: { index: number; size?: number; hidden?: boolean }[] = [];
+  const rows: { index: number; size?: number; hidden?: boolean; style?: CellStyle }[] = [];
+  const rowStyleByIndex = new Map<number, number>();
+  const colStyleByIndex = new Map<number, number>();
   const defaultRowHeight = Number(attr(firstChild(raw, 'sheetFormatPr'), 'defaultRowHeight') ?? '15');
   if (Number.isFinite(defaultRowHeight) && Math.abs(defaultRowHeight - 15) > .001) {
     report.add(exchangeCodes.defaultDimensions,
@@ -482,7 +497,15 @@ function readDimensions(raw: Element, usedMaxRow: number, usedMaxColumn: number,
   }
   for (const row of childElements(firstChild(raw, 'sheetData'), 'row')) {
     const index = Number(attr(row, 'r'));
-    if (!Number.isInteger(index) || index < 1 || index > documentLimits.rows || index > usedMaxRow) continue;
+    if (!Number.isInteger(index) || index < 1 || index > documentLimits.rows) continue;
+    const styleText = attr(row, 's');
+    const rowStyleIndex = styleText === undefined ? undefined : Number(styleText);
+    if (rowStyleIndex !== undefined && (!Number.isInteger(rowStyleIndex) || rowStyleIndex < 0)) {
+      throw new PackageException('XLSX style index is invalid. No document was adopted.');
+    }
+    const style = styles.cellStyle(rowStyleIndex);
+    if (style !== undefined && rowStyleIndex !== undefined) rowStyleByIndex.set(index, rowStyleIndex);
+    if (style === undefined && index > usedMaxRow) continue;
     const hidden = isTruthyAttribute(row, 'hidden');
     const heightText = attr(row, 'ht');
     let size: number | undefined;
@@ -495,25 +518,27 @@ function readDimensions(raw: Element, usedMaxRow: number, usedMaxColumn: number,
         size = Math.min(4096, Math.max(4, height / .75));
       }
     }
-    if (size === undefined && !hidden) continue;
-    rows.push({ index, ...(size !== undefined ? { size } : {}), hidden });
+    if (size === undefined && !hidden && style === undefined) continue;
+    rows.push({ index, ...(size !== undefined ? { size } : {}), hidden, ...(style !== undefined ? { style } : {}) });
   }
 
-  const columns = new Map<number, { index: number; size?: number; hidden?: boolean }>();
+  const columns = new Map<number, { index: number; size?: number; hidden?: boolean; style?: CellStyle }>();
   for (const column of childElements(firstChild(raw, 'cols'), 'col')) {
     const min = Number(attr(column, 'min'));
     const declaredMax = Number(attr(column, 'max') ?? attr(column, 'min'));
     if (!Number.isInteger(min) || !Number.isInteger(declaredMax) || min < 1 || declaredMax < min) {
       throw new PackageException('Column dimensions are outside supported workbook limits. No document was adopted.');
     }
-    // Whole-sheet ranges such as min=1 max=16384 record a default width. ClosedXML exposes only
-    // columns of the used range, so keep the intersection with used/supported columns.
-    const max = Math.min(declaredMax, documentLimits.columns, usedMaxColumn);
-    if (min > max) continue;
-    if (attr(column, 'style') !== undefined) {
-      report.add(exchangeCodes.axisStyles,
-        'Row/column-wide styles are retained on explicit cells only; blank-axis formatting is omitted.');
+    const colStyleText = attr(column, 'style');
+    const colStyleIndex = colStyleText === undefined ? undefined : Number(colStyleText);
+    if (colStyleIndex !== undefined && (!Number.isInteger(colStyleIndex) || colStyleIndex < 0)) {
+      throw new PackageException('XLSX style index is invalid. No document was adopted.');
     }
+    const style = styles.cellStyle(colStyleIndex);
+    // Whole-sheet ranges such as min=1 max=16384 record a default width. ClosedXML exposes only
+    // columns of the used range, so keep the intersection with used/supported columns unless styled.
+    const max = Math.min(declaredMax, documentLimits.columns, style !== undefined ? documentLimits.columns : usedMaxColumn);
+    if (min > max) continue;
     const hidden = isTruthyAttribute(column, 'hidden');
     const widthText = attr(column, 'width');
     const width = widthText === undefined ? undefined : Number(widthText);
@@ -527,11 +552,12 @@ function readDimensions(raw: Element, usedMaxRow: number, usedMaxColumn: number,
     if (size !== undefined) report.add(exchangeCodes.columnWidth,
       'Column widths use a Calibri 11 / 96-DPI approximation; Excel widths depend on the normal font.');
     for (let index = min; index <= max; index++) {
-      if (size === undefined && !hidden) continue;
-      columns.set(index, { index, ...(size !== undefined ? { size } : {}), hidden });
+      if (style !== undefined && colStyleIndex !== undefined) colStyleByIndex.set(index, colStyleIndex);
+      if (size === undefined && !hidden && style === undefined) continue;
+      columns.set(index, { index, ...(size !== undefined ? { size } : {}), hidden, ...(style !== undefined ? { style } : {}) });
     }
   }
-  return { rows, columns: [...columns.values()].sort((left, right) => left.index - right.index) };
+  return { rows, columns: [...columns.values()].sort((left, right) => left.index - right.index), rowStyleByIndex, colStyleByIndex };
 }
 
 function readFreeze(raw: Element, report: XlsxReport): SheetDocument['frozenPanes'] {

@@ -3,7 +3,7 @@ import { requireDocument } from '../core/workbook-validation';
 import { checkedSheet, expandMerges, type EditRange } from './editing-commands';
 import { changeStyles } from './style-commands';
 import type { WorkbookSnapshot } from './workbook-protocol';
-import type { StructureCommand } from './workbook-session';
+import type { StructureCommand, WorkbookCommand } from './workbook-session';
 
 export const mergeLabels = { center: 'Merge & Center', across: 'Merge Across', cells: 'Merge Cells', unmerge: 'Unmerge Cells' } as const;
 export type MergeMode = keyof typeof mergeLabels;
@@ -18,7 +18,7 @@ export function alignmentStyle(style: CellStyle | undefined, patch: AlignmentPat
   return Object.fromEntries(Object.entries(aligned).filter(([, value]) => value !== undefined)) as CellStyle;
 }
 
-export function changeAlignment(basis: WorkbookSnapshot, ranges: readonly EditRange[], action: AlignmentAction, active?: CellStyle) {
+export function changeAlignment(basis: WorkbookSnapshot, ranges: readonly EditRange[], action: AlignmentAction, active?: CellStyle): WorkbookCommand {
   return changeStyles(basis, ranges, 'Alignment', style => {
     switch (action.kind) {
       case 'horizontal': return alignmentStyle(style, {

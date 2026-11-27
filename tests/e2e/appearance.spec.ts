@@ -62,8 +62,9 @@ test('retains typed unavailable font names and paints the browser fallback, then
   await expect(font).toHaveValue(unavailable);
   await go(page, 'C1');
   const canvas = canvasFor(page);
-  const fallback = await region(canvas, 47, 28, 88, 22);
-  const original = await region(canvas, 143, 28, 88, 22);
+  const header = Number(await page.getByRole('grid').getAttribute('data-row-header'));
+  const fallback = await region(canvas, header + 3, 28, 88, 22);
+  const original = await region(canvas, header + 96 + 3, 28, 88, 22);
   const ink = original.filter((value, index) => index % 4 === 0 && (value > 128 || fallback[index]! > 128));
   const overlap = original.filter((value, index) => index % 4 === 0 && value > 128 && fallback[index]! > 128);
   expect(ink.length).toBeGreaterThan(30);
@@ -150,7 +151,8 @@ test('commits font, number and pattern changes together and keeps nested color a
   await expect(toolbar(page).getByRole('button', { name: 'Bold', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => fillAt(page, 1, 1, 8)).toEqual([0, 112, 192, 255]);
   await expect.poll(() => fillAt(page, 1, 1, 10)).toEqual([255, 255, 255, 255]);
-  const ink = await region(canvasFor(page), 90, 29, 45, 21);
+  const headerWidth = Number(await grid.getAttribute('data-row-header'));
+  const ink = await region(canvasFor(page), headerWidth + 46, 29, 45, 21);
   expect(ink.some((channel, index) => index % 4 === 0 && channel > 180 && ink[index + 1]! < 50 && ink[index + 2]! < 50)).toBe(true);
   await grid.press('Control+z');
   await expect(page.getByRole('gridcell', { name: 'A1, 12.5', exact: true })).toBeAttached();
@@ -221,10 +223,11 @@ test('Format Painter tiles a locked source across sheets, applies once in single
   await expect(lock).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: 'Sheet2', exact: true }).click();
   const box = (await grid.boundingBox())!;
+  const header = Number(await grid.getAttribute('data-row-header'));
   const dragTo = async (left: number, top: number, right: number, bottom: number) => {
-    await page.mouse.move(box.x + 60 + (left - 1) * 96, box.y + 38 + (top - 1) * 26);
+    await page.mouse.move(box.x + header + 16 + (left - 1) * 96, box.y + 38 + (top - 1) * 26);
     await page.mouse.down();
-    await page.mouse.move(box.x + 60 + (right - 1) * 96, box.y + 38 + (bottom - 1) * 26, { steps: 5 });
+    await page.mouse.move(box.x + header + 16 + (right - 1) * 96, box.y + 38 + (bottom - 1) * 26, { steps: 5 });
     await page.mouse.up();
   };
   await dragTo(3, 3, 5, 4);
@@ -285,4 +288,46 @@ test('Format Cells tabs keep desktop order and edited panes on a narrow viewport
   await grid.press('Control+1');
   await tabs.getByRole('tab', { name: 'Font' }).click();
   await expect(font.getByRole('textbox', { name: 'Font size' })).toHaveValue('11');
+});
+
+test('styles whole columns and whole rows via header selection, renders far down, formats new entries, and undoes atomically', async ({ page }) => {
+  await page.goto(path);
+  const grid = page.getByRole('grid');
+  const bar = page.getByRole('textbox', { name: 'Formula bar' });
+  const headerWidth = Number(await grid.getAttribute('data-row-header'));
+  const box = (await grid.boundingBox())!;
+
+  // Select whole Column B via column header click
+  await page.mouse.click(box.x + headerWidth + 96 + 48, box.y + 13);
+  await toolbar(page).getByRole('button', { name: 'Apply last fill color' }).click();
+  await toolbar(page).getByRole('button', { name: 'Bold', exact: true }).click();
+  await toolbar(page).getByRole('button', { name: /^Number Format/u }).click();
+  await page.getByRole('menuitem', { name: /^Number(?:$| )/ }).click();
+
+  await expect.poll(() => fillAt(page, 2, 1)).toEqual([255, 255, 0, 255]);
+  await expect(toolbar(page).getByRole('button', { name: 'Bold', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await go(page, 'D1');
+  await expect.poll(() => fillAt(page, 2, 10)).toEqual([255, 255, 0, 255]);
+
+  // Navigate far down Column B and enter a number: inherits column style & number format
+  await go(page, 'B500000');
+  await expect(toolbar(page).getByRole('button', { name: 'Bold', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await bar.fill('12.5');
+  await bar.press('Enter');
+  await expect(page.getByRole('gridcell', { name: 'B500000, 12.50', exact: true })).toBeAttached();
+
+  // Navigate back up and select Row 3 via row header, apply Italic
+  await go(page, 'B1');
+  await page.mouse.click(box.x + Math.floor(headerWidth / 2), box.y + 26 + 2 * 26 + 13);
+  await toolbar(page).getByRole('button', { name: 'Italic', exact: true }).click();
+  await go(page, 'B3');
+  await expect(toolbar(page).getByRole('button', { name: 'Bold', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(toolbar(page).getByRole('button', { name: 'Italic', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => fillAt(page, 2, 3)).toEqual([255, 255, 0, 255]);
+
+  // Undo Italic on Row 3, then verify Column B formatting remains
+  await grid.press('Control+z');
+  await expect(toolbar(page).getByRole('button', { name: 'Italic', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(toolbar(page).getByRole('button', { name: 'Bold', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => fillAt(page, 2, 3)).toEqual([255, 255, 0, 255]);
 });

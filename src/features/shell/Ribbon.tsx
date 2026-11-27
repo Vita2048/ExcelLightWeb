@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type Ke
 import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
-import type { CellDocument, TableDesign, WorkbookName } from '../../core/workbook';
+import type { CellDocument, CellStyle, TableDesign, WorkbookName } from '../../core/workbook';
 import type { NumberFormatChange } from '../../application/number-format-command';
 import { RibbonFlyout, RibbonGlyph } from './RibbonFlyout';
 import { AlignmentRibbon } from '../formatting/AlignmentRibbon';
@@ -42,6 +42,7 @@ interface RibbonProps {
   readonly onFreeze: (mode: 'panes' | 'topRow' | 'firstColumn' | 'none') => void;
   readonly onEdit: (action: EditAction) => void;
   readonly cell: CellDocument | undefined;
+  readonly style?: CellStyle | undefined;
   readonly borders: BorderRibbonProps;
   readonly onAppearance: (patch: AppearancePatch, focus?: boolean) => void;
   readonly onAppearanceError: (error: string, focus: boolean) => void;
@@ -96,7 +97,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 }
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
-  onCalculationMode, onCalculate, pythonOpen, onPython, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
+  onCalculationMode, onCalculate, pythonOpen, onPython, onInsertFunction, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
   activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
@@ -243,10 +244,10 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
                 </div>
               </div>
             </fieldset>
-            <FontRibbon style={cell?.style} onApply={onAppearance} onInvalid={onAppearanceError} borders={borderRibbonNode}
+            <FontRibbon style={style} onApply={onAppearance} onInvalid={onAppearanceError} borders={borderRibbonNode}
               onDialog={onFontDialog} />
-            <AlignmentRibbon style={cell?.style} merged={merged} onAlign={onAlign} onMerge={onMerge} onDialog={onAlignmentDialog} />
-            <NumberRibbon cell={cell} onFormat={onNumberFormat} onDialog={() => onStructure('format-cells')} />
+            <AlignmentRibbon style={style} merged={merged} onAlign={onAlign} onMerge={onMerge} onDialog={onAlignmentDialog} />
+            <NumberRibbon cell={cell} style={style} onFormat={onNumberFormat} onDialog={() => onStructure('format-cells')} />
             <StructureRibbon onAction={onStructure} />
             <fieldset>
               <legend>Editing</legend><div className="ribbon-stack">

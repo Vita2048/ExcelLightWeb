@@ -3,7 +3,7 @@ import { applyBorderPreset, applyBorderStroke, inspectBorders } from '../../src/
 import { formatStyles } from '../../src/application/style-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { borderPresets, borderStyles, cellBorders } from '../../src/core/formats/borders';
-import { emptySheet, findCell, type CellBorder } from '../../src/core/workbook';
+import { documentLimits, emptySheet, findCell, resolvedCellStyle, type CellBorder } from '../../src/core/workbook';
 
 const pen = { style: 'dashDot', rgb: '0070C0' };
 const red = { style: 'double', rgb: 'FF0000' };
@@ -124,4 +124,29 @@ it('replaces and clears both faces of a dialog outline while preserving neighbor
   expect(session.active).toEqual(changed);
   expect(session.undo()).toBe(true);
   expect(session.active).toEqual(before);
+});
+
+it('applies border presets to whole columns and whole rows with mirrored neighbors and inspects them', () => {
+  const { session, sheet } = fixture();
+  const colC = { sheetId: sheet().id, row: 1, column: 3, rows: documentLimits.rows, columns: 1 };
+  const row5 = { sheetId: sheet().id, row: 5, column: 1, rows: 1, columns: documentLimits.columns };
+
+  session.execute(applyBorderPreset(session.capture(), colC, 'outside', pen));
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 500, column: 3 }))).toEqual({ left: pen, right: pen });
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 500, column: 2 })).right).toEqual(pen);
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 500, column: 4 })).left).toEqual(pen);
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 1, column: 3 })).top).toEqual(pen);
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: documentLimits.rows, column: 3 })).bottom).toEqual(pen);
+  expect(inspectBorders(session.capture(), colC).edges).toMatchObject({ left: pen, right: pen, top: pen, bottom: pen });
+
+  session.execute(applyBorderPreset(session.capture(), row5, 'all', red));
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 5, column: 100 }))).toEqual({ top: red, bottom: red, left: red, right: red });
+  expect(inspectBorders(session.capture(), row5).edges).toMatchObject({ top: red, bottom: red, left: red, right: red });
+
+  const beforeClear = session.active;
+  session.execute(applyBorderPreset(session.capture(), colC, 'none', null));
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 500, column: 3 }))).toEqual({});
+  expect(cellBorders(resolvedCellStyle(sheet(), { row: 500, column: 2 })).right).toBeUndefined();
+  expect(session.undo()).toBe(true);
+  expect(session.active).toEqual(beforeClear);
 });

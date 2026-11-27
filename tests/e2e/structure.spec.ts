@@ -63,8 +63,9 @@ test('cell and axis commands shift populated cells and update absolute dependent
   await author(page, 'D1', '=$B$2');
   await go(page, 'B2');
   const grid = page.getByRole('grid');
+  const header = Number(await grid.getAttribute('data-row-header'));
   const bounds = (await grid.boundingBox())!;
-  await page.mouse.click(bounds.x + 155, bounds.y + 60, { button: 'right' });
+  await page.mouse.click(bounds.x + header + 96 + 40, bounds.y + 60, { button: 'right' });
   await page.getByRole('group', { name: 'Structure commands' }).getByRole('button', { name: 'Insert Cells…' }).click();
   const dialog = page.getByRole('dialog', { name: 'Insert', exact: true });
   await expect(dialog.getByRole('radio', { name: 'Shift cells right' })).toBeChecked();

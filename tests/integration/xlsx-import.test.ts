@@ -83,7 +83,7 @@ it('imports the desktop extended style fixture with gradients, borders, rotation
   expect(stacked?.style?.textRotation).toBe(255);
   expect(stacked?.style?.fillDetails).toEqual({ pattern: 'none', gradientRgb: '2288AA', shading: 'center', variant: 2 });
 
-  expect(report.issues.map(issue => issue.code)).toEqual(['axis-styles', 'column-width', 'new-ids']);
+  expect(report.issues.map(issue => issue.code)).toEqual(['column-width', 'new-ids']);
   expect(report.has('merged-cells')).toBe(false);
 });
 

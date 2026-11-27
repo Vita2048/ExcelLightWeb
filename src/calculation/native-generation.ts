@@ -1,6 +1,6 @@
 import type { CacheUpdate, NativeCalculationScope } from '../application/workbook-protocol';
 import { equalDto } from '../core/workbook-delta';
-import { cellKey, type CellCache, type Coordinate, type WorkbookDocument } from '../core/workbook';
+import { cellKey, resolvedCellStyle, type CellCache, type Coordinate, type WorkbookDocument } from '../core/workbook';
 import { cellsIn, evaluateNative, indexNativeInputs, prepareNativeGraph, type CalculationOptions } from './native-calculator';
 
 type Graph = ReturnType<typeof prepareNativeGraph>;
@@ -38,6 +38,23 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
     }
     const filter = input.sheet.filter;
     const criteria = new Set(filter?.criteria.map(rule => rule.column));
+    if (filter && criteria.size) {
+      const prevCols = new Map(prior.sheet.columns.map(col => [col.index, col.style?.numberFormat]));
+      const nextCols = new Map(input.sheet.columns.map(col => [col.index, col.style?.numberFormat]));
+      for (const column of criteria) {
+        if (prevCols.get(column) !== nextCols.get(column)) { visibilityChanged.add(sheetId); break; }
+      }
+      if (!visibilityChanged.has(sheetId)) {
+        const prevRows = new Map(prior.sheet.rows.map(r => [r.index, r.style?.numberFormat]));
+        const nextRows = new Map(input.sheet.rows.map(r => [r.index, r.style?.numberFormat]));
+        for (const index of new Set([...prevRows.keys(), ...nextRows.keys()])) {
+          if (index > filter.row && index < filter.row + filter.rows && prevRows.get(index) !== nextRows.get(index)) {
+            visibilityChanged.add(sheetId);
+            break;
+          }
+        }
+      }
+    }
     for (const [key, cell] of input.cells) {
       const before = prior.cells.get(key);
       const formula = cell.content.kind === 'formula' || before?.content.kind === 'formula';
@@ -49,7 +66,7 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
       if (contentChanged || cacheChanged) changes.push(cell);
       // Filter display uses the cache at the start of the generation.
       if (filter && criteria.has(cell.column) && cell.row > filter.row && cell.row < filter.row + filter.rows &&
-          (contentChanged || before?.style?.numberFormat !== cell.style?.numberFormat ||
+          (contentChanged || resolvedCellStyle(prior.sheet, cell, before)?.numberFormat !== resolvedCellStyle(input.sheet, cell, cell)?.numberFormat ||
             !equalDto(before?.cache, cell.cache))) visibilityChanged.add(sheetId);
     }
     for (const [key, before] of prior.cells) {

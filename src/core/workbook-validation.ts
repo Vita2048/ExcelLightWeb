@@ -229,6 +229,7 @@ function validateDimensions(dimensions: readonly AxisDimension[], max: number): 
     requireDocument(dimension && inRange(dimension.index, 1, max) && !indexes.has(dimension.index) &&
       (dimension.size === undefined || Number.isFinite(dimension.size) && dimension.size >= 4 && dimension.size <= 4096) &&
       (dimension.hidden === undefined || typeof dimension.hidden === 'boolean'), 'Invalid or duplicate dimension.');
+    if (dimension.style !== undefined) validateStyle(dimension.style);
     indexes.add(dimension.index);
   }
 }

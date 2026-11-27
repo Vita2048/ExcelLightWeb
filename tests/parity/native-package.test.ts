@@ -464,4 +464,27 @@ describe('WorkbookSession adoption and save safety', () => {
     })).rejects.toThrow('Injected replace failure.');
     expect(replaced).toBe(true);
   });
+
+  it('round-trips whole-column/row axis styles and explicit empty cell overrides in .exlt', async () => {
+    const base = await loadNativePackage(await readFixture('tests/fixtures/interchange/DesktopStyles.exlt'));
+    const sheet = base.sheets[0]!;
+    const withAxis: WorkbookDocument = ownDto({
+      ...base,
+      sheets: [{
+        ...sheet,
+        rows: [...sheet.rows, { index: 4, size: 30, hidden: false, style: { italic: true, textRgb: '112233' } }],
+        columns: [
+          ...sheet.columns.filter(c => c.index !== 2),
+          { index: 2, hidden: false, style: { bold: true, fillRgb: 'FFFF00', numberFormat: '0.00' } },
+        ],
+        cells: [
+          ...sheet.cells.filter(c => !(c.row === 3 && c.column === 2)),
+          { id: crypto.randomUUID(), row: 3, column: 2, content: { kind: 'blank' as const }, style: {} },
+        ],
+      }],
+    });
+    const reloaded = await loadNativePackage(await saveNativePackage(withAxis));
+    expect(equalDto(withAxis, reloaded)).toBe(true);
+    expect(reloaded.sheets[0]!.cells.find(c => c.row === 3 && c.column === 2)?.style).toEqual({});
+  });
 });

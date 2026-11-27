@@ -1,7 +1,7 @@
 import { formatCellValue } from '../core/formats/cell-format';
 import { columnLetters, copyReferences } from '../core/formula-references';
 import { maskRows, RowMask } from '../core/row-mask';
-import { cellKey, documentLimits, findCell, worksheetViewport, type CellDocument, type CellExtent, type SheetDocument,
+import { cellKey, documentLimits, findCell, resolvedCellStyle, worksheetViewport, type CellDocument, type CellExtent, type SheetDocument,
   type SheetFilter, type WorkbookDocument } from '../core/workbook';
 import { extentContains, lastColumn, lastRow, tableDesign, tableInputExtent } from '../core/workbook-names';
 import { overlaps, requireDocument, validateExtent } from '../core/workbook-validation';
@@ -37,8 +37,8 @@ export function localeTextOrder(locale: string): TextOrder {
 const blankKey = (index: number): SortKey => ({ kind: 'blank', number: 0, text: '', flag: false, index });
 
 /** Display text used as a filter value, shared with the native SUBTOTAL filter key. */
-export function filterKey(cell: CellDocument | undefined): string {
-  return formatCellValue(cell).text;
+export function filterKey(cell: CellDocument | undefined, numberFormat?: string): string {
+  return formatCellValue(cell, numberFormat).text;
 }
 
 export function sortKeyFor(cell: CellDocument | undefined, index: number): SortKey {
@@ -196,7 +196,7 @@ export function filteredRows(sheet: SheetDocument, filter: SheetFilter | undefin
   const cells = [];
   for (const cell of sheet.cells) {
     if (cell.row < from || cell.row > to || !columns.has(cell.column)) continue;
-    cells.push({ row: cell.row, column: cell.column, key: filterKey(cell) });
+    cells.push({ row: cell.row, column: cell.column, key: filterKey(cell, resolvedCellStyle(sheet, cell, cell)?.numberFormat) });
   }
   return maskRows(from, to, rules, filterKey(undefined), cells);
 }
@@ -291,7 +291,7 @@ export function columnValues(sheet: SheetDocument, filter: SheetFilter, column: 
   for (const cell of sheet.cells) {
     if (cell.column !== column || cell.row < from || cell.row > to || excluded.has(cell.row)) continue;
     populatedVisible++;
-    const key = filterKey(cell);
+    const key = filterKey(cell, resolvedCellStyle(sheet, cell, cell)?.numberFormat);
     if (keys.has(key)) continue;
     keys.add(key);
     list.push({ key, label: key.length === 0 ? '(Blanks)' : key, sort: sortKeyFor(cell, cell.row) });
@@ -306,7 +306,8 @@ export function columnValues(sheet: SheetDocument, filter: SheetFilter, column: 
 }
 
 export function headerLabel(sheet: SheetDocument, row: number, column: number): string {
-  const text = filterKey(sheet.cells.find(cell => cell.row === row && cell.column === column));
+  const cell = findCell(sheet, { row, column });
+  const text = filterKey(cell, resolvedCellStyle(sheet, { row, column }, cell)?.numberFormat);
   return text.length === 0 ? 'Column ' + columnLetters(column) : text;
 }
 

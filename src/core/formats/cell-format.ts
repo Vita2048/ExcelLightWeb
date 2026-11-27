@@ -227,7 +227,8 @@ const emptyFormatted: FormattedCell = Object.freeze({ text: '' });
 
 export function formatCellValue(cell: CellDocument | undefined, code?: string): FormattedCell {
   if (!cell) return emptyFormatted;
-  const useDefault = code === undefined;
+  const effectiveCode = code !== undefined ? code : cell.style?.numberFormat;
+  const useDefault = effectiveCode === cell.style?.numberFormat;
   if (useDefault && Object.isFrozen(cell)) {
     const cached = formattedCache.get(cell);
     if (cached) return cached;
@@ -235,7 +236,7 @@ export function formatCellValue(cell: CellDocument | undefined, code?: string): 
   const value = displayCellValue(cell);
   let formatted: FormattedCell;
   if (!value || value.kind === 'blank' || value.kind === 'formula' || value.kind === 'python') formatted = emptyFormatted;
-  else if (value.kind === 'number') formatted = formatNumber(value.value, useDefault ? cell.style?.numberFormat : code);
+  else if (value.kind === 'number') formatted = formatNumber(value.value, effectiveCode);
   else formatted = { text: value.kind === 'boolean' ? value.value ? 'TRUE' : 'FALSE' : value.value };
   if (useDefault && Object.isFrozen(cell)) formattedCache.set(cell, formatted);
   return formatted;

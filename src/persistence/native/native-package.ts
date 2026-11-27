@@ -385,9 +385,11 @@ function readSheet(bytes: Uint8Array, expectedId: DocumentId, expectedName: stri
     throw new PackageException('cells must be an array.');
   }
 
-  const cells = cellsElement.map(readCell);
   const rows = readDimensions(rootObj, 'rows');
   const columns = readDimensions(rootObj, 'columns');
+  const styledRows = new Set(rows.filter(r => r.style !== undefined).map(r => r.index));
+  const styledCols = new Set(columns.filter(c => c.style !== undefined).map(c => c.index));
+  const cells = cellsElement.map(raw => readCell(raw, styledRows, styledCols));
   const merges = readMerges(rootObj);
   const frozenPanes = readFreeze(rootObj);
   const filter = readFilter(rootObj);
@@ -430,12 +432,14 @@ function readDimensions(root: Record<string, unknown>, key: string): readonly Ax
   }
   return val.map(item => {
     const obj = requireObject(item, key);
-    rejectUnknown(obj, 'index', 'size', 'hidden');
+    rejectUnknown(obj, 'index', 'size', 'hidden', 'style');
     const size = Object.hasOwn(obj, 'size') ? requireFinite(obj.size, 'size') : undefined;
+    const style = Object.hasOwn(obj, 'style') && obj.style !== null ? readStyle(requireObject(obj.style, 'style')) : undefined;
     return {
       index: requireInt(requireProperty(obj, 'index'), 'index'),
       ...(size !== undefined ? { size } : {}),
       hidden: Object.hasOwn(obj, 'hidden') ? requireBool(obj.hidden, 'hidden') : false,
+      ...(style !== undefined ? { style } : {}),
     };
   });
 }
@@ -508,7 +512,7 @@ function readFilter(root: Record<string, unknown>): SheetFilter | undefined {
   return { row, column, rows, columns, criteria, ...(sort ? { sort } : {}) };
 }
 
-function readCell(item: unknown): CellDocument {
+function readCell(item: unknown, styledRows?: ReadonlySet<number>, styledCols?: ReadonlySet<number>): CellDocument {
   const cell = requireObject(item, 'cell');
   rejectUnknown(cell, 'id', 'row', 'column', 'content', 'style', 'cache', 'requiresExternalCalculation', 'spillOwner');
 
@@ -558,7 +562,8 @@ function readCell(item: unknown): CellDocument {
 
   let style: CellStyle | undefined;
   if (Object.hasOwn(cell, 'style') && cell.style !== null) {
-    style = readStyle(requireObject(cell.style, 'style'));
+    const preserveEmpty = (styledRows?.has(row) ?? false) || (styledCols?.has(column) ?? false);
+    style = readStyle(requireObject(cell.style, 'style'), preserveEmpty);
   }
 
   let cache: CellCache | undefined;
@@ -579,14 +584,14 @@ function readCell(item: unknown): CellDocument {
     row,
     column,
     content,
-    ...(style ? { style } : {}),
+    ...(style !== undefined ? { style } : {}),
     ...(cache ? { cache } : {}),
     ...(requiresExternalCalculation ? { requiresExternalCalculation: true } : {}),
     ...(spillOwner ? { spillOwner } : {}),
   };
 }
 
-function readStyle(obj: Record<string, unknown>): CellStyle | undefined {
+function readStyle(obj: Record<string, unknown>, preserveEmpty = false): CellStyle | undefined {
   rejectUnknown(
     obj,
     'bold', 'numberFormat', 'fill', 'fontFamily', 'fontSize', 'italic', 'underline',
@@ -661,7 +666,7 @@ function readStyle(obj: Record<string, unknown>): CellStyle | undefined {
     ...(justifyLastLine ? { justifyLastLine: true } : {}),
   };
 
-  return Object.keys(result).length > 0 ? result : undefined;
+  return Object.keys(result).length > 0 || preserveEmpty ? result : undefined;
 }
 
 function readBorderDetails(obj: Record<string, unknown>): CellStyle['borderDetails'] {
@@ -956,6 +961,7 @@ export async function saveNativePackage(document: WorkbookDocument, request?: Sa
           index: r.index,
           ...(r.size !== undefined ? { size: r.size } : {}),
           hidden: r.hidden ?? false,
+          ...(r.style !== undefined ? { style: serializeStyle(r.style) } : {}),
         }));
       }
 
@@ -964,6 +970,7 @@ export async function saveNativePackage(document: WorkbookDocument, request?: Sa
           index: c.index,
           ...(c.size !== undefined ? { size: c.size } : {}),
           hidden: c.hidden ?? false,
+          ...(c.style !== undefined ? { style: serializeStyle(c.style) } : {}),
         }));
       }
 
@@ -1018,6 +1025,51 @@ export async function saveNativePackage(document: WorkbookDocument, request?: Sa
   }
 
   return blob;
+}
+
+function serializeStyle(s: CellStyle): Record<string, unknown> {
+  return {
+    bold: s.bold ?? false,
+    ...(s.numberFormat !== undefined ? { numberFormat: s.numberFormat } : {}),
+    ...(s.fillRgb !== undefined ? { fill: s.fillRgb } : {}),
+    ...(s.fontFamily !== undefined ? { fontFamily: s.fontFamily } : {}),
+    ...(s.fontSize !== undefined ? { fontSize: s.fontSize } : {}),
+    italic: s.italic ?? false,
+    underline: s.underline ?? false,
+    ...(s.textRgb !== undefined ? { textRgb: s.textRgb } : {}),
+    ...(s.borders !== undefined ? { borders: s.borders } : {}),
+    ...(s.verticalAlignment !== undefined ? { verticalAlignment: s.verticalAlignment } : {}),
+    ...(s.alignment !== undefined ? { alignment: s.alignment } : {}),
+    wrap: s.wrap ?? false,
+    ...(s.textRotation !== undefined && s.textRotation !== 0 ? { textRotation: s.textRotation } : {}),
+    ...(s.indent !== undefined && s.indent !== 0 ? { indent: s.indent } : {}),
+    ...(s.shrinkToFit ? { shrinkToFit: true } : {}),
+    ...(s.readingOrder !== undefined ? { readingOrder: s.readingOrder } : {}),
+    ...(s.justifyLastLine ? { justifyLastLine: true } : {}),
+    ...(s.strikethrough ? { strikethrough: true } : {}),
+    ...(s.script !== undefined ? { script: s.script } : {}),
+    ...(s.underlineKind !== undefined ? { underlineKind: s.underlineKind } : {}),
+    ...(s.borderDetails ? {
+      borderDetails: {
+        ...(s.borderDetails.top ? { Top: { Style: s.borderDetails.top.style, ...(s.borderDetails.top.rgb ? { Rgb: s.borderDetails.top.rgb } : {}) } } : {}),
+        ...(s.borderDetails.right ? { Right: { Style: s.borderDetails.right.style, ...(s.borderDetails.right.rgb ? { Rgb: s.borderDetails.right.rgb } : {}) } } : {}),
+        ...(s.borderDetails.bottom ? { Bottom: { Style: s.borderDetails.bottom.style, ...(s.borderDetails.bottom.rgb ? { Rgb: s.borderDetails.bottom.rgb } : {}) } } : {}),
+        ...(s.borderDetails.left ? { Left: { Style: s.borderDetails.left.style, ...(s.borderDetails.left.rgb ? { Rgb: s.borderDetails.left.rgb } : {}) } } : {}),
+        ...(s.borderDetails.diagonalUp ? { DiagonalUp: { Style: s.borderDetails.diagonalUp.style, ...(s.borderDetails.diagonalUp.rgb ? { Rgb: s.borderDetails.diagonalUp.rgb } : {}) } } : {}),
+        ...(s.borderDetails.diagonalDown ? { DiagonalDown: { Style: s.borderDetails.diagonalDown.style, ...(s.borderDetails.diagonalDown.rgb ? { Rgb: s.borderDetails.diagonalDown.rgb } : {}) } } : {}),
+      },
+    } : {}),
+    ...(s.fillDetails ? {
+      fillDetails: {
+        Pattern: s.fillDetails.pattern,
+        ...(s.fillDetails.patternRgb ? { PatternRgb: s.fillDetails.patternRgb } : {}),
+        ...(s.fillDetails.gradientRgb ? { GradientRgb: s.fillDetails.gradientRgb } : {}),
+        ...(s.fillDetails.shading ? { Shading: s.fillDetails.shading } : {}),
+        Variant: s.fillDetails.variant ?? 0,
+      },
+    } : {}),
+    ...(s.doubleUnderline ? { doubleUnderline: true } : {}),
+  };
 }
 
 function serializeCell(cell: CellDocument): Record<string, unknown> {
@@ -1100,50 +1152,7 @@ function serializeCell(cell: CellDocument): Record<string, unknown> {
   obj.content = content;
 
   if (cell.style) {
-    const s = cell.style;
-    const styleObj: Record<string, unknown> = {
-      bold: s.bold ?? false,
-      ...(s.numberFormat !== undefined ? { numberFormat: s.numberFormat } : {}),
-      ...(s.fillRgb !== undefined ? { fill: s.fillRgb } : {}),
-      ...(s.fontFamily !== undefined ? { fontFamily: s.fontFamily } : {}),
-      ...(s.fontSize !== undefined ? { fontSize: s.fontSize } : {}),
-      italic: s.italic ?? false,
-      underline: s.underline ?? false,
-      ...(s.textRgb !== undefined ? { textRgb: s.textRgb } : {}),
-      ...(s.borders !== undefined ? { borders: s.borders } : {}),
-      ...(s.verticalAlignment !== undefined ? { verticalAlignment: s.verticalAlignment } : {}),
-      ...(s.alignment !== undefined ? { alignment: s.alignment } : {}),
-      wrap: s.wrap ?? false,
-      ...(s.textRotation !== undefined && s.textRotation !== 0 ? { textRotation: s.textRotation } : {}),
-      ...(s.indent !== undefined && s.indent !== 0 ? { indent: s.indent } : {}),
-      ...(s.shrinkToFit ? { shrinkToFit: true } : {}),
-      ...(s.readingOrder !== undefined ? { readingOrder: s.readingOrder } : {}),
-      ...(s.justifyLastLine ? { justifyLastLine: true } : {}),
-      ...(s.strikethrough ? { strikethrough: true } : {}),
-      ...(s.script !== undefined ? { script: s.script } : {}),
-      ...(s.underlineKind !== undefined ? { underlineKind: s.underlineKind } : {}),
-      ...(s.borderDetails ? {
-        borderDetails: {
-          ...(s.borderDetails.top ? { Top: { Style: s.borderDetails.top.style, ...(s.borderDetails.top.rgb ? { Rgb: s.borderDetails.top.rgb } : {}) } } : {}),
-          ...(s.borderDetails.right ? { Right: { Style: s.borderDetails.right.style, ...(s.borderDetails.right.rgb ? { Rgb: s.borderDetails.right.rgb } : {}) } } : {}),
-          ...(s.borderDetails.bottom ? { Bottom: { Style: s.borderDetails.bottom.style, ...(s.borderDetails.bottom.rgb ? { Rgb: s.borderDetails.bottom.rgb } : {}) } } : {}),
-          ...(s.borderDetails.left ? { Left: { Style: s.borderDetails.left.style, ...(s.borderDetails.left.rgb ? { Rgb: s.borderDetails.left.rgb } : {}) } } : {}),
-          ...(s.borderDetails.diagonalUp ? { DiagonalUp: { Style: s.borderDetails.diagonalUp.style, ...(s.borderDetails.diagonalUp.rgb ? { Rgb: s.borderDetails.diagonalUp.rgb } : {}) } } : {}),
-          ...(s.borderDetails.diagonalDown ? { DiagonalDown: { Style: s.borderDetails.diagonalDown.style, ...(s.borderDetails.diagonalDown.rgb ? { Rgb: s.borderDetails.diagonalDown.rgb } : {}) } } : {}),
-        },
-      } : {}),
-      ...(s.fillDetails ? {
-        fillDetails: {
-          Pattern: s.fillDetails.pattern,
-          ...(s.fillDetails.patternRgb ? { PatternRgb: s.fillDetails.patternRgb } : {}),
-          ...(s.fillDetails.gradientRgb ? { GradientRgb: s.fillDetails.gradientRgb } : {}),
-          ...(s.fillDetails.shading ? { Shading: s.fillDetails.shading } : {}),
-          Variant: s.fillDetails.variant ?? 0,
-        },
-      } : {}),
-      ...(s.doubleUnderline ? { doubleUnderline: true } : {}),
-    };
-    obj.style = styleObj;
+    obj.style = serializeStyle(cell.style);
   }
 
   if (cell.requiresExternalCalculation) {

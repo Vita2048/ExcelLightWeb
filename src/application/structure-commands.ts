@@ -225,7 +225,7 @@ export function changeDimensions(basis: WorkbookSnapshot, id: string, axis: Axis
   for (const patch of changes) {
     requireDocument(Number.isInteger(patch.index) && patch.index >= 1 && patch.index <= axisLimit(axis), 'Invalid dimension.');
     const next = { ...dimensions.get(patch.index), ...patch };
-    if (next.size === undefined && !next.hidden) dimensions.delete(patch.index);
+    if (next.size === undefined && !next.hidden && !next.style) dimensions.delete(patch.index);
     else dimensions.set(patch.index, next);
   }
   const sheets = basis.document.sheets.map(sheet => sheet.id === id
