@@ -1,9 +1,9 @@
 import { borderStyles, borderEdges } from './formats/borders';
 import { fillPatterns, fillShadings, isFontFamily } from './formats/appearance';
 import {
-  cellKey, documentLimits as limits, DocumentError, formulaErrors, inRange, isCoordinate,
+  cellKey, documentLimits as limits, DocumentError, formulaErrors, inRange, isCoordinate, worksheetViewport,
   type AxisDimension, type CellCache, type CellContent, type CellDocument, type CellExtent, type CellReference,
-  type CellStyle, type DocumentId, type FigurePlacement, type PythonFigure, type SheetDocument, type WorkbookDocument,
+  type CellStyle, type Coordinate, type DocumentId, type FigurePlacement, type PythonFigure, type SheetDocument, type WorkbookDocument,
 } from './workbook';
 
 const pythonBindingReference = /^=(?:(?:'(?:[^']|'')+'|[^!']+)!)?\$?[A-Za-z]+\$?[0-9]+(?::\$?[A-Za-z]+\$?[0-9]+)?$/u;
@@ -114,7 +114,7 @@ export function validateCellValue(value: CellContent | CellCache, cache = false)
         }
         if (value.block.lastTable != null) {
           const t = value.block.lastTable;
-          requireDocument(inRange(t.rows, 1, 10000) && inRange(t.columns, 1, 100) && t.rows * t.columns <= 100000, 'Invalid table shape/notices (limit 100,000 cells).');
+          requireDocument(inRange(t.rows, 1, limits.rows) && inRange(t.columns, 1, limits.columns) && t.rows * t.columns <= 100000, 'Invalid table shape/notices (limit 100,000 cells).');
           requireDocument(Array.isArray(t.cells) && t.cells.length === t.rows * t.columns, 'Invalid table shape/notices (limit 100,000 cells).');
           for (const cache of t.cells) {
             if (cache === null) continue;
@@ -207,6 +207,16 @@ export function validateExtent(extent: CellExtent): void {
     inRange(extent.columns, 1, limits.columns - extent.column + 1), 'Range is outside the sheet.');
 }
 
+/** 1 is the merge anchor, 2 is a covered cell, 0 is outside every merge. */
+function mergeRole(merges: readonly CellExtent[], cell: Coordinate): 0 | 1 | 2 {
+  for (const merge of merges) {
+    if (cell.row < merge.row || cell.row >= merge.row + merge.rows ||
+        cell.column < merge.column || cell.column >= merge.column + merge.columns) continue;
+    return cell.row === merge.row && cell.column === merge.column ? 1 : 2;
+  }
+  return 0;
+}
+
 export function overlaps(a: CellExtent, b: CellExtent): boolean {
   return a.row < b.row + b.rows && b.row < a.row + a.rows &&
     a.column < b.column + b.columns && b.column < a.column + a.columns;
@@ -263,18 +273,14 @@ function validateSheets(document: WorkbookDocument, addId: (id: DocumentId) => v
     cells += sheet.cells.length;
     requireDocument(cells <= limits.cells, 'A workbook may contain at most 200,000 populated cells.');
 
-    // Mark only covered coordinates, leaving merge anchors free to hold authored values.
-    let coverage: Uint8Array | undefined;
+    // Overlap is pairwise. Covered cells are found from populated records, not a grid bitmap.
     for (const merge of sheet.merges) {
       validateExtent(merge);
       requireDocument(merge.rows * merge.columns >= 2, 'A merge requires at least two cells.');
-      coverage ??= new Uint8Array(limits.rows * limits.columns);
-      for (let row = merge.row; row < merge.row + merge.rows; row++) {
-        for (let column = merge.column; column < merge.column + merge.columns; column++) {
-          const key = cellKey({ row, column });
-          requireDocument(!coverage[key], 'Merged ranges overlap.');
-          coverage[key] = row === merge.row && column === merge.column ? 1 : 2;
-        }
+    }
+    for (let index = 0; index < sheet.merges.length; index++) {
+      for (let other = index + 1; other < sheet.merges.length; other++) {
+        requireDocument(!overlaps(sheet.merges[index]!, sheet.merges[other]!), 'Merged ranges overlap.');
       }
     }
 
@@ -296,7 +302,7 @@ function validateSheets(document: WorkbookDocument, addId: (id: DocumentId) => v
         requireDocument(!blocks.has(cell.content.blockId), 'Duplicate Python block identity.');
         blocks.add(cell.content.blockId);
       }
-      const merged = coverage?.[key] ?? 0;
+      const merged = mergeRole(sheet.merges, cell);
       requireDocument(!(merged && cell.content.kind === 'python') && (merged !== 2 || cell.content.kind === 'blank'),
         'Cannot put this cell in a merged range.');
       requireDocument(cell.requiresExternalCalculation === undefined || cell.requiresExternalCalculation === false ||
@@ -461,7 +467,7 @@ function validateFigures(document: WorkbookDocument): void {
     requireDocument(isCoordinate({ row: p.row, column: p.column }), 'Placement coordinate is outside grid.');
     requireDocument(inRange(p.rows, 1, limits.rows - p.row + 1), 'Placement row extent is invalid.');
     requireDocument(inRange(p.columns, 1, limits.columns - p.column + 1), 'Placement column extent is invalid.');
-    requireDocument(p.row + p.rows - 1 <= 1000 && p.column + p.columns - 1 <= 26, 'Placement extent is outside viewport.');
+    requireDocument(p.row + p.rows - 1 <= worksheetViewport.rows && p.column + p.columns - 1 <= worksheetViewport.columns, 'Placement extent is outside viewport.');
     const { offsetX = 0, offsetY = 0, width = 0, height = 0 } = p;
     requireDocument(Number.isFinite(offsetX) && Number.isFinite(offsetY) && Number.isFinite(width) && Number.isFinite(height), 'Invalid floating figure position or size.');
     requireDocument(offsetX >= 0 && offsetX <= 4096 && offsetY >= 0 && offsetY <= 4096, 'Invalid floating figure position or size.');

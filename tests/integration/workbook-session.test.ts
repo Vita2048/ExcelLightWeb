@@ -3,7 +3,7 @@ import { Worker } from 'node:worker_threads';
 import { describe, expect, it } from 'vitest';
 import { WorkbookSession, defaultHistoryBudget, type CellEdit } from '../../src/application/workbook-session';
 import { applyDelta, invertDelta } from '../../src/core/workbook-delta';
-import { DocumentError, emptySheet, findReferencedCell, newWorkbook } from '../../src/core/workbook';
+import { DocumentError, documentLimits, emptySheet, findReferencedCell, newWorkbook } from '../../src/core/workbook';
 import type { NativeCalculationReply, NativeCalculationRequest } from '../../src/application/workbook-protocol';
 
 function setup(budget?: { transactions?: number; bytes?: number }) {
@@ -95,7 +95,7 @@ describe('workbook transactions and history', () => {
       { target: at(3), content: { kind: 'number', value: Infinity } },
       { target: at(3), content: { kind: 'text', value: 'x'.repeat(32_768) } },
       { target: at(0), content: { kind: 'number', value: 1 } },
-      { target: at(3, 101), content: { kind: 'number', value: 1 } },
+      { target: at(3, documentLimits.columns + 1), content: { kind: 'number', value: 1 } },
       { target: { ...at(3), invalid: true }, content: { kind: 'number', value: 1 } },
       { target: { ...at(3), sheetId: 'foreign' }, content: { kind: 'number', value: 1 } },
       { target: at(3), content: { kind: 'number', value: 1 }, cellId: basis.document.sheets[0]!.cells[0]!.id },

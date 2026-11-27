@@ -234,6 +234,16 @@ it('saves every imported fixture as an equal native package for browser storage'
   }
 });
 
+it('imports a cell at XFD1048576 and keeps a whole-sheet default column width empty', async () => {
+  const sheet = worksheetXml('<row r="1048576"><c r="XFD1048576"><v>42</v></c></row>').replace(
+    '<sheetData>',
+    '<cols><col min="1" max="16384" width="8.43"/></cols><sheetData>');
+  const { document, report } = await importXlsx(await simplePackage(sheet));
+  expect(cell(document.sheets[0]!, 1_048_576, 16_384)?.content).toEqual({ kind: 'number', value: 42 });
+  expect(document.sheets[0]!.columns).toEqual([]);
+  expect(report.has('column-width')).toBe(false);
+});
+
 it('rejects encrypted, macro-enabled, out-of-bounds and malformed packages before adoption', async () => {
   const encrypted = new Blob([new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0, 0])]);
   await expect(importXlsx(encrypted)).rejects.toThrow(/Encrypted\/password-protected or legacy Excel files/);
@@ -246,11 +256,11 @@ it('rejects encrypted, macro-enabled, out-of-bounds and malformed packages befor
     'xl/vbaProject.bin': 'macro',
   }))).rejects.toThrow(/Macro-enabled Excel files are unsupported/);
 
-  await expect(importXlsx(await simplePackage(worksheetXml('<row r="1"><c r="A10001"><v>1</v></c></row>'))))
-    .rejects.toThrow(/outside supported workbook limits/);
+  await expect(importXlsx(await simplePackage(worksheetXml('<row r="1048577"><c r="A1048577"><v>1</v></c></row>'))))
+    .rejects.toThrow(/No document was adopted/);
 
-  await expect(importXlsx(await simplePackage(worksheetXml('<row r="1"><c r="CW1"><v>1</v></c></row>'))))
-    .rejects.toThrow(/outside supported workbook limits/);
+  await expect(importXlsx(await simplePackage(worksheetXml('<row r="1"><c r="XFE1"><v>1</v></c></row>'))))
+    .rejects.toThrow(/No document was adopted/);
 
   await expect(importXlsx(new Blob([new TextEncoder().encode('not a zip')])))
     .rejects.toThrow(/could not be read as a ZIP package/);
@@ -266,7 +276,7 @@ it('rejects encrypted, macro-enabled, out-of-bounds and malformed packages befor
     .rejects.toThrow(/not valid XML/);
 
   const mergedOutside = worksheetXml('<row r="1"><c r="A1"><v>1</v></c></row>').replace('</worksheet>',
-    '<mergeCells count="1"><mergeCell ref="A1:B10001"/></mergeCells></worksheet>');
+    '<mergeCells count="1"><mergeCell ref="A1:B1048577"/></mergeCells></worksheet>');
   await expect(importXlsx(await simplePackage(mergedOutside)))
     .rejects.toThrow(/merged range outside supported workbook bounds/);
 });

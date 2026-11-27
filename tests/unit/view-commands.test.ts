@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { freezeFromCaret, setFreeze } from '../../src/application/view-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
-import { newWorkbook } from '../../src/core/workbook';
+import { documentLimits, newWorkbook } from '../../src/core/workbook';
 
 function session() {
   let n = 0;
@@ -36,7 +36,7 @@ describe('per-sheet frozen panes', () => {
     const undo = workbook.undoCount;
     expect(() => workbook.execute(setFreeze(workbook.capture(), first, { rows: -1, columns: 2 })))
       .toThrow('Frozen pane boundaries are invalid.');
-    expect(() => workbook.execute(setFreeze(workbook.capture(), first, { rows: 10_000, columns: 0 })))
+    expect(() => workbook.execute(setFreeze(workbook.capture(), first, { rows: documentLimits.rows, columns: 0 })))
       .toThrow('Frozen pane boundaries are invalid.');
     expect(() => workbook.execute(setFreeze(workbook.capture(), first, { rows: 1.5, columns: 0 })))
       .toThrow('Frozen pane boundaries are invalid.');

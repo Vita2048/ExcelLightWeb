@@ -1,6 +1,7 @@
 import { formatCellValue } from '../core/formats/cell-format';
 import type { CacheUpdate } from '../application/workbook-protocol';
 import { parseFormula, referenceBox, UnsupportedFormulaReference, type FormulaExpression, type FormulaReference } from '../core/formula-references';
+import { maskRows, RowMask } from '../core/row-mask';
 import { cellKey, documentLimits, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
 import { lastColumn, lastRow, resolveWorkbookName } from '../core/workbook-names';
 import { ordinalNameKey } from '../core/workbook-validation';
@@ -109,15 +110,19 @@ function evaluationOrder(nodes: Iterable<FormulaNode>) {
   return { order, cycles };
 }
 
-function filterVisibility(sheet: SheetDocument, display: (row: number, column: number) => string) {
+function filterVisibility(sheet: SheetDocument, keyOf: (cell: CellDocument | undefined) => string): RowMask {
   const filter = sheet.filter;
-  const hidden = new Set<number>();
-  if (!filter?.criteria.length) return hidden;
+  if (!filter?.criteria.length) return RowMask.none();
+  const from = filter.row + 1;
+  const to = filter.row + filter.rows - 1;
   const rules = filter.criteria.map(criterion => ({ column: criterion.column, allowed: new Set(criterion.allowed) }));
-  for (let row = filter.row + 1; row < filter.row + filter.rows; row++) {
-    if (rules.some(rule => !rule.allowed.has(display(row, rule.column)))) hidden.add(row);
+  const columns = new Set(rules.map(rule => rule.column));
+  const cells = [];
+  for (const cell of sheet.cells) {
+    if (cell.row < from || cell.row > to || !columns.has(cell.column)) continue;
+    cells.push({ row: cell.row, column: cell.column, key: keyOf(cell) });
   }
-  return hidden;
+  return maskRows(from, to, rules, keyOf(undefined), cells);
 }
 
 function defaultFilterText(cell: CellDocument | undefined): string {
@@ -243,7 +248,7 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
   const sorted = new Map<string, CellDocument[]>();
   const evaluated = new Map<CellDocument, Scalar>();
   const diagnostics = new Map<string, string>();
-  const filtered = new Map<SheetDocument, ReadonlySet<number>>();
+  const filtered = new Map<SheetDocument, RowMask>();
   const manual = new Map<SheetDocument, ReadonlySet<number>>();
 
   function computedValue(cell: CellDocument | undefined): Scalar {
@@ -279,11 +284,10 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
   }
 
   function* values(range: Range, subtotal?: { skipHidden: boolean }): Iterable<Scalar> {
-    let excluded: ReadonlySet<number> | undefined, hidden: ReadonlySet<number> | undefined;
+    let excluded: RowMask | undefined, hidden: ReadonlySet<number> | undefined;
     if (subtotal) {
-      const { sheet, cells } = inputs.get(range.sheetId)!;
-      if (!filtered.has(sheet)) filtered.set(sheet, filterVisibility(sheet, (row, column) =>
-        (options.filterText ?? defaultFilterText)(cells.get(cellKey({ row, column })))));
+      const { sheet } = inputs.get(range.sheetId)!;
+      if (!filtered.has(sheet)) filtered.set(sheet, filterVisibility(sheet, options.filterText ?? defaultFilterText));
       excluded = filtered.get(sheet);
       if (subtotal.skipHidden) {
         if (!manual.has(sheet)) manual.set(sheet, new Set(sheet.rows.filter(row => row.hidden).map(row => row.index)));

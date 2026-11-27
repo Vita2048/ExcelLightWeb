@@ -1,4 +1,5 @@
 import type { FigurePlacement, PythonFigure, SheetDocument, WorkbookDocument } from '../core/workbook';
+import type { RowMask } from '../core/row-mask';
 import { filteredRows } from '../application/data-commands';
 
 const maxSide = 8192;
@@ -13,14 +14,18 @@ export interface FigureCanvas {
 }
 
 function axisSize(first: number, count: number, dimensions: SheetDocument['rows'], base: number,
-  additionalHidden?: ReadonlySet<number>): number {
-  const byIndex = new Map(dimensions.map(item => [item.index, item]));
-  let size = 0;
-  for (let index = first; index < first + count; index++) {
-    const dimension = byIndex.get(index);
-    if (dimension?.hidden || additionalHidden?.has(index)) continue;
-    size += dimension?.size ?? base;
+  mask?: RowMask): number {
+  if (count <= 0) return 0;
+  const last = first + count - 1;
+  let size = count * base;
+  const covered = new Set<number>();
+  for (const dimension of dimensions) {
+    if (dimension.index < first || dimension.index > last) continue;
+    covered.add(dimension.index);
+    if (dimension.hidden || mask?.has(dimension.index)) size -= base;
+    else if (dimension.size != null) size += dimension.size - base;
   }
+  if (mask) size -= base * mask.countHiddenExcept(first, last, covered);
   return size;
 }
 

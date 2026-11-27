@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
@@ -95,7 +95,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
   </div>;
 }
 
-export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
+export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, pythonOpen, onPython, onInsertFunction, cell, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
   activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
@@ -106,6 +106,9 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
   const tableTabWasActive = useRef<Map<string, boolean>>(new Map());
   const id = useId();
   const tabs = useRef(new Map<string, HTMLButtonElement>());
+  const onFontDialog = useCallback(() => onFormatDialog('Font'), [onFormatDialog]);
+  const onAlignmentDialog = useCallback(() => onFormatDialog('Alignment'), [onFormatDialog]);
+  const borderRibbonNode = useMemo(() => <BorderRibbon {...borders} />, [borders]);
   const currentId = activeTable?.id;
   // Switch the contextual tab during render. An effect paints one frame with every panel hidden, and the grid jumps.
   if (currentId !== trackedTableId) {
@@ -240,9 +243,9 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
                 </div>
               </div>
             </fieldset>
-            <FontRibbon style={cell?.style} onApply={onAppearance} onInvalid={onAppearanceError} borders={<BorderRibbon {...borders} />}
-              onDialog={() => onFormatDialog('Font')} />
-            <AlignmentRibbon style={cell?.style} merged={merged} onAlign={onAlign} onMerge={onMerge} onDialog={() => onFormatDialog('Alignment')} />
+            <FontRibbon style={cell?.style} onApply={onAppearance} onInvalid={onAppearanceError} borders={borderRibbonNode}
+              onDialog={onFontDialog} />
+            <AlignmentRibbon style={cell?.style} merged={merged} onAlign={onAlign} onMerge={onMerge} onDialog={onAlignmentDialog} />
             <NumberRibbon cell={cell} onFormat={onNumberFormat} onDialog={() => onStructure('format-cells')} />
             <StructureRibbon onAction={onStructure} />
             <fieldset>
@@ -309,4 +312,4 @@ export function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onM
       ))}
     </div>
   );
-}
+});

@@ -8,14 +8,10 @@ export interface FigureRect {
   readonly height: number;
 }
 
-function trackAtOrAfter(axis: GridAxis, index: number) {
-  return axis.track(index) ?? axis.tracks.find(track => track.index > index);
-}
-
 export function figureLogicalRect(placement: FigurePlacement, rows: GridAxis, columns: GridAxis,
   scale: number): FigureRect | undefined {
-  const row = trackAtOrAfter(rows, placement.row);
-  const column = trackAtOrAfter(columns, placement.column);
+  const row = rows.trackAtOrAfter(placement.row);
+  const column = columns.trackAtOrAfter(placement.column);
   if (!row || !column) return undefined;
   const spanWidth = columns.span(placement.column, placement.column + placement.columns - 1) / scale;
   const spanHeight = rows.span(placement.row, placement.row + placement.rows - 1) / scale;
@@ -30,8 +26,8 @@ export function figureLogicalRect(placement: FigurePlacement, rows: GridAxis, co
 export function figureScreenRect(placement: FigurePlacement, rows: GridAxis, columns: GridAxis, scale: number,
   scrollX: number, scrollY: number, headerLeft: number, headerTop: number): FigureRect | undefined {
   const logical = figureLogicalRect(placement, rows, columns, scale);
-  const row = trackAtOrAfter(rows, placement.row);
-  const column = trackAtOrAfter(columns, placement.column);
+  const row = rows.trackAtOrAfter(placement.row);
+  const column = columns.trackAtOrAfter(placement.column);
   if (!logical || !row || !column) return undefined;
   return {
     x: headerLeft + columns.screen(column, scrollX) + (placement.offsetX ?? 0) * scale,
@@ -44,7 +40,7 @@ export function figureScreenRect(placement: FigurePlacement, rows: GridAxis, col
 export function logicalPoint(position: number, header: number, axis: GridAxis, scroll: number,
   scale: number): number {
   const relative = Math.max(0, position - header);
-  const track = axis.atScreen(relative, scroll) ?? axis.tracks.at(-1);
+  const track = axis.atScreen(relative, scroll) ?? axis.last;
   if (!track) return 0;
   const start = header + axis.screen(track, scroll);
   return track.start / scale + clamp((position - start) / scale, 0, track.size / scale);

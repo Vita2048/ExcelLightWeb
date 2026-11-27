@@ -1,3 +1,5 @@
+import { documentLimits } from '../core/workbook';
+
 /** Feasibility subset. S07–S09 extend the grammar, transformations and evaluator. */
 export type FormulaValue = number | string | boolean | null | { error: string };
 type Reference = { text: string; start: number; end: number };
@@ -108,7 +110,7 @@ function transform(source: string, map: (ref: ReturnType<typeof coordinates>) =>
   for (const token of parse(source).references.reverse()) {
     const ref = coordinates(token.text);
     const { row, col } = map(ref);
-    const text = row >= 1 && row <= 10_000 && col >= 1 && col <= 100
+    const text = row >= 1 && row <= documentLimits.rows && col >= 1 && col <= documentLimits.columns
       ? `${ref.prefix}${ref.colLock}${letters(col)}${ref.rowLock}${row}`
       : '#REF!';
     updated = updated.slice(0, token.start) + text + updated.slice(token.end);

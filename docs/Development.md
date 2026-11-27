@@ -122,7 +122,7 @@ The fixture manifest records source path, SHA-256, expected-value source, permit
 Record OS/CPU/RAM/browser/runtime, fixture dimensions, warm/cold state and sample count. Report p50/p95 over at least 20 warm interactions.
 
 - Typing/selection p95 under 100 ms on a 10,000-populated-cell fixture; ordinary input avoids main-thread tasks above 50 ms.
-- Scrolling targets 60 Hz for the visible A1:Z1000 projection; report dropped frames and viewport/zoom rather than conflating model limits with rendered cells.
+- Scrolling targets 60 Hz for the visible window of the `A1:XFD1048576` grid; report dropped frames and viewport/zoom rather than conflating model limits with rendered cells. The spacer's CSS length stays under `16,777,216` px, header included. Ctrl+Down on an empty column lands on the last row inside that window, and the row-number column is wide enough for `1048576`.
 - Warm native recalculation target under 500 ms for a fixed 1,000-formula dependency fixture; stress 10,000 formulas and 200,000 populated cells without data loss or tab termination, recording observed time/memory.
 - Python default timeout remains 30 seconds. Cold runtime load and showcase cold/warm runs are measured separately.
 - First shell JS/CSS gzip target below 500 KiB excluding lazy Monaco/Pyodide. Runtime asset sizes are reported and must stay below actual Pages constraints.

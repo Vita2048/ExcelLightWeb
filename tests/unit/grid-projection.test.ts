@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { RowMask } from '../../src/core/row-mask';
 import { emptySheet, ownDto, type SheetDocument } from '../../src/core/workbook';
 import { GridAxis } from '../../src/grid/grid-geometry';
 import { navigate, parseAddress, select, selectionAddress, selectionStatistics, singleSelection } from '../../src/grid/grid-selection';
@@ -46,6 +47,10 @@ describe('worksheet projection', () => {
     expect(selectionStatistics(sheet, areas)).toEqual({ count: 3, sum: 6, average: 3 });
     const larger = [{ top: 1, bottom: 4, left: 1, right: 2 }, areas[0]!];
     expect(selectionStatistics(sheet, larger)).toEqual({ count: 3, sum: 6, average: 3 });
+    expect(selectionStatistics(sheet, [{ top: 4, bottom: 4, left: 1, right: 1 }])).toEqual({ count: 1, sum: 4, average: 4 });
+    expect(selectionStatistics(sheet, [{ top: 4, bottom: 4, left: 1, right: 1 }], RowMask.hidden(1, 10, [4]))).toEqual({
+      count: 0, sum: 0, average: undefined,
+    });
   });
 
   it('preserves the active range if an earlier area is toggled and bounds the area count', () => {
@@ -59,10 +64,22 @@ describe('worksheet projection', () => {
     expect(many.additional).toHaveLength(63);
   });
 
-  it('accepts addresses through Z1000 and rejects names, ranges and out-of-projection coordinates', () => {
+  it('accepts addresses through XFD1048576 and rejects names, ranges and coordinates past the grid', () => {
     expect(parseAddress(' $z$1000 ')).toEqual({ row: 1000, column: 26 });
-    for (const value of ['A0', 'A1001', 'AA1', 'A1:B2', 'Sheet1!A1', 'C2\nD3']) {
+    expect(parseAddress('XFD1048576')).toEqual({ row: 1_048_576, column: 16_384 });
+    expect(parseAddress('AA1')).toEqual({ row: 1, column: 27 });
+    for (const value of ['A0', 'A1048577', 'XFE1', 'A1:B2', 'Sheet1!A1', 'C2\nD3']) {
       expect(parseAddress(value)).toBeUndefined();
     }
+  });
+
+  it('jumps Ctrl+Down on an empty million-row axis to the last row', () => {
+    const rows = new GridAxis(1_048_576, 26, []);
+    const columns = new GridAxis(16_384, 96, []);
+    const blank = emptySheet('sheet', 'Sheet1');
+    const started = performance.now();
+    const point = navigate(blank, rows, columns, { row: 1, column: 1 }, 'ArrowDown', true, false, 10);
+    expect(performance.now() - started).toBeLessThan(50);
+    expect(point).toEqual({ row: 1_048_576, column: 1 });
   });
 });

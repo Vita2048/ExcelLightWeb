@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { applyDelta, diffWorkbook, invertDelta, sameAuthoredWorkbook } from '../../src/core/workbook-delta';
+import { columnLetters } from '../../src/core/formula-references';
 import {
-  DocumentError, documentLimits, emptySheet, findCell, newWorkbook, ownDto, type CellDocument, type WorkbookDocument,
+  DocumentError, documentLimits, emptySheet, findCell, newWorkbook, ownDto, worksheetViewport, type CellDocument, type WorkbookDocument,
 } from '../../src/core/workbook';
 import { validateWorkbook } from '../../src/core/workbook-validation';
 
@@ -17,7 +18,9 @@ const withCells = (cells: readonly CellDocument[]): WorkbookDocument => ({ ...bo
 describe('sparse workbook model', () => {
   it('accepts the sheet count and coordinate boundaries and rejects the next sheet', () => {
     const sheets = Array.from({ length: 10 }, (_, index) => emptySheet(`s${index}`, `Sheet ${index}`));
-    const edge = { ...cell(0), row: 10_000, column: 100 };
+    const edge = { ...cell(0), row: documentLimits.rows, column: documentLimits.columns };
+    expect(columnLetters(documentLimits.columns)).toBe('XFD');
+    expect(worksheetViewport).toEqual({ rows: documentLimits.rows, columns: documentLimits.columns, address: 'A1:XFD1048576' });
     sheets[0] = { ...sheets[0]!, cells: [edge] };
     expect(() => validateWorkbook({ ...book, sheets })).not.toThrow();
     expect(findCell(sheets[0]!, edge)).toBe(edge);
@@ -62,7 +65,9 @@ describe('sparse workbook model', () => {
     expect(() => validate({ cells: [cell(1)] })).toThrow(/merged range/);
     expect(() => validate({ merges: [...state.merges, ...state.merges] })).toThrow(/overlap/);
     expect(() => validate({ rows: [...state.rows, ...state.rows] })).toThrow(/dimension/);
-    expect(() => validate({ frozenPanes: { rows: 10_000, columns: 0 } })).toThrow(/frozen panes/);
+    expect(() => validate({ frozenPanes: { rows: documentLimits.rows, columns: 0 } })).toThrow(/frozen panes/);
+    expect(() => validateWorkbook(withCells([{ ...cell(0), row: documentLimits.rows + 1, column: 1 }]))).toThrow(DocumentError);
+    expect(() => validateWorkbook(withCells([{ ...cell(0), row: 1, column: documentLimits.columns + 1 }]))).toThrow(DocumentError);
     expect(() => validate({ filter: { ...state.filter, criteria: [{ column: 2, allowed: [] }] } })).toThrow(/filter column/);
   });
 

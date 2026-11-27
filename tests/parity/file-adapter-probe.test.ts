@@ -37,7 +37,7 @@ it('reads legacy and extended freeze fields and rejects invalid coordinates', as
   expect(workbook.sheets[0]).toMatchObject({ id: 'b71420c7-ad56-4000-8000-000000000001', freeze: [1, 0] });
   expect(freezeSplit('firstColumn')).toEqual([0, 1]);
   expect(freezeSplit({ rows: 2, columns: 3 })).toEqual([2, 3]);
-  expect(() => freezeSplit({ rows: 10_000, columns: 1 })).toThrow('frozen pane');
+  expect(() => freezeSplit({ rows: 1_048_576, columns: 1 })).toThrow('frozen pane');
   expect(() => freezeSplit('TopRow')).toThrow();
 });
 

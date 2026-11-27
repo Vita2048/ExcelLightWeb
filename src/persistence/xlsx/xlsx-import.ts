@@ -4,7 +4,7 @@ import { parseFormula, copyReferences } from '../../core/formula-references';
 import type {
   CellCache, CellDocument, CellExtent, IdFactory, SheetDocument, WorkbookDocument,
 } from '../../core/workbook';
-import { cellKey, documentLimits, DocumentError, formulaErrors } from '../../core/workbook';
+import { documentLimits, DocumentError, formulaErrors } from '../../core/workbook';
 import { validateWorkbook } from '../../core/workbook-validation';
 import { supportedFunctions } from '../../calculation/formula-functions';
 import { desktopZipBudget } from '../bounded-zip';
@@ -417,7 +417,6 @@ function readWorksheet(raw: Element, sheetName: string, shared: readonly string[
   }
 
   const merges: CellExtent[] = [];
-  const coverage = new Set<number>();
   for (const merge of childElements(firstChild(raw, 'mergeCells'), 'mergeCell')) {
     const reference = attr(merge, 'ref');
     const area = reference ? parseArea(reference) : undefined;
@@ -426,15 +425,13 @@ function readWorksheet(raw: Element, sheetName: string, shared: readonly string[
       throw new PackageException('XLSX contains a merged range outside supported workbook bounds. No document was adopted.');
     }
     merges.push(area);
-    for (let row = area.row; row < area.row + area.rows; row++) {
-      for (let column = area.column; column < area.column + area.columns; column++) {
-        if (row === area.row && column === area.column) continue;
-        coverage.add(cellKey({ row, column }));
-      }
-    }
   }
+  const covered = (cell: { row: number; column: number }) => merges.some(area =>
+    cell.row >= area.row && cell.row < area.row + area.rows &&
+    cell.column >= area.column && cell.column < area.column + area.columns &&
+    !(cell.row === area.row && cell.column === area.column));
   const kept = merges.length === 0 ? cells : cells.filter(cell => {
-    if (!coverage.has(cellKey(cell))) return true;
+    if (!covered(cell)) return true;
     if (cell.content.kind === 'blank') return true;
     report.add(exchangeCodes.mergedCells, 'Values stored in covered merge cells were discarded; the upper-left value is kept.');
     return false;

@@ -1,9 +1,8 @@
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
-import { DocumentError } from '../core/workbook';
 import { parseFormula } from '../core/formula-references';
 import { excelDateParts } from '../core/date-serial-probe';
 import { temporalParts } from '../core/formats/format-code';
-import { findCell, type CellCache, type CellDocument, type CellExtent, type PythonBlock, type WorkbookDocument, type WorkbookName } from '../core/workbook';
+import { DocumentError, documentLimits, findCell, type CellCache, type CellDocument, type CellExtent, type PythonBlock, type WorkbookDocument, type WorkbookName } from '../core/workbook';
 import { tableDesign, tableInputExtent } from '../core/workbook-names';
 import { ordinalNameKey, requireDocument } from '../core/workbook-validation';
 import { discoverPythonReferences, pythonNameKey } from './references';
@@ -60,7 +59,7 @@ function resolveRange(document: WorkbookDocument, localSheetId: string, referenc
   const lastColumn = referencePart.last.column ?? firstColumn;
   const area = { sheetId: sheet.id, row: Math.min(firstRow, lastRow), column: Math.min(firstColumn, lastColumn),
     rows: Math.abs(lastRow - firstRow) + 1, columns: Math.abs(lastColumn - firstColumn) + 1 };
-  requireDocument(area.row + area.rows - 1 <= 10_000 && area.column + area.columns - 1 <= 100,
+  requireDocument(area.row + area.rows - 1 <= documentLimits.rows && area.column + area.columns - 1 <= documentLimits.columns,
     'Python input range exceeds worksheet limits.');
   return { area, dataOnlyTable: false };
 }

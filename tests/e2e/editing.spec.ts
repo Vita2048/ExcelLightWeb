@@ -107,7 +107,8 @@ test('F2 and double-click open the cell editor with the existing content selecte
   await expect(grid).toBeFocused();
 
   const box = (await grid.boundingBox())!;
-  await page.mouse.dblclick(box.x + 50, box.y + 38);
+  const header = Number(await grid.getAttribute('data-row-header'));
+  await page.mouse.dblclick(box.x + header + 12, box.y + 38);
   await expect(inline).toBeFocused();
   expect(await inline.evaluate(node => {
     const input = node as HTMLTextAreaElement;
@@ -181,16 +182,17 @@ test('invalid draft blocks selection and commands, and a valid blur commits to t
   await formula.fill('=');
   await formula.press('Home');
   const { x, y } = (await grid.boundingBox())!;
-  await page.mouse.click(x + 50, y + 38);
+  const header = Number(await grid.getAttribute('data-row-header'));
+  await page.mouse.click(x + header + 12, y + 38);
   await expect(formula).toBeFocused();
   await expect(page.getByRole('textbox', { name: 'Name box' })).toHaveValue('B2');
   await expect(page.getByText(/formula must/u)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
   await formula.fill('TRUE');
-  await page.mouse.click(x + 50, y + 38);
+  await page.mouse.click(x + header + 12, y + 38);
   await expect(cell(page, 'B2', 'TRUE')).toBeAttached();
   await expect(page.getByRole('textbox', { name: 'Name box' })).toHaveValue('A1');
-  await page.mouse.dblclick(x + 50, y + 38);
+  await page.mouse.dblclick(x + header + 12, y + 38);
   await expect(page.getByRole('textbox', { name: 'Edit A1' })).toBeFocused();
 });
 

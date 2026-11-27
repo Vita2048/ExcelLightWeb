@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { pasteText } from '../../src/application/editing-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
-import { newWorkbook, type CellDocument, type SheetDocument, type WorkbookDocument } from '../../src/core/workbook';
+import { documentLimits, newWorkbook, type CellDocument, type SheetDocument, type WorkbookDocument } from '../../src/core/workbook';
 import { readProbeParts } from '../../src/persistence/bounded-zip';
 import { importXlsx, inspectXlsxExport, writeXlsx } from '../../src/persistence/xlsx';
 
@@ -60,6 +60,20 @@ it('reports stable ids, omitted metadata, dimensions, stale caches and missing c
   }
   expect(report.issues.find(issue => issue.code === 'missing-cache')?.detail).toContain('Sheet1!A3');
   expect(report.has('macros')).toBe(false);
+});
+
+it('writes a dimension that includes a cell at the Excel corner', async () => {
+  const document = workbookOf([
+    { id: makeId(), row: documentLimits.rows, column: documentLimits.columns, content: { kind: 'number', value: 42 } },
+  ]);
+  const parts = await partsOf((await writeXlsx(document)).blob);
+  const sheet = parts.get('xl/worksheets/sheet1.xml')!;
+  expect(sheet).toContain('<dimension ref="A1:XFD1048576"/>');
+  expect(sheet).toContain('r="XFD1048576"');
+  const imported = await importXlsx((await writeXlsx(document)).blob);
+  expect(imported.document.sheets[0]!.cells).toEqual([
+    expect.objectContaining({ row: documentLimits.rows, column: documentLimits.columns, content: { kind: 'number', value: 42 } }),
+  ]);
 });
 
 it('writes formula text and caches without evaluating or inventing zero, and asks Excel to recalculate', async () => {

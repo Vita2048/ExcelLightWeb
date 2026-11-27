@@ -159,7 +159,8 @@ test('aligns stacked fixed-decimal glyphs at the top, bottom, and across the row
   const inkRows = () => page.locator('.worksheet-canvas').evaluate((canvas: HTMLCanvasElement) => {
     const ratio = devicePixelRatio;
     const width = 96 * ratio, height = 184 * ratio;
-    return [44, 140, 236].map(left => {
+    const header = Number(document.querySelector('.worksheet-scroll')?.getAttribute('data-row-header') ?? 0);
+    return [header, header + 96, header + 192].map(left => {
       const data = canvas.getContext('2d')!.getImageData(left * ratio, 26 * ratio, width, height).data;
       const spans: { top: number; bottom: number }[] = [];
       for (let row = 0; row < height; row++) {

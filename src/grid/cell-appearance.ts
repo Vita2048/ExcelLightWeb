@@ -35,7 +35,8 @@ export function drawCellText(context: CanvasRenderingContext2D, text: string, st
 interface TextBox { readonly x: number; readonly y: number; readonly width: number; readonly height: number }
 
 export function drawAlignedText(ctx: CanvasRenderingContext2D, text: string, style: CellStyle | undefined,
-  fallback: string, scale: number, box: TextBox, valueKind: string) {
+  fallback: string, scale: number, box: TextBox, valueKind: string,
+  inheritedFont?: string, inheritedDirection?: CanvasDirection) {
   if (!text) return;
   const align = style?.alignment ?? (valueKind === 'number' || style?.readingOrder === 'rtl' ? 'right' :
     valueKind === 'boolean' || valueKind === 'error' ? 'center' : 'left');
@@ -55,19 +56,32 @@ export function drawAlignedText(ctx: CanvasRenderingContext2D, text: string, sty
     vertical === 'justify' || vertical === 'distributed');
   const horizontal = align === 'right' ? 'right' :
     ['center', 'centerContinuous', 'distributed'].includes(align) ? 'center' : 'left';
-  ctx.direction = style?.readingOrder === 'rtl' ? 'rtl' : style?.readingOrder === 'ltr' ? 'ltr' :
+  const dir: CanvasDirection = style?.readingOrder === 'rtl' ? 'rtl' : style?.readingOrder === 'ltr' ? 'ltr' :
     /^\s*[\u0590-\u08ff]/u.test(text) ? 'rtl' : 'ltr';
-  ctx.font = normal.css;
-  ctx.textBaseline = 'middle';
+  if (dir !== inheritedDirection) ctx.direction = dir;
+  if (normal.css !== inheritedFont) ctx.font = normal.css;
+  if (!inheritedFont) ctx.textBaseline = 'middle';
+  const baseHeight = normal.size * 1.18;
+  const x = horizontal === 'right' ? right : horizontal === 'center' ? left + width / 2 : left;
+  if (!stacked && !angle && !wrap && !style?.shrinkToFit && !style?.underline && !style?.strikethrough &&
+      align !== 'fill' && align !== 'distributed' && align !== 'justify' &&
+      vertical !== 'distributed' && vertical !== 'justify' && !text.includes('\n') && !text.includes('\r')) {
+    const extra = Math.max(0, height - baseHeight);
+    const start = top + (vertical === 'top' ? 0 : vertical === 'center' ? extra / 2 : extra);
+    ctx.textAlign = horizontal;
+    ctx.fillText(text, x, start + baseHeight / 2 + normal.shift);
+    return;
+  }
   const measure = (value: string) => ctx.measureText(value).width;
   const lines = stacked ? Array.from(text.replace(/\r\n?/gu, '\n'), glyph => glyph === '\n' ? '' : glyph) :
     text.split(/\r\n|\r|\n/u).flatMap(line => wrap ? wrapText(line, width, measure) : [line]);
   let fontScale = scale;
-  const baseHeight = normal.size * 1.18;
-  const textWidth = lines.reduce((maximum, line) => Math.max(maximum, measure(line)), 0);
-  const cos = Math.abs(Math.cos(angle)), sin = Math.abs(Math.sin(angle));
-  const projectedWidth = textWidth * cos + baseHeight * lines.length * sin;
-  if (!stacked && !wrap && style?.shrinkToFit && align !== 'fill' && projectedWidth > width) fontScale *= width / projectedWidth;
+  const needsShrink = !stacked && !wrap && !!style?.shrinkToFit && align !== 'fill';
+  const cos = angle ? Math.abs(Math.cos(angle)) : 1;
+  const sin = angle ? Math.abs(Math.sin(angle)) : 0;
+  const textWidth = angle || needsShrink ? lines.reduce((maximum, line) => Math.max(maximum, measure(line)), 0) : 0;
+  const projectedWidth = angle ? textWidth * cos + baseHeight * lines.length * sin : textWidth;
+  if (needsShrink && projectedWidth > width) fontScale *= width / projectedWidth;
   const shrink = fontScale / scale;
   const lineHeight = baseHeight * shrink;
   const textHeight = lineHeight * lines.length;
@@ -76,7 +90,6 @@ export function drawAlignedText(ctx: CanvasRenderingContext2D, text: string, sty
     return top + (vertical === 'top' || vertical === 'justify' ? 0 :
       vertical === 'center' || vertical === 'distributed' ? extra / 2 : extra);
   };
-  const x = horizontal === 'right' ? right : horizontal === 'center' ? left + width / 2 : left;
   if (stacked) {
     // Number formats can add invisible padding. Align the painted glyphs, including decimal separators.
     let first = -1, last = -1;
@@ -270,9 +283,42 @@ export function usesLightPaper(style?: CellStyle): boolean {
   const effect = style?.fillDetails;
   const paper = style?.fillRgb ?? (effect && (effect.shading || effect.pattern !== 'none') ? 'FFFFFF' : '');
   if (!paper) return false;
-  const channels = [0, 2, 4].map(index => Number.parseInt(paper.slice(index, index + 2), 16));
-  return channels[0]! * .2126 + channels[1]! * .7152 + channels[2]! * .0722 > 170;
+  const rgb = Number.parseInt(paper, 16);
+  const red = (rgb >> 16) & 255;
+  const green = (rgb >> 8) & 255;
+  const blue = rgb & 255;
+  return red * .2126 + green * .7152 + blue * .0722 > 170;
 }
+
+const tablePalettes = {
+  Blue: {
+    strong: Object.freeze<CellStyle>({ fillRgb: '4F81BD', textRgb: 'F5F5F5', bold: true }),
+    band: Object.freeze<CellStyle>({ fillRgb: 'B8CCE4', textRgb: '172B4D', bold: false }),
+    plain: Object.freeze<CellStyle>({ fillRgb: 'DCE6F1', textRgb: '172B4D', bold: false }),
+  },
+  Green: {
+    strong: Object.freeze<CellStyle>({ fillRgb: '548235', textRgb: 'F5F5F5', bold: true }),
+    band: Object.freeze<CellStyle>({ fillRgb: 'C6DFB2', textRgb: '172B4D', bold: false }),
+    plain: Object.freeze<CellStyle>({ fillRgb: 'E2EFDA', textRgb: '172B4D', bold: false }),
+  },
+  Orange: {
+    strong: Object.freeze<CellStyle>({ fillRgb: 'C65911', textRgb: 'F5F5F5', bold: true }),
+    band: Object.freeze<CellStyle>({ fillRgb: 'F8CBAD', textRgb: '172B4D', bold: false }),
+    plain: Object.freeze<CellStyle>({ fillRgb: 'FCE4D6', textRgb: '172B4D', bold: false }),
+  },
+  Purple: {
+    strong: Object.freeze<CellStyle>({ fillRgb: '8064A2', textRgb: 'F5F5F5', bold: true }),
+    band: Object.freeze<CellStyle>({ fillRgb: 'CCC0DA', textRgb: '172B4D', bold: false }),
+    plain: Object.freeze<CellStyle>({ fillRgb: 'E4DFEC', textRgb: '172B4D', bold: false }),
+  },
+  Neutral: {
+    strong: Object.freeze<CellStyle>({ fillRgb: '303844', textRgb: 'F5F5F5', bold: true }),
+    strongBody: Object.freeze<CellStyle>({ fillRgb: '23262B', textRgb: 'F5F5F5', bold: true }),
+    strongBand: Object.freeze<CellStyle>({ fillRgb: '2A3037', textRgb: 'F5F5F5', bold: true }),
+    band: Object.freeze<CellStyle>({ fillRgb: '2A3037', textRgb: 'F5F5F5', bold: false }),
+    plain: Object.freeze<CellStyle>({ fillRgb: '23262B', textRgb: 'F5F5F5', bold: false }),
+  },
+} as const;
 
 export function effectiveCellStyle(
   style: CellStyle | undefined,
@@ -280,7 +326,14 @@ export function effectiveCellStyle(
   tables: readonly WorkbookName[],
 ): CellStyle | undefined {
   if (!tables.length) return style;
-  const table = tables.find(t => !t.area.invalid && extentContains(t.area, point));
+  let table: WorkbookName | undefined;
+  for (let i = 0; i < tables.length; i++) {
+    const candidate = tables[i]!;
+    if (!candidate.area.invalid && extentContains(candidate.area, point)) {
+      table = candidate;
+      break;
+    }
+  }
   if (!table) return style;
   const design = tableDesign(table);
   const area = table.area;
@@ -290,6 +343,17 @@ export function effectiveCellStyle(
     (design.lastColumn && point.column === area.column + area.columns - 1);
   const stripedRow = design.bandedRows && ((point.row - area.row - (design.headerRow ? 1 : 0)) % 2 !== 0);
   const striped = stripedRow || (design.bandedColumns && ((point.column - area.column) % 2 === 1));
+
+  if (!style) {
+    if (design.style === 'Neutral') {
+      const palette = tablePalettes.Neutral;
+      if (header || total) return palette.strong;
+      if (strong) return stripedRow ? palette.strongBand : palette.strongBody;
+      return stripedRow ? palette.band : palette.plain;
+    }
+    const palette = tablePalettes[design.style];
+    return strong ? palette.strong : striped ? palette.band : palette.plain;
+  }
 
   let accent: string, plain: string, band: string;
   switch (design.style) {
@@ -308,9 +372,9 @@ export function effectiveCellStyle(
     ? (header || total ? accent : stripedRow ? band : plain)
     : (strong ? accent : striped ? band : plain);
 
-  const fillRgb = style?.fillRgb ?? (style?.fillDetails ? undefined : fill);
-  const textRgb = style?.textRgb ?? (strong || design.style === 'Neutral' ? 'F5F5F5' : '172B4D');
-  const bold = Boolean(style?.bold || strong);
+  const fillRgb = style.fillRgb ?? (style.fillDetails ? undefined : fill);
+  const textRgb = style.textRgb ?? (strong || design.style === 'Neutral' ? 'F5F5F5' : '172B4D');
+  const bold = Boolean(style.bold || strong);
 
   return {
     ...style,

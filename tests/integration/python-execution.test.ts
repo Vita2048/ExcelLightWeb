@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clear } from '../../src/application/editing-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { applyPythonResult } from '../../src/core/python-spills';
-import { defaultPythonSource, findCell, newWorkbook, type PythonBlock } from '../../src/core/workbook';
+import { defaultPythonSource, documentLimits, findCell, newWorkbook, type PythonBlock } from '../../src/core/workbook';
 import { loadNativePackage, saveNativePackage } from '../../src/persistence/native';
 import { buildPythonInputs } from '../../src/python/python-inputs';
 import { pythonBlockFromOutput, pythonInsertCommand } from '../../src/python/python-results';
@@ -175,6 +175,6 @@ describe('S20 manually executed Python results', () => {
     expect(() => pythonBlockFromOutput(block, { ...base, stdout: 'x'.repeat(1024 * 1024 + 1),
       result: { kind: 'scalar', value: 1 } }, 'input', 'runtime')).toThrow(/log/u);
     expect(() => pythonBlockFromOutput(block, { ...base, result: { kind: 'table', headers: null,
-      rows: Array.from({ length: 10_001 }, () => [1]), notices: [] } }, 'input', 'runtime')).toThrow(/shape/u);
+      rows: [Array.from({ length: documentLimits.columns + 1 }, () => 1)], notices: [] } }, 'input', 'runtime')).toThrow(/shape/u);
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { memo, useState, useEffect, type ReactNode } from 'react';
 import { fontSizes, isFontFamily, parseFontSize, underlineOf, underlineOptions, underlinePatch,
   type AppearancePatch, type Underline } from '../../core/formats/appearance';
 import type { CellStyle } from '../../core/workbook';
@@ -24,7 +24,7 @@ function FontInput({ label, value, choices, onCommit }: {
   </div>;
 }
 
-export function FontRibbon({ style, onApply, onDialog, onInvalid, borders }: {
+export const FontRibbon = memo(function FontRibbon({ style, onApply, onDialog, onInvalid, borders }: {
   style: CellStyle | undefined;
   borders: ReactNode;
   onApply: (patch: AppearancePatch, focus?: boolean) => void;
@@ -81,4 +81,4 @@ export function FontRibbon({ style, onApply, onDialog, onInvalid, borders }: {
       </div>
     </div>
   </fieldset>;
-}
+});

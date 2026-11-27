@@ -121,7 +121,7 @@ test('typing and selection stay responsive on a 10,000-populated-cell worksheet'
   }
 });
 
-test('scrolling the A1:Z1000 projection sustains animation frames', async ({ page, browser, browserName }, testInfo) => {
+test('scrolling the visible window sustains animation frames', async ({ page, browser, browserName }, testInfo) => {
   test.setTimeout(browserName === 'webkit' ? 45_000 : 30_000);
   await page.goto(path);
   await populate(page, 100, 26);

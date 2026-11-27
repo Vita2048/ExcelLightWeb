@@ -7,9 +7,10 @@ import { formulaAddress } from '../../src/core/formula-references';
 import { validateWorkbook } from '../../src/core/workbook-validation';
 import { environment, percentile, record, summarize, type Measurement } from './support';
 
-// Deterministic fixtures at the shared source limits: 2 sheets x 1,000 rows x 100 columns.
+// 2 sheets x 1,000 rows x 100 columns stays on the 200,000-cell and 10,000-formula caps.
+// The sheet is wider than this fixture; do not grow it with documentLimits.columns.
 const rows = 1_000;
-const columns = documentLimits.columns;
+const columns = 100;
 const formulaColumns = 5;
 const sheets = 2;
 
@@ -61,7 +62,7 @@ function mediumWorkbook(): WorkbookDocument {
   let n = 0;
   const cells: CellDocument[] = [];
   for (let row = 1; row <= 100; row++) {
-    for (let column = 1; column <= documentLimits.columns; column++) {
+    for (let column = 1; column <= columns; column++) {
       cells.push(numberCell(`medium-${++n}`, row, column, row * 1_000 + column));
     }
   }

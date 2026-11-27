@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { emptySheet } from '../../src/core/workbook';
-import { figureCanvasForPlacement } from '../../src/python/figure-rendering';
+import { figureCanvasForPlacement, figurePlacementSize } from '../../src/python/figure-rendering';
 import { figureLogicalRect, figurePlacementFromRect, figureScreenRect } from '../../src/grid/figure-geometry';
 import { GridAxis } from '../../src/grid/grid-geometry';
 
@@ -39,5 +39,19 @@ describe('Python Figure placement geometry', () => {
     expect(bounded.height).toBeLessThanOrEqual(8192);
     expect(bounded.width * bounded.height).toBeLessThanOrEqual(16_000_000);
     expect(bounded.dpi).toBeLessThanOrEqual(144);
+  });
+
+  it('sizes a filtered column from the hidden mask instead of every row', () => {
+    const sheet = {
+      ...emptySheet('sheet', 'Sheet'),
+      cells: [{ id: 'a', row: 2, column: 1, content: { kind: 'text' as const, value: 'keep' } }],
+      filter: { row: 1, column: 1, rows: 1_048_576, columns: 1, criteria: [{ column: 1, allowed: ['keep'] }] },
+    };
+    const started = performance.now();
+    const size = figurePlacementSize({
+      id: 'plot', sheetId: 'sheet', row: 1, column: 1, rows: 1_048_576, columns: 1,
+    }, sheet);
+    expect(performance.now() - started).toBeLessThan(50);
+    expect(size).toEqual({ width: 96, height: 52 });
   });
 });

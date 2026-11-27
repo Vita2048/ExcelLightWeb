@@ -1,9 +1,10 @@
 export const documentLimits = Object.freeze({
-  sheets: 10, rows: 10_000, columns: 100, cells: 200_000, formulas: 10_000,
+  sheets: 10, rows: 1_048_576, columns: 16_384, cells: 200_000, formulas: 10_000,
   formulaLength: 8192, textLength: 32767, sheetNameLength: 31, numberFormatLength: 128,
   names: 1000, pythonSourceBytes: 1024 * 1024,
 });
-export const worksheetViewport = Object.freeze({ rows: 1000, columns: 26, address: 'A1:Z1000' });
+/** Same grid as documentLimits. Address is hardcoded so this module does not import columnLetters. */
+export const worksheetViewport = Object.freeze({ rows: 1_048_576, columns: 16_384, address: 'A1:XFD1048576' });
 /** New =PY anchors start with an empty editor; workbook code is always user-authored. */
 export const defaultPythonSource = '';
 

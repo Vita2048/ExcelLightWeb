@@ -1,3 +1,4 @@
+import { documentLimits } from '../core/workbook';
 import { readProbeParts, writeProbeParts } from './bounded-zip';
 
 const guidPattern = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
@@ -28,7 +29,7 @@ export function freezeSplit(value: unknown): [number, number] {
   if (value === 'firstColumn') return [0, 1];
   const { rows, columns } = record(value);
   if (typeof rows !== 'number' || typeof columns !== 'number' || !Number.isInteger(rows) ||
-      !Number.isInteger(columns) || rows < 0 || rows >= 10_000 || columns < 0 || columns >= 100 || rows + columns === 0) {
+      !Number.isInteger(columns) || rows < 0 || rows >= documentLimits.rows || columns < 0 || columns >= documentLimits.columns || rows + columns === 0) {
     throw new Error('Invalid frozen pane boundaries');
   }
   return [rows, columns];

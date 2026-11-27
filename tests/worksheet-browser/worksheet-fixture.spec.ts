@@ -19,15 +19,35 @@ test('fixed worksheet geometry aligns headers and cells before and after fractio
   await expect(page.getByRole('gridcell', { name: 'A1, 8' })).toBeAttached();
   const line = [56, 56, 56, 255];
   const white = [255, 255, 255, 255];
-  // Column C is 112px. Row 4 is 38px. Row 5 is hidden.
-  await expect.poll(() => pixels(page, [[347, 4], [347, 109], [6, 141], [210, 141], [50, 32]]))
+  // Column C is 112px. Row 4 is 38px. Row 5 is hidden. The row header is measured from the last row number.
+  const header = Number(await grid.getAttribute('data-row-header'));
+  const columnCLine = header + 96 + 96 + 112 - 1;
+  await expect.poll(() => pixels(page, [[columnCLine, 4], [columnCLine, 109], [6, 141], [210, 141], [header + 6, 32]]))
     .toEqual([line, line, line, line, white]);
   await grid.evaluate(node => node.scrollTo({ left: 37, top: 13 }));
-  await expect.poll(() => pixels(page, [[310, 4], [310, 96], [6, 128], [210, 128]]))
-    .toEqual([line, line, line, line]);
+  await expect.poll(() => pixels(page, [[columnCLine - 37, 4], [columnCLine - 37, 96]]))
+    .toEqual([line, line]);
+  // Vertical scroll is compressed on the full sheet, so the row edge moves by more than 13px.
+  // The header and the cell must still share that edge. The header pixel is blended with the header fill.
+  const edge = await page.locator('.worksheet-canvas').evaluate((canvas: HTMLCanvasElement) => {
+    const context = canvas.getContext('2d')!;
+    const ratio = window.devicePixelRatio || 1;
+    const at = (x: number, y: number) => context.getImageData(Math.ceil((x + 1) * ratio) - 1, Math.ceil((y + 1) * ratio) - 1, 1, 1).data;
+    let y = -1;
+    for (let scan = 100; scan < 141; scan++) {
+      const pixel = at(300, scan);
+      if (pixel[0] === 56 && pixel[1] === 56 && pixel[2] === 56) { y = scan; break; }
+    }
+    const header = at(6, y);
+    return { y, header: [header[0], header[1], header[2]] };
+  });
+  expect(edge.y).toBeGreaterThan(100);
+  expect(edge.y).toBeLessThan(141);
+  expect(edge.header[0]).toBeGreaterThan(45);
+  expect(edge.header[0]).toBeLessThan(70);
   await page.getByRole('tab', { name: 'View' }).click();
   await page.getByRole('checkbox', { name: 'Gridlines' }).uncheck();
-  await expect.poll(() => pixels(page, [[310, 4], [310, 96]]))
+  await expect.poll(() => pixels(page, [[columnCLine - 37, 4], [columnCLine - 37, 96]]))
     .toEqual([line, [32, 32, 32, 255]]);
   await page.getByRole('checkbox', { name: 'Headings' }).uncheck();
   await expect.poll(() => pixels(page, [[1, 1]])).not.toEqual([[38, 38, 38, 255]]);
@@ -104,8 +124,9 @@ test('projects one merged fill through the four frozen panes and hides the inter
   await expect.poll(() => grid.evaluate(node => [node.scrollLeft, node.scrollTop])).toEqual([12, 7]);
   const ink = [21, 96, 130, 255];
   const divider = [160, 160, 160, 255];
+  const header = Number(await grid.getAttribute('data-row-header'));
   await expect.poll(() => pixels(page, [
     [120, 35], [160, 35], [120, 60], [160, 60],
-    [139, 36], [120, 51], [223, 60], [120, 70], [360, 60],
+    [header + 95, 36], [120, 51], [223, 60], [120, 70], [360, 60],
   ])).toEqual([ink, ink, ink, ink, divider, divider, ink, ink, [32, 32, 32, 255]]);
 });

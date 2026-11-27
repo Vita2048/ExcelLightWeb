@@ -39,7 +39,7 @@ export function useRibbonPopover(anchor: RefObject<HTMLElement | null>, panel: R
       window.removeEventListener('resize', position);
       document.removeEventListener('scroll', position, true);
     };
-  });
+  }, [anchor, panel, beside]);
 }
 
 export interface RibbonItem {

@@ -105,8 +105,8 @@
       "path": "tests/fixtures/formulas/S08-desktop.json",
       "sourcePath": "src/ExcelLite.Calculation/NativeCalculator.cs",
       "captured": "2026-11-18",
-      "sha256": "6c68a94f26827bfb1c1f6e80b3c0f3ceb2d72208a969d82e39546199f1b20da5",
-      "bytes": 33924,
+      "sha256": "5640f987c65399f1a2fb1a706e0752d035a678e1e71e49f03afc1b23f5dae631",
+      "bytes": 33918,
       "purpose": "Synthetic formula workbooks and typed results captured from the desktop NativeCalculator",
       "expectedValues": "Desktop Release ExcelLite.Calculation.dll with ClosedXML 0.105.0, .NET SDK 10.0.402, cs-CZ",
       "oracleSha256": "2728501ff95db80173d493f57a8c32fa852a22d5704f30e94df9dfd8374f8cad"

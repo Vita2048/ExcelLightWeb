@@ -19,6 +19,11 @@ This file records limitations that remain open after release acceptance. An item
 - A single-cell edit on the 200,000-cell / 10,000-formula maximum-bound workbook measured p95 669 ms. The 100 ms interaction target applies to the 10,000-cell fixture (measured p95 33.7 ms); the maximum-bound cost is a recorded main-thread limitation, not a passing budget.
 - Cold Pyodide startup is about 20 seconds on the recorded machine. Python is preloaded on page load, so this is background startup rather than blocking input, but first-run availability still waits for it.
 
+## Grid and scrolling
+
+- At the default 26 px row height the sheet is about 27.3 million pixels tall, above the 16,777,216 px scroll cap, so the vertical scrollbar is compressed at 100% zoom. The thumb is a fraction of the sheet. The spacer stays one pixel under that cap, and the map follows the browser's used scroll range, so the last row can sit at the bottom and Ctrl+Down reveals it there. Drag-autoscroll deltas are applied in content pixels. A mouse wheel still moves native pixels, a few rows per notch. Horizontal scrolling stays 1:1 at the default 96 px column width. The row-number column is sized from the last row label.
+- Format, border, copy, merge, sort, and row or column hide, size, and autofit still refuse a span above 200,000 cells. Whole-column formatting stored as one column style is not implemented. A compressed scroll move that would stay on the same device pixel steps one pixel so WebKit actually scrolls.
+
 ## Compatibility limits
 
 - The native `.exlt` writer emits format version 1 only. There is no migration decision for a future incompatible schema; older legacy fields are read and migrated.

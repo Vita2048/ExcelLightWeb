@@ -8,7 +8,7 @@ import { WorkbookSession } from '../../src/application/workbook-session';
 import { createTable, changeTableDesign } from '../../src/application/table-commands';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { changeSheet } from '../../src/application/structure-commands';
-import { findCell, newWorkbook, type CellDocument, type SheetFilter, type WorkbookDocument, type WorkbookName } from '../../src/core/workbook';
+import { emptySheet, findCell, newWorkbook, type CellDocument, type SheetFilter, type WorkbookDocument, type WorkbookName } from '../../src/core/workbook';
 
 const order = localeTextOrder('en-US');
 
@@ -196,7 +196,10 @@ describe('AutoFilter criteria and visibility', () => {
     const basis = session.capture();
     const before = session.active;
     session.execute(setFilter(basis, sheetId, filter));
-    expect(filteredRows(session.active.sheets[0]!)).toEqual(new Set([2]));
+    const hidden = filteredRows(session.active.sheets[0]!);
+    expect(hidden.size).toBe(1);
+    expect(hidden.has(2)).toBe(true);
+    expect(hidden.has(3)).toBe(false);
     expect(recordSummary(session.active.sheets[0]!)).toBe('2 of 3 records');
     expect(session.undoCount).toBe(1);
     expect(session.undo()).toBe(true);
@@ -225,7 +228,9 @@ describe('AutoFilter criteria and visibility', () => {
       row: 1, column: 1, rows: 3, columns: 1, criteria: [{ column: 1, allowed: ['10.00'] }],
     }));
     const sheet = session.active.sheets[0]!;
-    expect(filteredRows(sheet)).toEqual(new Set([3]));
+    const hidden = filteredRows(sheet);
+    expect(hidden.size).toBe(1);
+    expect(hidden.has(3)).toBe(true);
     expect(columnValues(sheet, sheet.filter!, 1, order).map(value => value.key)).toEqual(['10.00', '20.00']);
   });
 
@@ -244,7 +249,9 @@ describe('AutoFilter criteria and visibility', () => {
     expect(text(session.active, 3, 1)).toEqual({ kind: 'text', value: 'mmm' });
     expect(text(session.active, 4, 1)).toEqual({ kind: 'text', value: 'zzz' });
     expect(sheet.rows.find(row => row.index === 3)?.hidden).toBe(true);
-    expect(filteredRows(sheet)).toEqual(new Set([4]));
+    const hidden = filteredRows(sheet);
+    expect(hidden.size).toBe(1);
+    expect(hidden.has(4)).toBe(true);
     expect(session.undoCount).toBe(undo + 1);
     expect(session.undo()).toBe(true);
     expect(session.active).toEqual(before);
@@ -262,6 +269,39 @@ describe('AutoFilter criteria and visibility', () => {
     expect(sheet.filter).toMatchObject({ row: 1, column: 1, rows: 4, columns: 3, criteria: [] });
     expect(filteredRows(sheet).size).toBe(0);
     expect(sheet.rows.find(row => row.index === 3)?.hidden).toBe(true);
+  });
+
+  it('treats a million-row blank run as one mask and finishes within the time budget', () => {
+    const base = emptySheet('tall', 'Tall');
+    const hiding = {
+      ...base,
+      cells: [
+        cell(2, 1, { kind: 'text', value: 'keep' }),
+        cell(5, 1, { kind: 'number', value: 3 }),
+      ],
+      filter: { row: 1, column: 1, rows: 1_048_576, columns: 1, criteria: [{ column: 1, allowed: ['keep'] }] },
+    };
+    const started = performance.now();
+    const hidden = filteredRows(hiding);
+    const summary = recordSummary(hiding);
+    const values = columnValues(hiding, hiding.filter, 1, order);
+    expect(performance.now() - started).toBeLessThan(50);
+    expect(hidden.has(2)).toBe(false);
+    expect(hidden.has(5)).toBe(true);
+    expect(hidden.has(1_048_576)).toBe(true);
+    expect(hidden.size).toBe(1_048_575 - 1);
+    expect(hidden.exceptions).toBe(1);
+    expect(hidden.spans().length).toBeLessThan(5);
+    expect(summary).toBe('1 of 1048575 records');
+    expect(values.map(value => value.key)).toEqual(['3', 'keep', '']);
+    expect(values.map(value => value.label)).toEqual(['3', 'keep', '(Blanks)']);
+    const showing = {
+      ...hiding,
+      filter: { ...hiding.filter, criteria: [{ column: 1, allowed: ['keep', '3', ''] }] },
+    };
+    const blanks = filteredRows(showing);
+    expect(blanks.size).toBe(0);
+    expect(columnValues(showing, showing.filter, 1, order).map(value => value.label)).toEqual(['3', 'keep', '(Blanks)']);
   });
 
   it('recalculates SUBTOTAL for visible rows when a filter hides records', () => {
@@ -294,6 +334,17 @@ describe('range discovery and header detection', () => {
     expect(filterRange(session.active, { sheetId, row: 2, column: 2, rows: 1, columns: 1 }))
       .toEqual({ sheetId, row: 1, column: 1, rows: 3, columns: 2 });
     expect(looksLikeHeader(session.capture(), range(sheetId, 2, 1, 2, 2))).toBe(false);
+  });
+
+  it('seeds a tall region from populated cells instead of every coordinate', () => {
+    const { session, sheetId } = book([
+      cell(2, 1, { kind: 'number', value: 1 }),
+      cell(2, 2, { kind: 'number', value: 2 }),
+    ]);
+    const started = performance.now();
+    const region = currentRegion(session.active, { sheetId, row: 1, column: 1, rows: 1_048_576, columns: 2 });
+    expect(performance.now() - started).toBeLessThan(50);
+    expect(region).toEqual({ sheetId, row: 2, column: 1, rows: 1, columns: 2 });
   });
 
   it('uses a table input rectangle for the filter range', () => {

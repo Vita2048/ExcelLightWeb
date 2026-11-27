@@ -268,10 +268,11 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await page.getByRole('button', { name: 'Fill Color', exact: true }).click();
   await page.getByRole('group', { name: 'Fill Color', exact: true }).getByRole('button', { name: 'Color #156082', exact: true }).click();
   const grid = page.getByRole('grid');
+  const header = Number(await grid.getAttribute('data-row-header'));
   const canvas = page.locator('.worksheet-canvas');
   const pixel = (x: number, y: number) => canvas.evaluate((element: HTMLCanvasElement, point: { x: number; y: number }) => Array.from(
     element.getContext('2d')!.getImageData(point.x * devicePixelRatio, point.y * devicePixelRatio, 1, 1).data), { x, y });
-  const sample = () => pixel(52, 34);
+  const sample = () => pixel(header + 8, 34);
   await expect.poll(sample).toEqual([21, 96, 130, 255]);
 
   await page.getByRole('tab', { name: 'View', exact: true }).click();
@@ -281,7 +282,7 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await page.getByRole('menuitem', { name: 'Freeze Top Row', exact: true }).click();
   await expect(page.locator('.edit-status')).toContainText('Froze the top row.');
   // The desktop paints a thicker frozen divider over the grid at the pinned band's edge.
-  await expect.poll(() => pixel(100, 51)).toEqual([160, 160, 160, 255]);
+  await expect.poll(() => pixel(header + 56, 51)).toEqual([160, 160, 160, 255]);
   await grid.evaluate(node => { node.scrollTop = 400; });
   await expect.poll(sample).toEqual([21, 96, 130, 255]);
 
@@ -291,14 +292,14 @@ test('freezes and unfreezes panes per worksheet from the View tab and keeps froz
   await expect(page.locator('.edit-status')).toContainText('Unfroze panes.');
   await grid.evaluate(node => { node.scrollTop = 400; });
   await expect.poll(sample).not.toEqual([21, 96, 130, 255]);
-  await expect.poll(() => pixel(100, 51)).not.toEqual([160, 160, 160, 255]);
+  await expect.poll(() => pixel(header + 56, 51)).not.toEqual([160, 160, 160, 255]);
 
   await page.getByRole('button', { name: 'New sheet' }).click();
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await freeze.click();
   await page.getByRole('menuitem', { name: 'Freeze First Column', exact: true }).click();
   await expect(page.locator('.edit-status')).toContainText('Froze the first column.');
-  await expect.poll(() => pixel(139, 100)).toEqual([160, 160, 160, 255]);
+  await expect.poll(() => pixel(header + 95, 100)).toEqual([160, 160, 160, 255]);
   await page.getByRole('button', { name: 'Sheet1', exact: true }).click();
   await page.getByRole('tab', { name: 'View', exact: true }).click();
   await freeze.click();

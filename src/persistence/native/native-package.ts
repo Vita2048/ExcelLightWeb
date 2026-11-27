@@ -5,7 +5,7 @@ import type {
   PythonBinding, PythonBlock, PythonFigure, PythonTable, SheetDocument, SheetFilter,
   TableDesign, WorkbookDocument, WorkbookName,
 } from '../../core/workbook';
-import { DocumentError, formulaErrors, ownDto } from '../../core/workbook';
+import { DocumentError, documentLimits, formulaErrors, ownDto } from '../../core/workbook';
 import { equalDto } from '../../core/workbook-delta';
 import { migrateDetachedHeaders } from '../../core/workbook-names';
 import { validateWorkbook } from '../../core/workbook-validation';
@@ -452,7 +452,7 @@ function readFreeze(root: Record<string, unknown>): FrozenPanes {
   rejectUnknown(obj, 'rows', 'columns');
   const rows = requireInt(requireProperty(obj, 'rows'), 'rows');
   const columns = requireInt(requireProperty(obj, 'columns'), 'columns');
-  if (rows < 0 || rows >= 10_000 || columns < 0 || columns >= 100 || (rows === 0 && columns === 0)) {
+  if (rows < 0 || rows >= documentLimits.rows || columns < 0 || columns >= documentLimits.columns || (rows === 0 && columns === 0)) {
     throw new PackageException('Frozen pane boundaries are invalid.');
   }
   return { rows, columns };

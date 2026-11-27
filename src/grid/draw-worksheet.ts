@@ -1,9 +1,9 @@
-import { findCell, type CellBorder, type CellDocument, type CellExtent, type SheetDocument, type WorkbookName } from '../core/workbook';
+import { findCell, type CellBorder, type CellDocument, type CellExtent, type CellStyle, type SheetDocument, type WorkbookName } from '../core/workbook';
 import { mergeAt } from '../application/border-commands';
 import { cellBorders, type BorderSegment } from '../core/formats/borders';
 import { displayCellValue } from '../core/formats/cell-format';
 import { drawBorder } from './border-rendering';
-import { drawCellFill, drawAlignedText, effectiveCellStyle, usesLightPaper } from './cell-appearance';
+import { cellFont, drawCellFill, drawAlignedText, effectiveCellStyle, usesLightPaper } from './cell-appearance';
 import { columnName, gridMetrics, type GridAxis, type Track } from './grid-geometry';
 import { presentCell, includes, type Area, type GridSelection } from './grid-selection';
 
@@ -38,6 +38,53 @@ interface GridFrame {
   readonly frozenColumns: number;
   readonly frozenHeight: number;
   readonly frozenWidth: number;
+  /** CSS pixel width of the row-number column, already scaled. */
+  readonly rowHeaderWidth: number;
+  /** Incremented only when theme/forced-colors palette changes. */
+  readonly themeVersion?: number;
+}
+
+interface CachedTheme {
+  readonly version: number;
+  readonly forced: boolean;
+  readonly sheetColor: string;
+  readonly headerColor: string;
+  readonly gridColor: string;
+  readonly textColor: string;
+  readonly accent: string;
+  readonly tint: string;
+  readonly staleColor: string;
+  readonly freezeColor: string;
+  readonly referenceColor: string;
+  readonly fontFamily: string;
+}
+
+const themeCache = new WeakMap<HTMLCanvasElement, CachedTheme>();
+
+function resolveTheme(canvas: HTMLCanvasElement, version: number | undefined): CachedTheme {
+  if (version !== undefined) {
+    const cached = themeCache.get(canvas);
+    if (cached && cached.version === version) return cached;
+  }
+  const styles = getComputedStyle(canvas);
+  const token = (key: string) => styles.getPropertyValue(key).trim();
+  const forced = matchMedia('(forced-colors: active)').matches;
+  const theme: CachedTheme = {
+    version: version ?? -1,
+    forced,
+    sheetColor: forced ? 'Canvas' : token('--sheet'),
+    headerColor: forced ? 'Canvas' : token('--grid-header'),
+    gridColor: forced ? 'GrayText' : token('--gridline'),
+    textColor: forced ? 'CanvasText' : token('--text'),
+    accent: forced ? 'Highlight' : token('--accent'),
+    tint: forced ? 'Highlight' : token('--grid-selection'),
+    staleColor: forced ? 'CanvasText' : token('--stale-calculation'),
+    freezeColor: forced ? 'CanvasText' : token('--freeze-line'),
+    referenceColor: forced ? 'CanvasText' : token('--formula-reference'),
+    fontFamily: styles.fontFamily,
+  };
+  if (version !== undefined) themeCache.set(canvas, theme);
+  return theme;
 }
 
 export interface HeaderCornerPoint { readonly x: number; readonly y: number }
@@ -66,22 +113,15 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
   if (canvas.height !== pixelsHigh) canvas.height = pixelsHigh;
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
-  const styles = getComputedStyle(canvas);
-  const token = (key: string) => styles.getPropertyValue(key).trim();
-  const forced = matchMedia('(forced-colors: active)').matches;
-  const sheetColor = forced ? 'Canvas' : token('--sheet');
-  const headerColor = forced ? 'Canvas' : token('--grid-header');
-  const gridColor = forced ? 'GrayText' : token('--gridline');
-  const textColor = forced ? 'CanvasText' : token('--text');
-  const accent = forced ? 'Highlight' : token('--accent');
-  const tint = forced ? 'Highlight' : token('--grid-selection');
+  const theme = resolveTheme(canvas, frame.themeVersion);
+  const { forced, sheetColor, headerColor, gridColor, textColor, accent, tint, staleColor, freezeColor, referenceColor, fontFamily } = theme;
   const { selection, areas, scale, headings } = frame;
-  const left = headings ? gridMetrics.rowHeader * scale : 0;
+  const left = headings ? frame.rowHeaderWidth : 0;
   const top = headings ? gridMetrics.columnHeader * scale : 0;
   const x = (track: Track) => left + track.start;
   const y = (track: Track) => top + track.start;
   const line = (position: number) => Math.round(position * ratio) / ratio - 1 / ratio;
-  const font = (size: number, weight = '') => `${weight ? weight + ' ' : ''}${size * scale}px ${styles.fontFamily}`;
+  const font = (size: number, weight = '') => `${weight ? weight + ' ' : ''}${size * scale}px ${fontFamily}`;
 
   context.fillStyle = sheetColor;
   context.fillRect(0, 0, width, height);
@@ -91,163 +131,180 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
       { tracks: tracks.filter(track => track.index > frozen), start: split, end }].filter(group => group.tracks.length && group.start < group.end);
   const rowGroups = groups(frame.rows, frame.frozenRows, top, splitY, height);
   const columnGroups = groups(frame.columns, frame.frozenColumns, left, splitX, width);
+  const firstVisibleRow = frame.rows[0]?.index ?? 0;
+  const lastVisibleRow = frame.rows.at(-1)?.index ?? 0;
+  const firstVisibleCol = frame.columns[0]?.index ?? 0;
+  const lastVisibleCol = frame.columns.at(-1)?.index ?? 0;
+  const visibleTables = frame.tables?.length
+    ? frame.tables.filter(t => !t.area.invalid &&
+      t.area.row <= lastVisibleRow && t.area.row + t.area.rows - 1 >= firstVisibleRow &&
+      t.area.column <= lastVisibleCol && t.area.column + t.area.columns - 1 >= firstVisibleCol)
+    : [];
 
-  function clip(x: number, y: number, w: number, h: number) {
-    context.save();
-    context.beginPath();
-    context.rect(x, y, w, h);
-    context.clip();
-  }
-
-  function pane(rows: readonly Track[], columns: readonly Track[], bounds: { left: number; top: number; right: number; bottom: number }) {
-    clip(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
-    drawPane(rows, columns);
-    context.restore();
+  function clip(target: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+    target.save();
+    target.beginPath();
+    target.rect(x, y, w, h);
+    target.clip();
   }
 
   function extentRect(merge: CellExtent, row: Track, column: Track) {
-    const firstRow = frame.rowAxis.track(merge.row) ?? frame.rowAxis.tracks.find(track => track.index >= merge.row)!;
-    const firstColumn = frame.columnAxis.track(merge.column) ?? frame.columnAxis.tracks.find(track => track.index >= merge.column)!;
+    const firstRow = frame.rowAxis.trackAtOrAfter(merge.row)!;
+    const firstColumn = frame.columnAxis.trackAtOrAfter(merge.column)!;
     return { x: x(column) + firstColumn.start - frame.columnAxis.track(column.index)!.start,
       y: y(row) + firstRow.start - frame.rowAxis.track(row.index)!.start,
       width: frame.columnAxis.span(merge.column, merge.column + merge.columns - 1),
       height: frame.rowAxis.span(merge.row, merge.row + merge.rows - 1) };
   }
 
-  function drawPane(rows: readonly Track[], columns: readonly Track[]) {
-    context.textBaseline = 'middle';
+  function drawPaneBody(target: CanvasRenderingContext2D, rows: readonly Track[], columns: readonly Track[], includeSelectionTint: boolean) {
+    target.textBaseline = 'middle';
 
     const drawn = new Set<CellExtent>();
     const centered = new Set<CellDocument>();
-    const entries: { cell: CellDocument; x: number; y: number; width: number; height: number; selected: boolean; active: boolean }[] = [];
+    const entries: { cell: CellDocument; style: CellStyle | undefined; x: number; y: number; width: number; height: number; selected: boolean; active: boolean }[] = [];
+    const bordered: { style: CellStyle; merge: CellExtent | undefined; row: Track; column: Track; rect: { x: number; y: number; width: number; height: number } }[] = [];
+    const singleArea = areas.length === 1 ? areas[0] : undefined;
     for (const row of rows) {
       for (const column of columns) {
         const point = { row: row.index, column: column.index };
         const merge = mergeAt(frame.sheet, point.row, point.column);
         if (merge && drawn.has(merge)) continue;
         if (merge) drawn.add(merge);
-        const target = merge ?? point;
-        const cell = findCell(frame.sheet, target);
-        const cellStyle = effectiveCellStyle(cell?.style, target, frame.tables ?? []);
-        const effectiveCell: CellDocument | undefined = cell ? (cellStyle !== cell.style ? { ...cell, ...(cellStyle ? { style: cellStyle } : {}) } as CellDocument : cell) : undefined;
-        const selected = areas.some(area => includes(area, target));
-        const active = target.row === selection.anchor.row && target.column === selection.anchor.column;
+        const cellPoint = merge ?? point;
+        const cell = findCell(frame.sheet, cellPoint);
+        const cellStyle = effectiveCellStyle(cell?.style, cellPoint, visibleTables);
+        const selected = includeSelectionTint ? (singleArea ? includes(singleArea, cellPoint) : areas.some(area => includes(area, cellPoint))) : false;
+        const active = includeSelectionTint ? (cellPoint.row === selection.anchor.row && cellPoint.column === selection.anchor.column) : false;
         const rect = merge ? extentRect(merge, row, column) :
           { x: x(column), y: y(row), width: column.size, height: row.size };
-        if (!forced) drawCellFill(context, cellStyle, rect.x, rect.y, rect.width, rect.height, scale);
-        if (selected && !active) {
-          context.fillStyle = tint;
-          context.fillRect(rect.x, rect.y, rect.width, rect.height);
+        const cellOwnStyle = cell?.style;
+        if (cellOwnStyle && (cellOwnStyle.borders || cellOwnStyle.borderDetails)) {
+          bordered.push({ style: cellOwnStyle, merge, row, column, rect });
         }
-        if (!effectiveCell) continue;
-        if (!merge && effectiveCell.style?.alignment === 'centerContinuous') {
+        if (!forced) drawCellFill(target, cellStyle, rect.x, rect.y, rect.width, rect.height, scale);
+        if (selected && !active) {
+          target.fillStyle = tint;
+          target.fillRect(rect.x, rect.y, rect.width, rect.height);
+        }
+        if (!cell) continue;
+        if (!merge && cellStyle?.alignment === 'centerContinuous') {
           const hasText = (item: CellDocument) => !!presentCell(item, frame.showFormulas, frame.separator).text;
-          const across = (index: number): CellDocument | undefined => {
+          const across = (index: number): { cell: CellDocument; style: CellStyle | undefined } | undefined => {
             const candidate = findCell(frame.sheet, { row: row.index, column: index });
-            const candidateStyle = effectiveCellStyle(candidate?.style, { row: row.index, column: index }, frame.tables ?? []);
-            return candidateStyle?.alignment === 'centerContinuous' && !mergeAt(frame.sheet, row.index, index) ?
-              (candidate && candidateStyle !== candidate.style ? { ...candidate, ...(candidateStyle ? { style: candidateStyle } : {}) } as CellDocument : candidate) : undefined;
+            const candidateStyle = effectiveCellStyle(candidate?.style, { row: row.index, column: index }, visibleTables);
+            return candidate && candidateStyle?.alignment === 'centerContinuous' && !mergeAt(frame.sheet, row.index, index) ?
+              { cell: candidate, style: candidateStyle } : undefined;
           };
-          let anchor = effectiveCell;
+          let anchor = cell;
+          let anchorStyle: CellStyle | undefined = cellStyle;
           if (!hasText(anchor)) {
             for (let prior = column.index - 1; prior >= 1; prior--) {
               const candidate = across(prior);
               if (!candidate) break;
-              if (hasText(candidate)) { anchor = candidate; break; }
+              if (hasText(candidate.cell)) { anchor = candidate.cell; anchorStyle = candidate.style; break; }
             }
           }
           if (!hasText(anchor) || centered.has(anchor)) continue;
           centered.add(anchor);
           let end = anchor.column;
-          for (let next = end + 1; next <= frame.columnAxis.tracks.at(-1)!.index; next++) {
+          const lastIndex = frame.columnAxis.last?.index ?? end;
+          for (let next = end + 1; next <= lastIndex; next++) {
             const candidate = across(next);
-            if (!candidate || hasText(candidate)) break;
+            if (!candidate || hasText(candidate.cell)) break;
             end = next;
           }
           const bounds = extentRect({ row: row.index, column: anchor.column, rows: 1, columns: end - anchor.column + 1 }, row, column);
-          entries.push({ cell: anchor, ...bounds, selected, active });
-        } else entries.push({ cell: effectiveCell, ...rect, selected, active });
+          entries.push({ cell: anchor, style: anchorStyle, ...bounds, selected, active });
+        } else entries.push({ cell, style: cellStyle, ...rect, selected, active });
       }
     }
-    for (const { cell, x: cellX, y: cellY, width, height, selected, active } of entries) {
+    const defaultFont = cellFont(undefined, fontFamily, scale).css;
+    target.font = defaultFont;
+    target.direction = 'ltr';
+    target.textBaseline = 'middle';
+    for (const { cell, style, x: cellX, y: cellY, width, height, selected, active } of entries) {
       const { text: label, color } = presentCell(cell, frame.showFormulas, frame.separator);
       const value = displayCellValue(cell, frame.showFormulas);
-      clip(cellX, cellY, width, height);
-      const authoredColor = color ?? cell.style?.textRgb;
-      context.fillStyle = forced ? selected && !active ? 'HighlightText' : textColor :
-        authoredColor ? '#' + authoredColor : usesLightPaper(cell.style) ? '#1b1b1b' : textColor;
-      context.save();
-      drawAlignedText(context, label, cell.style, styles.fontFamily, scale,
-        { x: cellX, y: cellY, width, height }, value?.kind ?? 'blank');
-      context.restore();
+      clip(target, cellX, cellY, width, height);
+      const authoredColor = color ?? style?.textRgb;
+      target.fillStyle = forced ? selected && !active ? 'HighlightText' : textColor :
+        authoredColor ? '#' + authoredColor : usesLightPaper(style) ? '#1b1b1b' : textColor;
+      if (style?.textRotation) {
+        target.save();
+        drawAlignedText(target, label, style, fontFamily, scale,
+          { x: cellX, y: cellY, width, height }, value?.kind ?? 'blank', defaultFont, 'ltr');
+        target.restore();
+      } else {
+        drawAlignedText(target, label, style, fontFamily, scale,
+          { x: cellX, y: cellY, width, height }, value?.kind ?? 'blank', defaultFont, 'ltr');
+      }
       if (frame.calculatingCells.has(cell.id)) {
-        context.strokeStyle = forced ? 'Highlight' : token('--accent');
-        context.lineWidth = 1.6;
-        context.setLineDash([]);
-        context.beginPath();
-        context.arc(cellX + width - 7, cellY + 7, 3, -Math.PI * 0.42, Math.PI * 1.28);
-        context.stroke();
+        target.strokeStyle = accent;
+        target.lineWidth = 1.6;
+        target.setLineDash([]);
+        target.beginPath();
+        target.arc(cellX + width - 7, cellY + 7, 3, -Math.PI * 0.42, Math.PI * 1.28);
+        target.stroke();
       }
       if (frame.staleCells.has(cell.id)) {
-        context.strokeStyle = forced ? context.fillStyle : token('--stale-calculation');
-        context.lineWidth = 1;
-        context.setLineDash([3, 2]);
-        context.beginPath();
-        context.moveTo(cellX + 2, cellY + height - 3);
-        context.lineTo(cellX + width - 2, cellY + height - 3);
-        context.stroke();
+        target.strokeStyle = forced ? target.fillStyle : staleColor;
+        target.lineWidth = 1;
+        target.setLineDash([3, 2]);
+        target.beginPath();
+        target.moveTo(cellX + 2, cellY + height - 3);
+        target.lineTo(cellX + width - 2, cellY + height - 3);
+        target.stroke();
       }
-      context.restore();
+      target.restore();
     }
 
     if (frame.gridlines) {
-      context.fillStyle = gridColor;
+      target.fillStyle = gridColor;
       if (!frame.sheet.merges.length) {
-        for (const row of rows) context.fillRect(left, line(y(row) + row.size), width - left, 1 / ratio);
-        for (const column of columns) context.fillRect(line(x(column) + column.size), top, 1 / ratio, height - top);
+        for (const row of rows) target.fillRect(left, line(y(row) + row.size), width - left, 1 / ratio);
+        for (const column of columns) target.fillRect(line(x(column) + column.size), top, 1 / ratio, height - top);
       } else {
         for (const row of rows) for (const column of columns) {
           const merge = mergeAt(frame.sheet, row.index, column.index);
           const nextRow = frame.rowAxis.step(row.index, 1);
           const nextColumn = frame.columnAxis.step(column.index, 1);
           if (!merge || nextRow === row.index || nextRow >= merge.row + merge.rows) {
-            context.fillRect(x(column), line(y(row) + row.size), column.size, 1 / ratio);
+            target.fillRect(x(column), line(y(row) + row.size), column.size, 1 / ratio);
           }
           if (!merge || nextColumn === column.index || nextColumn >= merge.column + merge.columns) {
-            context.fillRect(line(x(column) + column.size), y(row), 1 / ratio, row.size);
+            target.fillRect(line(x(column) + column.size), y(row), 1 / ratio, row.size);
           }
         }
       }
     }
-    const painted = new Map<string, { pen: CellBorder; x: number; y: number; x2: number; y2: number }>();
-    const add = (pen: CellBorder | undefined, x: number, y: number, x2: number, y2: number) => {
-      if (pen) painted.set([x, y, x2, y2].join(','), { pen, x, y, x2, y2 });
-    };
-    drawn.clear();
-    for (const row of rows) for (const column of columns) {
-      const merge = mergeAt(frame.sheet, row.index, column.index);
-      if (merge && drawn.has(merge)) continue;
-      if (merge) drawn.add(merge);
-      const style = findCell(frame.sheet, merge ?? { row: row.index, column: column.index })?.style;
-      if (!style?.borders && !style?.borderDetails) continue;
-      const borders = cellBorders(style);
-      const rect = merge ? extentRect(merge, row, column) : { x: x(column), y: y(row), width: column.size, height: row.size };
-      const a = rect.x, b = rect.y, c = a + rect.width, d = b + rect.height;
-      const cellRows = merge ? rows.filter(track => track.index >= merge.row && track.index < merge.row + merge.rows) : [row];
-      const cellColumns = merge ? columns.filter(track => track.index >= merge.column && track.index < merge.column + merge.columns) : [column];
-      // Shared worksheet edges use the same segment keys as the adjoining cells.
-      for (const track of cellColumns) {
-        add(borders.top, x(track), b, x(track) + track.size, b);
-        add(borders.bottom, x(track), d, x(track) + track.size, d);
+    if (bordered.length) {
+      const painted = new Map<string, { pen: CellBorder; x: number; y: number; x2: number; y2: number }>();
+      const add = (pen: CellBorder | undefined, x: number, y: number, x2: number, y2: number) => {
+        if (pen) painted.set([x, y, x2, y2].join(','), { pen, x, y, x2, y2 });
+      };
+      for (const { style, merge, row, column, rect } of bordered) {
+        const borders = cellBorders(style);
+        const a = rect.x, b = rect.y, c = a + rect.width, d = b + rect.height;
+        const cellRows = merge ? rows.filter(track => track.index >= merge.row && track.index < merge.row + merge.rows) : [row];
+        const cellColumns = merge ? columns.filter(track => track.index >= merge.column && track.index < merge.column + merge.columns) : [column];
+        // Shared worksheet edges use the same segment keys as the adjoining cells.
+        for (const track of cellColumns) {
+          add(borders.top, x(track), b, x(track) + track.size, b);
+          add(borders.bottom, x(track), d, x(track) + track.size, d);
+        }
+        for (const track of cellRows) {
+          add(borders.left, a, y(track), a, y(track) + track.size);
+          add(borders.right, c, y(track), c, y(track) + track.size);
+        }
+        add(borders.diagonalUp, a, d, c, b);
+        add(borders.diagonalDown, a, b, c, d);
       }
-      for (const track of cellRows) {
-        add(borders.left, a, y(track), a, y(track) + track.size);
-        add(borders.right, c, y(track), c, y(track) + track.size);
-      }
-      add(borders.diagonalUp, a, d, c, b);
-      add(borders.diagonalDown, a, b, c, d);
+      for (const segment of painted.values()) drawBorder(target, segment.pen, segment.x, segment.y, segment.x2, segment.y2, scale, textColor, forced);
     }
-    for (const segment of painted.values()) drawBorder(context, segment.pen, segment.x, segment.y, segment.x2, segment.y2, scale, textColor, forced);
+  }
+
+  function drawPaneOverlay(rows: readonly Track[], columns: readonly Track[]) {
 
     const outline = (area: Area, width = 1 / ratio) => {
       const firstRow = rows.find(row => row.index >= area.top);
@@ -280,7 +337,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
       context.strokeRect(activeRect.x + 1, activeRect.y + 1, Math.max(0, activeRect.width - 2), Math.max(0, activeRect.height - 2));
     }
     if (frame.referenceArea) {
-      context.strokeStyle = forced ? 'CanvasText' : token('--formula-reference');
+      context.strokeStyle = referenceColor;
       context.setLineDash([4 * scale, 2 * scale]);
       outline(frame.referenceArea);
       context.setLineDash([]);
@@ -314,13 +371,17 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     }
   }
 
-  for (const rowGroup of rowGroups) for (const columnGroup of columnGroups) pane(rowGroup.tracks, columnGroup.tracks,
-    { left: columnGroup.start, top: rowGroup.start, right: columnGroup.end, bottom: rowGroup.end });
+  for (const rowGroup of rowGroups) for (const columnGroup of columnGroups) {
+    clip(context, columnGroup.start, rowGroup.start, columnGroup.end - columnGroup.start, rowGroup.end - rowGroup.start);
+    drawPaneBody(context, rowGroup.tracks, columnGroup.tracks, true);
+    drawPaneOverlay(rowGroup.tracks, columnGroup.tracks);
+    context.restore();
+  }
 
   // Desktop DrawFrozenDividers paints a 2px divider over content and headings at each frozen edge.
   function drawFrozenDividers() {
     const thickness = Math.max(1, 2 * scale);
-    context.fillStyle = forced ? 'CanvasText' : token('--freeze-line');
+    context.fillStyle = freezeColor;
     if (frame.frozenRows > 0 && splitY > top) context.fillRect(0, splitY - thickness, width, thickness);
     if (frame.frozenColumns > 0 && splitX > left) context.fillRect(splitX - thickness, 0, thickness, height);
   }
@@ -336,7 +397,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   for (const group of columnGroups) {
-    clip(group.start, 0, group.end - group.start, top);
+    clip(context, group.start, 0, group.end - group.start, top);
     for (const column of group.tracks) {
       const start = x(column);
       const selected = areas.some(area => column.index >= area.left && column.index <= area.right);
@@ -350,7 +411,7 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
     context.restore();
   }
   for (const group of rowGroups) {
-    clip(0, group.start, left, group.end - group.start);
+    clip(context, 0, group.start, left, group.end - group.start);
     for (const row of group.tracks) {
       const start = y(row);
       const selected = areas.some(area => row.index >= area.top && row.index <= area.bottom);

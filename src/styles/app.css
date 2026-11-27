@@ -140,9 +140,9 @@ button:disabled { cursor: default; opacity: .5; }
 .worksheet-canvas { position: absolute; top: 0; left: 0; display: block; pointer-events: none; }
 .worksheet-figure-layer { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
 .figure-placement, .figure-placement-preview {
-  position: absolute; box-sizing: border-box; overflow: visible; background: #fff; touch-action: none;
+  position: absolute; left: 0; top: 0; box-sizing: border-box; overflow: visible; background: #fff; touch-action: none;
 }
-.figure-placement { pointer-events: auto; cursor: move; }
+.figure-placement { pointer-events: auto; cursor: move; will-change: transform; }
 .figure-placement img, .figure-placement-preview img {
   display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; pointer-events: none;
 }
@@ -193,6 +193,7 @@ button:disabled { cursor: default; opacity: .5; }
 .worksheet-projection {
   position: absolute; top: 0; left: 0; width: 1px; height: 1px;
   margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+  contain: strict;
 }
 .sheet-strip {
   display: flex; flex: none; align-items: center; gap: 6px; min-height: 35px;
@@ -307,9 +308,9 @@ button:disabled { cursor: default; opacity: .5; }
 .structure-dialog input[type='number']::-webkit-inner-spin-button,
 .structure-dialog input[type='number']::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .sheet-rename { width: 120px; }
-.dimension-guide { position: absolute; z-index: 2; pointer-events: none; background: var(--accent); }
-.dimension-guide.row { left: 0; right: 0; height: 1px; }
-.dimension-guide.column { top: 0; bottom: 0; width: 1px; }
+.dimension-guide { position: absolute; z-index: 2; pointer-events: none; background: var(--accent); will-change: transform; }
+.dimension-guide.row { left: 0; right: 0; top: 0; height: 1px; }
+.dimension-guide.column { top: 0; bottom: 0; left: 0; width: 1px; }
 .number-ribbon select:first-of-type { max-width: 188px; }
 .number-ribbon select:nth-of-type(2) { width: 96px; }
 .number-dialog { width: min(570px, calc(100% - 24px)); max-height: calc(100dvh - 24px); }
@@ -695,7 +696,7 @@ button:disabled { cursor: default; opacity: .5; }
 .range-picker-action-btn { padding: 4px 12px; background: var(--top-field); border: 1px solid var(--border); color: var(--text); border-radius: 3px; cursor: pointer; }
 
 /* Table Resize Handle & Total Button */
-.table-resize-handle { position: absolute; width: 9px; height: 9px; padding: 0; margin: 0; border: none; background: transparent; cursor: nwse-resize; line-height: 0; }
+.table-resize-handle { position: absolute; left: 0; top: 0; width: 9px; height: 9px; padding: 0; margin: 0; border: none; background: transparent; cursor: nwse-resize; line-height: 0; }
 .total-button-container { position: absolute; }
 .total-button { display: flex; align-items: center; justify-content: center; background: var(--sheet); border: 1px solid var(--border); color: var(--text); border-radius: 2px; padding: 0; cursor: pointer; }
 .total-button:hover { background: var(--raised); }
@@ -735,7 +736,7 @@ button:disabled { cursor: default; opacity: .5; }
 .sort-warning-dialog { width: min(440px, calc(100vw - 24px)); }
 .sort-preview { font-size: 13px; }
 .filter-button {
-  position: absolute; z-index: 1; display: grid; place-items: center; padding: 0; border: 0;
+  position: absolute; left: 0; top: 0; z-index: 1; display: grid; place-items: center; padding: 0; border: 0;
   border-left: 1px solid var(--gridline); background: var(--grid-header); color: var(--muted); cursor: pointer;
 }
 .filter-button:hover, .filter-button:focus-visible { background: var(--raised); color: var(--text); }

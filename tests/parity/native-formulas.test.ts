@@ -72,6 +72,27 @@ it('tracks formulas inside the sum range that SUMIF expands from a single cell',
   expect(result.dependencies.get('sum')).toEqual([{ sheetId: 'one', row: 3, column: 2 }]);
 });
 
+it('sums and looks up a sparse full column, including a blank gap', () => {
+  const started = performance.now();
+  const document = workbook([
+    { id: 'a1', row: 1, column: 1, content: { kind: 'number', value: 10 } },
+    { id: 'b1', row: 1, column: 2, content: { kind: 'number', value: 1 } },
+    { id: 'a5', row: 5, column: 1, content: { kind: 'number', value: 20 } },
+    { id: 'b5', row: 5, column: 2, content: { kind: 'number', value: 2 } },
+    formula('sum', 1, 3, '=SUM(A:A)'),
+    formula('exact', 2, 3, '=VLOOKUP(20,A:B,2,FALSE)'),
+    formula('gap', 3, 3, '=VLOOKUP(15,A:B,2,TRUE)'),
+    formula('hit', 4, 3, '=VLOOKUP(20,A:B,2,TRUE)'),
+  ]);
+  const result = calculateNative(document);
+  expect(performance.now() - started).toBeLessThan(50);
+  const value = (row: number) => result.updates.find(update => update.target.row === row && update.target.column === 3)?.cache?.value;
+  expect(value(1)).toBe(30);
+  expect(value(2)).toBe(2);
+  expect(value(3)).toBe(1);
+  expect(value(4)).toBe(2);
+});
+
 it('evaluates long operator chains within the parser limits', () => {
   const operators = '+1'.repeat(3000);
   const result = calculateNative(workbook([

@@ -222,10 +222,21 @@ export function displayCellValue(cell: CellDocument | undefined, source = false)
   return cell.content.kind === 'formula' ? cell.cache ?? cell.content : cell.content;
 }
 
-export function formatCellValue(cell: CellDocument | undefined, code = cell?.style?.numberFormat): FormattedCell {
-  if (!cell) return { text: '' };
+const formattedCache = new WeakMap<CellDocument, FormattedCell>();
+const emptyFormatted: FormattedCell = Object.freeze({ text: '' });
+
+export function formatCellValue(cell: CellDocument | undefined, code?: string): FormattedCell {
+  if (!cell) return emptyFormatted;
+  const useDefault = code === undefined;
+  if (useDefault && Object.isFrozen(cell)) {
+    const cached = formattedCache.get(cell);
+    if (cached) return cached;
+  }
   const value = displayCellValue(cell);
-  if (!value || value.kind === 'blank' || value.kind === 'formula' || value.kind === 'python') return { text: '' };
-  if (value.kind === 'number') return formatNumber(value.value, code);
-  return { text: value.kind === 'boolean' ? value.value ? 'TRUE' : 'FALSE' : value.value };
+  let formatted: FormattedCell;
+  if (!value || value.kind === 'blank' || value.kind === 'formula' || value.kind === 'python') formatted = emptyFormatted;
+  else if (value.kind === 'number') formatted = formatNumber(value.value, useDefault ? cell.style?.numberFormat : code);
+  else formatted = { text: value.kind === 'boolean' ? value.value ? 'TRUE' : 'FALSE' : value.value };
+  if (useDefault && Object.isFrozen(cell)) formattedCache.set(cell, formatted);
+  return formatted;
 }

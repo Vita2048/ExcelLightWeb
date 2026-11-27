@@ -34,7 +34,14 @@ function pixel(canvas: Locator, x: number, y: number) {
 }
 const canvasFor = (page: Page) => page.locator('.worksheet-canvas');
 const fillAt = (page: Page, column: number, row: number, x = 10, y = 8) =>
-  pixel(canvasFor(page), 44 + (column - 1) * 96 + x, 26 + (row - 1) * 26 + y);
+  canvasFor(page).evaluate((node: HTMLCanvasElement, point) => {
+    const header = Number(node.parentElement?.querySelector('.worksheet-scroll')?.getAttribute('data-row-header') ?? 0);
+    const ratio = devicePixelRatio;
+    const sampleX = header + (point.column - 1) * 96 + point.x;
+    const sampleY = 26 + (point.row - 1) * 26 + point.y;
+    return Array.from(node.getContext('2d')!.getImageData(
+      Math.floor((sampleX + .5) * ratio), Math.floor((sampleY + .5) * ratio), 1, 1).data);
+  }, { column, row, x, y });
 
 async function color(dialog: Locator, hex: string) {
   const input = dialog.getByRole('textbox', { name: 'Custom color hex' });

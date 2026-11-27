@@ -5,7 +5,7 @@ import {
 import { WorkbookSession, type CellEdit } from '../../src/application/workbook-session';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { copyReferences } from '../../src/core/formula-references';
-import { emptySheet, findReferencedCell, type WorkbookDocument } from '../../src/core/workbook';
+import { documentLimits, emptySheet, findReferencedCell, type WorkbookDocument } from '../../src/core/workbook';
 
 function workbook(document?: WorkbookDocument) {
   let n = 0;
@@ -78,7 +78,7 @@ describe('S06 typed entry and TSV', () => {
     const before = s.capture();
     for (const [target, value] of [
       [range(1, 1), '1\t2\n3'], [range(1, 1), '"bad'], [range(1, 1), '"x"junk'],
-      [range(10000, 100), '1\t2'], [range(1, 1), '1\t='], [range(1, 1), 'x'.repeat(4 * 1024 * 1024 + 1)],
+      [range(documentLimits.rows, documentLimits.columns), '1\t2'], [range(1, 1), '1\t='], [range(1, 1), 'x'.repeat(4 * 1024 * 1024 + 1)],
       [range(1, 1, 2, 2), '1\t2'],
     ] as const) {
       expect(() => s.execute(pasteText(before, target, value, 'all', 'en-US', makeId))).toThrow();

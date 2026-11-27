@@ -1,6 +1,8 @@
 import { expandMerges } from '../application/editing-commands';
 import { mergeAt } from '../application/border-commands';
 import { filteredRows } from '../application/data-commands';
+import { columnIndex } from '../core/formula-references';
+import type { RowMask } from '../core/row-mask';
 import { cellKey, findCell, worksheetViewport as viewport, type CellDocument, type Coordinate, type SheetDocument } from '../core/workbook';
 import { formatCellValue, type FormattedCell } from '../core/formats/cell-format';
 import { presentFormula } from '../features/formulas/formula-presentation';
@@ -85,10 +87,12 @@ export function selectionAddress(selection: GridSelection): string {
 }
 
 export function parseAddress(text: string): Coordinate | undefined {
-  const match = /^\$?([A-Z])\$?([1-9][0-9]{0,3})$/iu.exec(text.trim());
+  const match = /^\$?([A-Z]{1,3})\$?([1-9]\d*)$/iu.exec(text.trim());
   if (!match) return undefined;
   const row = Number(match[2]);
-  return row <= viewport.rows ? { row, column: match[1]!.toUpperCase().charCodeAt(0) - 64 } : undefined;
+  const column = columnIndex(match[1]!);
+  if (!Number.isSafeInteger(row) || row > viewport.rows || column > viewport.columns) return undefined;
+  return { row, column };
 }
 
 export function cellDisplay(cell: CellDocument | undefined, source = false, separator: ',' | ';' = ','): string {
@@ -103,15 +107,20 @@ export function presentCell(cell: CellDocument | undefined, source: boolean, sep
   return formatCellValue(cell);
 }
 
-export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[]) {
-  const hiddenRows = new Set(sheet.rows.filter(row => row.hidden).map(row => row.index));
-  const hiddenColumns = new Set(sheet.columns.filter(column => column.hidden).map(column => column.index));
-  const filtered = filteredRows(sheet);
+export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[], filtered: RowMask = filteredRows(sheet)) {
+  let hiddenRows: Set<number> | undefined;
+  for (const row of sheet.rows) {
+    if (row.hidden) (hiddenRows ??= new Set()).add(row.index);
+  }
+  let hiddenColumns: Set<number> | undefined;
+  for (const column of sheet.columns) {
+    if (column.hidden) (hiddenColumns ??= new Set()).add(column.index);
+  }
   let count = 0;
   let numeric = 0;
   let sum = 0;
   function include(cell: CellDocument | undefined) {
-    if (!cell || cell.content.kind === 'blank' || hiddenRows.has(cell.row) || hiddenColumns.has(cell.column) ||
+    if (!cell || cell.content.kind === 'blank' || hiddenRows?.has(cell.row) || hiddenColumns?.has(cell.column) ||
         filtered.has(cell.row)) return;
     count++;
     const value = cell.content.kind === 'formula' || cell.content.kind === 'python' ? cell.cache : cell.content;
@@ -119,6 +128,10 @@ export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[]
       numeric++;
       sum += value.value;
     }
+  }
+  if (areas.length === 1 && areas[0]!.top === areas[0]!.bottom && areas[0]!.left === areas[0]!.right) {
+    include(findCell(sheet, { row: areas[0]!.top, column: areas[0]!.left }));
+    return { count, sum, average: numeric ? sum / numeric : undefined };
   }
   const extentSize = areas.reduce((size, area) => size + (area.bottom - area.top + 1) * (area.right - area.left + 1), 0);
   if (extentSize < sheet.cells.length) {
@@ -141,6 +154,64 @@ export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[]
   return { count, sum, average: numeric ? sum / numeric : undefined };
 }
 
+function lowerBound(indexes: readonly number[], target: number): number {
+  let low = 0;
+  let high = indexes.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (indexes[middle]! < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+/** Ctrl+Arrow: one scan of populated cells on the line, then the axis edge. */
+function jumpOnLine(sheet: SheetDocument, axis: GridAxis, vertical: boolean, fixed: number,
+  start: number, direction: number): number {
+  const neighbor = axis.step(start, direction);
+  if (neighbor === start) return start;
+  const occupied: number[] = [];
+  for (const cell of sheet.cells) {
+    if (cell.content.kind === 'blank') continue;
+    const index = vertical ? cell.row : cell.column;
+    const other = vertical ? cell.column : cell.row;
+    if (other !== fixed || !axis.track(index)) continue;
+    occupied.push(index);
+  }
+  occupied.sort((left, right) => left - right);
+  let write = 0;
+  for (const index of occupied) {
+    if (write === 0 || occupied[write - 1] !== index) occupied[write++] = index;
+  }
+  occupied.length = write;
+  const contains = (index: number) => {
+    const at = lowerBound(occupied, index);
+    return at < occupied.length && occupied[at] === index;
+  };
+  const edge = direction > 0 ? axis.last?.index ?? start : axis.first?.index ?? start;
+  if (contains(start) && contains(neighbor)) {
+    let at = lowerBound(occupied, start);
+    let current = start;
+    while (true) {
+      const nextAt = at + direction;
+      if (nextAt < 0 || nextAt >= occupied.length) return current;
+      const next = occupied[nextAt]!;
+      const adjacent = direction > 0
+        ? axis.trackAtOrAfter(current + 1)?.index === next
+        : axis.trackAtOrAfter(next + 1)?.index === current;
+      if (!adjacent) return current;
+      current = next;
+      at = nextAt;
+    }
+  }
+  if (direction > 0) {
+    const at = lowerBound(occupied, start + 1);
+    return at < occupied.length ? occupied[at]! : edge;
+  }
+  const at = lowerBound(occupied, start) - 1;
+  return at >= 0 ? occupied[at]! : edge;
+}
+
 export function navigate(
   sheet: SheetDocument, rows: GridAxis, columns: GridAxis, point: Coordinate,
   key: string, control: boolean, shift: boolean, pageRows: number,
@@ -150,7 +221,7 @@ export function navigate(
   const lastRow = merge ? merge.row + merge.rows - 1 : row;
   const lastColumn = merge ? merge.column + merge.columns - 1 : column;
   switch (key) {
-    case 'Home': return { row: control ? rows.tracks[0]?.index ?? row : row, column: columns.tracks[0]?.index ?? column };
+    case 'Home': return { row: control ? rows.first?.index ?? row : row, column: columns.first?.index ?? column };
     case 'End': {
       let lastRow = control ? 1 : row;
       let lastColumn = 1;
@@ -160,8 +231,8 @@ export function navigate(
         if (control || cell.row === row) lastColumn = Math.max(lastColumn, cell.column);
       }
       return {
-        row: rows.track(lastRow)?.index ?? rows.tracks[0]?.index ?? row,
-        column: columns.track(lastColumn)?.index ?? columns.tracks[0]?.index ?? column,
+        row: rows.track(lastRow)?.index ?? rows.first?.index ?? row,
+        column: columns.track(lastColumn)?.index ?? columns.first?.index ?? column,
       };
     }
     case 'PageUp': return { row: rows.step(row, -pageRows), column };
@@ -177,21 +248,8 @@ export function navigate(
       const axis = vertical ? rows : columns;
       const start = vertical ? direction > 0 ? lastRow : merge?.row ?? row :
         direction > 0 ? lastColumn : merge?.column ?? column;
-      const occupies = (index: number) => {
-        const cell = findCell(sheet, vertical ? { row: index, column } : { row, column: index });
-        return cell !== undefined && cell.content.kind !== 'blank';
-      };
-      let next = axis.step(start, direction);
-      if (control && next !== start) {
-        const contiguous = occupies(start) && occupies(next);
-        let current = start;
-        while (next !== current) {
-          if (contiguous && !occupies(next)) { next = current; break; }
-          if (!contiguous && occupies(next)) break;
-          current = next;
-          next = axis.step(current, direction);
-        }
-      }
+      const next = control ? jumpOnLine(sheet, axis, vertical, vertical ? column : row, start, direction) :
+        axis.step(start, direction);
       return vertical ? { row: next, column } : { row, column: next };
     }
     default: return undefined;

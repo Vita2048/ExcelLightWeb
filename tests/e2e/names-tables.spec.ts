@@ -334,12 +334,13 @@ test('keeps table filter buttons clear of both frozen dividers', async ({ page }
   await expect(page.locator('.edit-status')).toContainText('Froze panes.');
 
   const grid = page.getByRole('grid');
+  const header = Number(await grid.getAttribute('data-row-header'));
   const gridBox = await grid.boundingBox();
   const teamBox = await page.getByRole('button', { name: 'Filter Team', exact: true }).boundingBox();
   const priorityBox = await page.getByRole('button', { name: 'Filter Priority', exact: true }).boundingBox();
   if (!gridBox || !teamBox || !priorityBox) throw new Error('The table filter buttons or grid are not visible.');
   // The first column and top row are frozen. Their buttons must leave room for the 2px split lines.
-  expect(teamBox.x + teamBox.width).toBeLessThanOrEqual(gridBox.x + 138.5);
+  expect(teamBox.x + teamBox.width).toBeLessThanOrEqual(gridBox.x + header + 96 - 1.5);
   expect(teamBox.y + teamBox.height).toBeLessThanOrEqual(gridBox.y + 50.5);
   expect(priorityBox.y + priorityBox.height).toBeLessThanOrEqual(gridBox.y + 50.5);
 });

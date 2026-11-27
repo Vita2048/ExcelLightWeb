@@ -23,6 +23,7 @@ import { freezeFromCaret, setFreeze } from '../application/view-commands';
 import { FindReplaceDialog, type SearchOutcome } from '../features/search/FindReplaceDialog';
 import { ZoomDialog } from '../features/view/ZoomDialog';
 import { columnLetters } from '../core/formula-references';
+import type { RowMask } from '../core/row-mask';
 import { FilterDropdown } from '../features/data/FilterDropdown';
 import { SortDialog, SortOptionsDialog, SortWarningDialog, type SortDraft, type SortExtent } from '../features/data/SortDialog';
 import type { WorkbookSnapshot } from '../application/workbook-protocol';
@@ -49,8 +50,9 @@ import { putFigurePlacement, removeFigurePlacement } from '../application/figure
 import { OfflineStatus } from '../offline/OfflineStatus';
 import { WorkbookSession, type SetCellsCommand, type StructureCommand } from '../application/workbook-session';
 import type { Axis } from '../core/axis-edit';
+import type { NativeFunction } from '../calculation/formula-functions';
 import { NativeScheduler, type CalculationMode, type CalculationStatus } from '../calculation/native-scheduler';
-import { findCell, findReferencedCell, newWorkbook, worksheetViewport, type CellReference, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
+import { documentLimits, findCell, findReferencedCell, newWorkbook, worksheetViewport, type CellReference, type Coordinate, type DocumentId, type WorkbookDocument } from '../core/workbook';
 import { requireDocument } from '../core/workbook-validation';
 import { Ribbon, type SheetView } from '../features/shell/Ribbon';
 import { CellEditor, type CellEditorProps } from '../features/editing/CellEditor';
@@ -117,14 +119,56 @@ interface PendingFigureResize {
   readonly runningObserved: boolean;
 }
 
-function visibleIndex(index: number, dimensions: WorkbookDocument['sheets'][number]['rows'], limit: number,
-  filtered?: ReadonlySet<number>): number {
-  const hidden = new Set(dimensions.filter(dimension => dimension.hidden).map(dimension => dimension.index));
-  if (filtered) for (const row of filtered) hidden.add(row);
-  if (!hidden.has(index)) return index;
-  for (let next = index + 1; next <= limit; next++) if (!hidden.has(next)) return next;
-  for (let next = index - 1; next >= 1; next--) if (!hidden.has(next)) return next;
-  return index;
+function lowerBound(indexes: readonly number[], target: number): number {
+  let low = 0;
+  let high = indexes.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (indexes[middle]! < target) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function hiddenIndexes(dimensions: WorkbookDocument['sheets'][number]['rows']): readonly number[] {
+  return dimensions.filter(dimension => dimension.hidden).map(dimension => dimension.index)
+    .sort((left, right) => left - right);
+}
+
+function visibleIndex(index: number, manual: readonly number[], limit: number,
+  filtered?: RowMask): number {
+  const manualHas = (row: number) => {
+    const at = lowerBound(manual, row);
+    return at < manual.length && manual[at] === row;
+  };
+  const skipManual = (row: number, direction: 1 | -1) => {
+    if (!manualHas(row)) return row;
+    let at = lowerBound(manual, row);
+    if (direction > 0) {
+      let end = manual[at]!;
+      while (at + 1 < manual.length && manual[at + 1] === end + 1) end = manual[++at]!;
+      return end + 1;
+    }
+    let start = manual[at]!;
+    while (at > 0 && manual[at - 1] === start - 1) start = manual[--at]!;
+    return start - 1;
+  };
+  if (!manualHas(index) && !filtered?.has(index)) return index;
+  const seek = (start: number, direction: 1 | -1, bound: number) => {
+    let cursor = start;
+    const guardLimit = manual.length + (filtered?.exceptions ?? 0) + 2;
+    for (let guard = 0; guard < guardLimit; guard++) {
+      if (direction > 0 ? cursor > bound : cursor < bound) return undefined;
+      const opened = filtered ? direction > 0 ? filtered.rowAtOrAfter(cursor) : filtered.rowAtOrBefore(cursor) : cursor;
+      if (direction > 0 ? opened > bound : opened < bound) return undefined;
+      const landed = skipManual(opened, direction);
+      if (landed === opened) return opened;
+      if (direction > 0 ? landed <= cursor : landed >= cursor) return undefined;
+      cursor = landed;
+    }
+    return undefined;
+  };
+  return seek(index + 1, 1, limit) ?? seek(index - 1, -1, 1) ?? index;
 }
 
 function NameBox({ selection, goTo, cancel }: {
@@ -140,7 +184,7 @@ function NameBox({ selection, goTo, cancel }: {
     if (goTo(input.value)) {
       setDraft(undefined);
     } else {
-      input.setCustomValidity('Enter a visible cell address from A1 to Z1000.');
+      input.setCustomValidity(`Enter a visible cell address from A1 to ${worksheetViewport.address.slice(3)}.`);
       input.reportValidity();
     }
   }
@@ -266,12 +310,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     inspectBorders(formatDraft.basis, formatDraft.ranges[0]!) : undefined, [formatDraft]);
   const selected = selections.get(sheet.id) ?? defaultSelection;
   const sheetFiltered = useMemo(() => filteredRows(sheet), [sheet]);
+  const hiddenRowIndexes = useMemo(() => hiddenIndexes(sheet.rows), [sheet.rows]);
+  const hiddenColumnIndexes = useMemo(() => hiddenIndexes(sheet.columns), [sheet.columns]);
   const selection = useMemo(() => {
-    const row = visibleIndex(selected.anchor.row, sheet.rows, worksheetViewport.rows, sheetFiltered);
-    const column = visibleIndex(selected.anchor.column, sheet.columns, worksheetViewport.columns);
+    const row = visibleIndex(selected.anchor.row, hiddenRowIndexes, worksheetViewport.rows, sheetFiltered);
+    const column = visibleIndex(selected.anchor.column, hiddenColumnIndexes, worksheetViewport.columns);
     return mergeSelection(sheet, row === selected.anchor.row && column === selected.anchor.column ? selected : singleSelection({ row, column }));
-  }, [selected, sheet, sheetFiltered]);
-  const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection)), [sheet, selection]);
+  }, [selected, sheet, hiddenRowIndexes, hiddenColumnIndexes, sheetFiltered]);
+  const stats = useMemo(() => selectionStatistics(sheet, selectionAreas(selection), sheetFiltered), [sheet, selection, sheetFiltered]);
   const activeTarget = { sheetId: sheet.id, ...selection.anchor };
   const pythonExecution = usePythonExecution(session, locale,
     snapshot => setSnapshot(snapshot), paused => scheduler.current?.setSuspended(paused));
@@ -1720,10 +1766,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   }
 
   const tableFilter = !!sheet.filter && tables.some(table => ownsTableFilter(sheet.filter, table));
-  const filterCommands = {
-    active: tableFilter ? !!sheet.filter && !!activeTable && ownsTableFilter(sheet.filter, activeTable) :
-      !!sheet.filter,
-    clearable: !!sheet.filter?.criteria.length, reapplyable: !!sheet.filter };
+  const filterActive = tableFilter ? !!sheet.filter && !!activeTable && ownsTableFilter(sheet.filter, activeTable) : !!sheet.filter;
+  const filterClearable = !!sheet.filter?.criteria.length;
+  const filterReapplyable = !!sheet.filter;
+  const filterCommands = useMemo(() => ({
+    active: filterActive, clearable: filterClearable, reapplyable: filterReapplyable,
+  }), [filterActive, filterClearable, filterReapplyable]);
 
   function currentAuthoredBasis(basis: WorkbookSnapshot) {
     requireDocument(session.isCurrentAuthored(basis), 'The workbook changed. Open the command again.');
@@ -1903,6 +1951,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       return;
     }
     const source = basis.document.sheets.find(item => item.id === target.id)!;
+    const span = target.ranges.reduce((sum, range) => sum + range[count], 0);
+    requireDocument(span <= documentLimits.cells, 'Selection is too large.');
     const indexes = indexesFor(target, axis);
     if (action.startsWith('show-') && target.header !== undefined) {
       const hidden = new Set(source[count].filter(dimension => dimension.hidden).map(dimension => dimension.index));
@@ -2393,6 +2443,136 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return true;
   }
 
+  const ribbonLatest = useRef({
+    onFileBackstage: () => {},
+    onAlign: runAlignment,
+    onMerge: runMerge,
+    onBorderAction: runBorder,
+    onBorderStyle: (_style: BorderStyle) => {},
+    onBorderColor: (_color?: string) => {},
+    onBorderDialog: () => {},
+    onNumberFormat: runNumberFormat,
+    onAppearance: runAppearance,
+    onAppearanceError: (_error: string, _focus: boolean) => {},
+    onFormatDialog: (_tab: FormatTab) => {},
+    onPainter: armPainter,
+    onView,
+    onEdit: run,
+    onStructure: openStructure,
+    onCalculationMode: setCalculationMode,
+    onPython: togglePython,
+    onCalculate: (_scope: 'sheet' | 'workbook') => {},
+    onInsertFunction: (_name: NativeFunction) => {},
+    onZoomToSelection: () => {},
+    onZoomDialog: () => {},
+    onFreeze: runFreeze,
+    onTableRename: handleTableRename,
+    onTableResize: () => {},
+    onTableChangeDesign: handleTableChangeDesign,
+    onTableClick: () => {},
+    onFind: () => {},
+    onReplace: () => {},
+    onNameManagerClick: () => {},
+    onDefineNameClick: () => {},
+    onSort: requestSort,
+    onToggleFilter: toggleFilter,
+    onClearFilter: clearFilter,
+    onReapplyFilter: reapplyFilter,
+  });
+  ribbonLatest.current = {
+    onFileBackstage: () => setBackstageOpen(true),
+    onAlign: runAlignment,
+    onMerge: runMerge,
+    onBorderAction: runBorder,
+    onBorderStyle: style => { setLineStyle(style); runBorder(borderTool?.mode ?? 'draw'); },
+    onBorderColor: color => { setLineColor(color); runBorder(borderTool?.mode ?? 'draw'); },
+    onBorderDialog: () => openStructure('format-cells', undefined, 'Border'),
+    onNumberFormat: runNumberFormat,
+    onAppearance: runAppearance,
+    onAppearanceError: (error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); },
+    onFormatDialog: tab => openStructure('format-cells', undefined, tab),
+    onPainter: armPainter,
+    onView,
+    onEdit: run,
+    onStructure: openStructure,
+    onCalculationMode: setCalculationMode,
+    onPython: togglePython,
+    onCalculate: scope => {
+      if (python.barrier() && editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
+    },
+    onInsertFunction: name => {
+      if (editing.commit()) editing.begin(activeTarget, view.formulaBar ? 'formula' : 'inline', '=' + name + '()', true);
+    },
+    onZoomToSelection: () => {
+      if (!editing.commit()) return;
+      const zoom = worksheet.current?.zoomToSelection();
+      if (zoom !== undefined) onView({ zoom });
+      worksheet.current?.focus();
+    },
+    onZoomDialog: () => {
+      if (!editing.commit()) return;
+      setZoomDialog(true);
+    },
+    onFreeze: runFreeze,
+    onTableRename: handleTableRename,
+    onTableResize: () => { if (activeTable) openEditDialog(activeTable); },
+    onTableChangeDesign: handleTableChangeDesign,
+    onTableClick: () => openCreateDialog(true),
+    onFind: () => openSearch(false),
+    onReplace: () => openSearch(true),
+    onNameManagerClick: () => { if (editing.commit()) setNameManagerOpen(true); },
+    onDefineNameClick: () => openCreateDialog(false),
+    onSort: requestSort,
+    onToggleFilter: toggleFilter,
+    onClearFilter: clearFilter,
+    onReapplyFilter: reapplyFilter,
+  };
+  const ribbonHandlers = useMemo(() => ({
+    onFileBackstage: () => ribbonLatest.current.onFileBackstage(),
+    onAlign: (action: AlignmentAction) => ribbonLatest.current.onAlign(action),
+    onMerge: (mode: MergeMode) => ribbonLatest.current.onMerge(mode),
+    onBorderAction: (action: BorderAction) => ribbonLatest.current.onBorderAction(action),
+    onBorderStyle: (style: BorderStyle) => ribbonLatest.current.onBorderStyle(style),
+    onBorderColor: (color?: string) => ribbonLatest.current.onBorderColor(color),
+    onBorderDialog: () => ribbonLatest.current.onBorderDialog(),
+    onNumberFormat: (change: NumberFormatChange) => ribbonLatest.current.onNumberFormat(change),
+    onAppearance: (patch: AppearancePatch, focus?: boolean) => ribbonLatest.current.onAppearance(patch, focus),
+    onAppearanceError: (error: string, focus: boolean) => ribbonLatest.current.onAppearanceError(error, focus),
+    onFormatDialog: (tab: FormatTab) => ribbonLatest.current.onFormatDialog(tab),
+    onPainter: (locked: boolean) => ribbonLatest.current.onPainter(locked),
+    onView: (patch: Partial<SheetView>) => ribbonLatest.current.onView(patch),
+    onEdit: (action: EditAction) => ribbonLatest.current.onEdit(action),
+    onStructure: (action: StructureAction) => ribbonLatest.current.onStructure(action),
+    onCalculationMode: (mode: CalculationMode) => ribbonLatest.current.onCalculationMode(mode),
+    onPython: () => ribbonLatest.current.onPython(),
+    onCalculate: (scope: 'sheet' | 'workbook') => ribbonLatest.current.onCalculate(scope),
+    onInsertFunction: (name: NativeFunction) => ribbonLatest.current.onInsertFunction(name),
+    onZoomToSelection: () => ribbonLatest.current.onZoomToSelection(),
+    onZoomDialog: () => ribbonLatest.current.onZoomDialog(),
+    onFreeze: (mode: 'panes' | 'topRow' | 'firstColumn' | 'none') => ribbonLatest.current.onFreeze(mode),
+    onTableRename: (name: string) => ribbonLatest.current.onTableRename(name),
+    onTableResize: () => ribbonLatest.current.onTableResize(),
+    onTableChangeDesign: (patch: Partial<TableDesign>) => ribbonLatest.current.onTableChangeDesign(patch),
+    onTableClick: () => ribbonLatest.current.onTableClick(),
+    onFind: () => ribbonLatest.current.onFind(),
+    onReplace: () => ribbonLatest.current.onReplace(),
+    onNameManagerClick: () => ribbonLatest.current.onNameManagerClick(),
+    onDefineNameClick: () => ribbonLatest.current.onDefineNameClick(),
+    onSort: (ascending: boolean, dialog: boolean) => ribbonLatest.current.onSort(ascending, dialog),
+    onToggleFilter: () => ribbonLatest.current.onToggleFilter(),
+    onClearFilter: () => ribbonLatest.current.onClearFilter(),
+    onReapplyFilter: () => ribbonLatest.current.onReapplyFilter(),
+  }), []);
+  const ribbonBorders = useMemo(() => ({
+    action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode,
+    onAction: ribbonHandlers.onBorderAction, onStyle: ribbonHandlers.onBorderStyle,
+    onColor: ribbonHandlers.onBorderColor, onDialog: ribbonHandlers.onBorderDialog,
+  }), [borderAction, lineStyle, lineColor, borderTool?.mode, ribbonHandlers]);
+  const activeCell = findCell(sheet, selection.anchor);
+  const activeMerged = !!mergeAt(sheet, selection.anchor.row, selection.anchor.column);
+  const painterMode = painter ? painter.locked ? 'locked' : 'single' : undefined;
+  const sheetFrozen = sheet.frozenPanes.rows > 0 || sheet.frozenPanes.columns > 0;
+
   return (
     <div className="app-shell" ref={root} onKeyDownCapture={event => {
       if ((event.ctrlKey || event.metaKey) && !event.altKey && !(event.target instanceof Element && event.target.closest('dialog[open]'))) {
@@ -2433,39 +2613,22 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         <span className="product-title">ExcelLight Web</span>
       </header>
 
-      <Ribbon inert={backstageOpen || !!workspaceConflict} fileBackstageOpen={backstageOpen} onFileBackstage={() => setBackstageOpen(true)}
-        onAlign={runAlignment} onMerge={runMerge} merged={!!mergeAt(sheet, selection.anchor.row, selection.anchor.column)} borders={{ action: borderAction, style: lineStyle, color: lineColor, mode: borderTool?.mode, onAction: runBorder,
-        onStyle: style => { setLineStyle(style); runBorder(borderTool?.mode ?? 'draw'); },
-        onColor: color => { setLineColor(color); runBorder(borderTool?.mode ?? 'draw'); },
-        onDialog: () => openStructure('format-cells', undefined, 'Border') }} cell={findCell(sheet, selection.anchor)} onNumberFormat={runNumberFormat} onAppearance={runAppearance}
-        onAppearanceError={(error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); }}
-        onFormatDialog={tab => openStructure('format-cells', undefined, tab)}
-        painter={painter ? painter.locked ? 'locked' : 'single' : undefined} onPainter={armPainter} view={view} onView={onView} onEdit={run} onStructure={openStructure}
-        calculationMode={calculation.mode} onCalculationMode={setCalculationMode} pythonOpen={pythonOpen}
-        onPython={togglePython} onCalculate={scope => {
-          if (python.barrier() && editing.commit()) scheduler.current?.calculate(scope === 'sheet' ? { sheetId: sheet.id } : 'workbook');
-        }} onInsertFunction={name => {
-          if (editing.commit()) editing.begin(activeTarget, view.formulaBar ? 'formula' : 'inline', '=' + name + '()', true);
-        }} onZoomToSelection={() => {
-        if (!editing.commit()) return;
-        const zoom = worksheet.current?.zoomToSelection();
-        if (zoom !== undefined) onView({ zoom });
-        worksheet.current?.focus();
-      }} onZoomDialog={() => {
-        if (!editing.commit()) return;
-        setZoomDialog(true);
-      }} frozen={sheet.frozenPanes.rows > 0 || sheet.frozenPanes.columns > 0} onFreeze={runFreeze}
-      activeTable={activeTable}
-      onTableRename={handleTableRename}
-      onTableResize={() => { if (activeTable) openEditDialog(activeTable); }}
-      onTableChangeDesign={handleTableChangeDesign}
-      onTableClick={() => openCreateDialog(true)}
-      onFind={() => openSearch(false)}
-      onReplace={() => openSearch(true)}
-      onNameManagerClick={() => { if (editing.commit()) setNameManagerOpen(true); }}
-      onDefineNameClick={() => openCreateDialog(false)}
-      filter={filterCommands} onSort={requestSort} onToggleFilter={toggleFilter}
-      onClearFilter={clearFilter} onReapplyFilter={reapplyFilter}
+      <Ribbon inert={backstageOpen || !!workspaceConflict} fileBackstageOpen={backstageOpen} onFileBackstage={ribbonHandlers.onFileBackstage}
+        onAlign={ribbonHandlers.onAlign} onMerge={ribbonHandlers.onMerge} merged={activeMerged} borders={ribbonBorders}
+        cell={activeCell} onNumberFormat={ribbonHandlers.onNumberFormat} onAppearance={ribbonHandlers.onAppearance}
+        onAppearanceError={ribbonHandlers.onAppearanceError} onFormatDialog={ribbonHandlers.onFormatDialog}
+        painter={painterMode} onPainter={ribbonHandlers.onPainter} view={view} onView={ribbonHandlers.onView}
+        onEdit={ribbonHandlers.onEdit} onStructure={ribbonHandlers.onStructure}
+        calculationMode={calculation.mode} onCalculationMode={ribbonHandlers.onCalculationMode} pythonOpen={pythonOpen}
+        onPython={ribbonHandlers.onPython} onCalculate={ribbonHandlers.onCalculate} onInsertFunction={ribbonHandlers.onInsertFunction}
+        onZoomToSelection={ribbonHandlers.onZoomToSelection} onZoomDialog={ribbonHandlers.onZoomDialog}
+        frozen={sheetFrozen} onFreeze={ribbonHandlers.onFreeze} activeTable={activeTable}
+        onTableRename={ribbonHandlers.onTableRename} onTableResize={ribbonHandlers.onTableResize}
+        onTableChangeDesign={ribbonHandlers.onTableChangeDesign} onTableClick={ribbonHandlers.onTableClick}
+        onFind={ribbonHandlers.onFind} onReplace={ribbonHandlers.onReplace}
+        onNameManagerClick={ribbonHandlers.onNameManagerClick} onDefineNameClick={ribbonHandlers.onDefineNameClick}
+        filter={filterCommands} onSort={ribbonHandlers.onSort} onToggleFilter={ribbonHandlers.onToggleFilter}
+        onClearFilter={ribbonHandlers.onClearFilter} onReapplyFilter={ribbonHandlers.onReapplyFilter}
       />
 
       <main className="workbook" aria-label="Workbook" inert={backstageOpen || !!workspaceConflict}>

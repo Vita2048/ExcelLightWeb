@@ -1,6 +1,7 @@
 import { formatCellValue } from '../core/formats/cell-format';
 import { columnLetters, copyReferences } from '../core/formula-references';
-import { cellKey, findCell, worksheetViewport, type CellDocument, type CellExtent, type SheetDocument,
+import { maskRows, RowMask } from '../core/row-mask';
+import { cellKey, documentLimits, findCell, worksheetViewport, type CellDocument, type CellExtent, type SheetDocument,
   type SheetFilter, type WorkbookDocument } from '../core/workbook';
 import { extentContains, lastColumn, lastRow, tableDesign, tableInputExtent } from '../core/workbook-names';
 import { overlaps, requireDocument, validateExtent } from '../core/workbook-validation';
@@ -139,6 +140,7 @@ export function sortData(basis: WorkbookSnapshot, range: CellExtent & { readonly
   }
   const first = hasHeader ? work.row + 1 : work.row;
   requireDocument(first <= lastRow(work), 'There are no records to sort under the header.');
+  requireDocument(lastRow(work) - first + 1 <= documentLimits.cells, 'Sort selection is too large.');
   requireDocument(!sheet.merges.some(merge => overlaps(merge, work)), 'Unmerge cells before sorting this range.');
   const rows = Array.from({ length: lastRow(work) - first + 1 }, (_, index) => first + index);
   const located = new Map(sheet.cells.map(cell => [cellKey(cell), cell]));
@@ -181,35 +183,36 @@ export function sortData(basis: WorkbookSnapshot, range: CellExtent & { readonly
   return { kind: 'structure', label: 'Sort', document: replaceSheet(basis.document, updated) };
 }
 
-/** Rows hidden by filter criteria. Manually hidden dimensions are not part of this set. */
+/** Rows hidden by filter criteria. Manually hidden dimensions are not part of this mask. */
 export function filteredRows(sheet: SheetDocument, filter: SheetFilter | undefined = sheet.filter,
-  exceptColumn?: number): ReadonlySet<number> {
-  const hidden = new Set<number>();
-  if (!filter) return hidden;
+  exceptColumn?: number): RowMask {
+  if (!filter) return RowMask.none();
   const criteria = filter.criteria.filter(criterion => criterion.column !== exceptColumn);
-  if (!criteria.length) return hidden;
+  if (!criteria.length) return RowMask.none();
+  const from = filter.row + 1;
+  const to = lastRow(filter);
   const columns = new Set(criteria.map(criterion => criterion.column));
-  const cells = new Map(sheet.cells.filter(cell => cell.row > filter.row && cell.row <= lastRow(filter) &&
-    columns.has(cell.column)).map(cell => [cellKey(cell), cell]));
-  for (const criterion of criteria) {
-    const allowed = new Set(criterion.allowed);
-    for (let row = filter.row + 1; row <= lastRow(filter); row++) {
-      if (hidden.has(row)) continue;
-      if (!allowed.has(filterKey(cells.get(cellKey({ row, column: criterion.column }))))) hidden.add(row);
-    }
+  const rules = criteria.map(criterion => ({ column: criterion.column, allowed: new Set(criterion.allowed) }));
+  const cells = [];
+  for (const cell of sheet.cells) {
+    if (cell.row < from || cell.row > to || !columns.has(cell.column)) continue;
+    cells.push({ row: cell.row, column: cell.column, key: filterKey(cell) });
   }
-  return hidden;
+  return maskRows(from, to, rules, filterKey(undefined), cells);
 }
 
 export function recordSummary(sheet: SheetDocument): string | undefined {
   const filter = sheet.filter;
   if (!filter || filter.rows < 2) return undefined;
+  const from = filter.row + 1;
+  const to = lastRow(filter);
   const filtered = filteredRows(sheet);
-  const manual = new Set(sheet.rows.filter(row => row.hidden).map(row => row.index));
-  let visible = 0;
-  for (let row = filter.row + 1; row <= lastRow(filter); row++) {
-    if (!filtered.has(row) && !manual.has(row)) visible++;
+  let manualOnly = 0;
+  for (const row of sheet.rows) {
+    if (!row.hidden || row.index < from || row.index > to || filtered.has(row.index)) continue;
+    manualOnly++;
   }
+  const visible = (to - from + 1) - filtered.countIn(from, to) - manualOnly;
   return visible + ' of ' + (filter.rows - 1) + ' records';
 }
 
@@ -235,11 +238,14 @@ export function currentRegion(document: WorkbookDocument, seed: CellExtent & { r
   validateExtent(seed);
   const sheet = sheetById(document, seed.sheetId);
   requireDocument(sheet, 'The worksheet no longer exists.');
-  const filled = new Set(sheet.cells.filter(isPopulated).map(cell => cellKey(cell)));
+  const populated = sheet.cells.filter(isPopulated);
+  const filled = new Set(populated.map(cell => cellKey(cell)));
+  const seedBottom = lastRow(seed);
+  const seedRight = lastColumn(seed);
   const queue: { row: number; column: number }[] = [];
-  for (let row = seed.row; row <= lastRow(seed); row++) {
-    for (let column = seed.column; column <= lastColumn(seed); column++) {
-      if (filled.has(cellKey({ row, column }))) queue.push({ row, column });
+  for (const cell of populated) {
+    if (cell.row >= seed.row && cell.row <= seedBottom && cell.column >= seed.column && cell.column <= seedRight) {
+      queue.push({ row: cell.row, column: cell.column });
     }
   }
   if (!queue.length) return seed;
@@ -276,18 +282,24 @@ export interface FilterValue { readonly key: string; readonly label: string }
 /** Distinct keys of one column, excluding rows another column already hides. */
 export function columnValues(sheet: SheetDocument, filter: SheetFilter, column: number,
   order: TextOrder = ordinalOrder): readonly FilterValue[] {
+  const from = filter.row + 1;
+  const to = lastRow(filter);
   const excluded = filteredRows(sheet, filter, column);
-  const cells = new Map(sheet.cells.filter(cell => cell.column === column && cell.row > filter.row &&
-    cell.row <= lastRow(filter)).map(cell => [cell.row, cell]));
   const keys = new Set<string>();
   const list: { key: string; label: string; sort: SortKey }[] = [];
-  for (let row = filter.row + 1; row <= lastRow(filter); row++) {
-    if (excluded.has(row)) continue;
-    const cell = cells.get(row);
+  let populatedVisible = 0;
+  for (const cell of sheet.cells) {
+    if (cell.column !== column || cell.row < from || cell.row > to || excluded.has(cell.row)) continue;
+    populatedVisible++;
     const key = filterKey(cell);
     if (keys.has(key)) continue;
     keys.add(key);
-    list.push({ key, label: key.length === 0 ? '(Blanks)' : key, sort: sortKeyFor(cell, row) });
+    list.push({ key, label: key.length === 0 ? '(Blanks)' : key, sort: sortKeyFor(cell, cell.row) });
+  }
+  const visible = (to - from + 1) - excluded.countIn(from, to);
+  const blank = filterKey(undefined);
+  if (visible > populatedVisible && !keys.has(blank)) {
+    list.push({ key: blank, label: '(Blanks)', sort: sortKeyFor(undefined, from) });
   }
   list.sort((left, right) => compareSortKeys(left.sort, right.sort, true, false, order));
   return list.map(({ key, label }) => ({ key, label }));

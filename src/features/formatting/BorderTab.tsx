@@ -38,7 +38,7 @@ export function BorderSample({ pen, width = 66 }: { pen: CellBorder | null; widt
     paint();
     media.addEventListener('change', paint);
     return () => media.removeEventListener('change', paint);
-  }, [pen, width]);
+  }, [pen?.style, pen?.rgb, width]);
   return <canvas ref={ref} width={width} height={14} aria-hidden="true" />;
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { mergeLabels, type AlignmentAction, type MergeMode } from '../../application/alignment-commands';
 import type { CellStyle } from '../../core/workbook';
 import { RibbonFlyout, RibbonGlyph } from '../shell/RibbonFlyout';
@@ -9,7 +9,7 @@ const rotations = [
 ] as const;
 const mergeIcons = { center: 'merge', across: 'across', cells: 'cells', unmerge: 'unmerge' } as const;
 
-export function AlignmentRibbon({ style, merged, onAlign, onMerge, onDialog }: {
+export const AlignmentRibbon = memo(function AlignmentRibbon({ style, merged, onAlign, onMerge, onDialog }: {
   style: CellStyle | undefined; merged: boolean; onAlign: (action: AlignmentAction) => void;
   onMerge: (mode: MergeMode) => void; onDialog: () => void;
 }) {
@@ -64,4 +64,4 @@ export function AlignmentRibbon({ style, merged, onAlign, onMerge, onDialog }: {
       <RibbonGlyph name="launcher" size={12} />
     </button>
   </fieldset>;
-}
+});

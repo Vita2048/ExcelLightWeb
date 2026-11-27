@@ -202,8 +202,22 @@ function lookup(args: readonly FormulaExpression[], ctx: FunctionContext): Scala
   const approximate = logicalValue(mode);
   if (Number.isNaN(offset) || offset < 0 || approximate === undefined) return error('#VALUE!');
   if (offset >= columns) return error('#REF!');
-  let found: number | undefined;
   if (key === null) return error('#N/A');
+  if (range) {
+    let foundRow: number | undefined;
+    for (const entry of ctx.entries(range)) {
+      if (entry.column !== range.left) continue;
+      const candidate = entry.value;
+      if (candidate === null || isError(candidate)) continue;
+      if (approximate && typeof key !== typeof candidate) continue;
+      const comparison = compare(candidate, key);
+      if (!approximate && comparison === 0) return at(entry.row - range.top, offset);
+      if (approximate && comparison <= 0) foundRow = entry.row;
+      if (approximate && comparison > 0) break;
+    }
+    return foundRow === undefined ? error('#N/A') : at(foundRow - range.top, offset);
+  }
+  let found: number | undefined;
   for (let row = 0; row < rows; row++) {
     const candidate = at(row, 0);
     if (candidate === null || isError(candidate)) continue;

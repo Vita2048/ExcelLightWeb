@@ -1,5 +1,5 @@
 import {
-  useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
+  memo, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState,
   type ClipboardEvent, type KeyboardEvent, type PointerEvent, type ReactNode, type Ref,
 } from 'react';
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
@@ -20,7 +20,7 @@ import drawBorderCursor from './cursors/draw-border.svg';
 import eraseBorderCursor from './cursors/erase-border.svg';
 import selectColumnCursor from './cursors/select-column.svg';
 import selectRowCursor from './cursors/select-row.svg';
-import { address, clamp, GridAxis, gridMetrics } from './grid-geometry';
+import { address, capFromScrollport, clamp, contentOffset, GridAxis, gridMetrics, placeScroll, rowHeaderWidth, scrollSpacer } from './grid-geometry';
 import {
   cellDisplay, includes, mergeSelection, navigate, primaryArea, select, selectionAreas, singleSelection,
   type Area, type AreaKind, type GridSelection,
@@ -130,6 +130,45 @@ interface ReferenceDrag {
 
 const initialViewport: GridViewport = { x: 0, y: 0, width: 0, height: 0 };
 
+interface ProjectedRowProps {
+  readonly row: number;
+  readonly columns: readonly number[];
+  readonly sheet: SheetDocument;
+  readonly showFormulas: boolean;
+  readonly separator: ',' | ';';
+  readonly staleCells: ReadonlySet<string>;
+  readonly calculatingCells: ReadonlySet<string>;
+  readonly idPrefix: string;
+  /** >= 1 when a single column is selected in this row; -1 when none; -2 when using `areas`. */
+  readonly selectedColumn: number;
+  readonly areas: readonly Area[] | undefined;
+}
+
+const ProjectedRow = memo(function ProjectedRow({
+  row, columns, sheet, showFormulas, separator, staleCells, calculatingCells, idPrefix, selectedColumn, areas,
+}: ProjectedRowProps) {
+  return (
+    <div role="row" aria-rowindex={row}>
+      {columns.map(column => {
+        const point = { row, column };
+        const merge = sheet.merges.length ? mergeAt(sheet, row, column) : undefined;
+        if (merge && (merge.row !== row || merge.column !== column)) return null;
+        const cell = findCell(sheet, point);
+        const value = cellDisplay(cell, showFormulas, separator);
+        const labelAddress = address(point);
+        const selected = selectedColumn === -1 ? false :
+          selectedColumn > 0 ? column === selectedColumn :
+          areas!.some(area => includes(area, point));
+        return <div key={column} id={idPrefix + '-' + labelAddress} role="gridcell" aria-colindex={column} aria-rowspan={merge?.rows} aria-colspan={merge?.columns}
+          aria-selected={selected}
+          aria-description={cell && calculatingCells.has(cell.id) ? 'Calculating' :
+            cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
+          aria-label={labelAddress + (value ? ', ' + value : ', blank')} />;
+      })}
+    </div>
+  );
+});
+
 export function Worksheet(props: WorksheetProps) {
   const { sheet, selection, onSelection, onAdjacentSheet, zoom, headings, gridlines, showFormulas,
     staleCells, calculatingCells, separator } = props;
@@ -139,13 +178,16 @@ export function Worksheet(props: WorksheetProps) {
   const borderDrag = useRef<BorderDrag | null>(null);
   const [borderPreview, setBorderPreview] = useState<DrawGesture>();
   const [resizePreview, setResizePreview] = useState<Area>();
-  const resize = useRef<{ id: number; axis: Axis; origin: number; size: number; apply: (size: number) => void } | null>(null);
+  const resize = useRef<{ id: number; axis: Axis; origin: number; boundOrigin: number; size: number; apply: (size: number) => void } | null>(null);
   const [guide, setGuide] = useState<{ axis: Axis; offset: number }>();
+  const guideRef = useRef<HTMLDivElement>(null);
   const exitOnTab = useRef(false);
   const fitStart = useRef<Coordinate | null>(null);
   const frame = useRef(0);
   const id = useId();
   const [view, setView] = useState(initialViewport);
+  const [projectionView, setProjectionView] = useState(initialViewport);
+  const lastScroll = useRef({ left: 0, top: 0 });
   const [palette, setPalette] = useState(0);
   const [selectedFigureId, setSelectedFigureId] = useState<string>();
   const pendingFigureSelection = useRef<string | undefined>(undefined);
@@ -153,25 +195,85 @@ export function Worksheet(props: WorksheetProps) {
   const [figureCursor, setFigureCursor] = useState<{ readonly ownerId: string; readonly x: number; readonly y: number }>();
   const figureDrag = useRef<FigureDrag | null>(null);
   const scale = zoom / 100;
-  const left = headings ? gridMetrics.rowHeader * scale : 0;
+  const [fontGeneration, setFontGeneration] = useState(0);
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts?.ready) return undefined;
+    let active = true;
+    const refresh = () => { if (active) setFontGeneration(generation => generation + 1); };
+    void fonts.ready.then(refresh);
+    fonts.addEventListener('loadingdone', refresh);
+    return () => {
+      active = false;
+      fonts.removeEventListener('loadingdone', refresh);
+    };
+  }, []);
+  const rowHeader = useMemo(() => {
+    if (typeof document === 'undefined') return gridMetrics.rowHeader * scale;
+    const probe = document.createElement('canvas').getContext('2d');
+    if (!probe) return gridMetrics.rowHeader * scale;
+    probe.font = `${12 * scale}px ${getComputedStyle(document.documentElement).fontFamily}`;
+    return rowHeaderWidth(probe.measureText(String(worksheetViewport.rows)).width, scale);
+  }, [scale, fontGeneration]);
+  const left = headings ? rowHeader : 0;
   const top = headings ? gridMetrics.columnHeader * scale : 0;
   // Filter-hidden rows keep their index but leave the projected axis, like the desktop worksheet.
   const filtered = useMemo(() => filteredRows(sheet), [sheet]);
-  const rowDimensions = useMemo(() => [...sheet.rows,
-    ...[...filtered].map(index => ({ index, hidden: true }))], [sheet.rows, filtered]);
-  const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, rowDimensions, scale, sheet.frozenPanes.rows), [rowDimensions, scale, sheet.frozenPanes.rows]);
+  const rows = useMemo(() => new GridAxis(worksheetViewport.rows, gridMetrics.row, sheet.rows, scale,
+    sheet.frozenPanes.rows, filtered.spans()), [sheet.rows, scale, sheet.frozenPanes.rows, filtered]);
   const columns = useMemo(() => new GridAxis(worksheetViewport.columns, gridMetrics.column, sheet.columns, scale, sheet.frozenPanes.columns), [sheet.columns, scale, sheet.frozenPanes.columns]);
-  const rowTracks = rows.projected(view.y, view.height - top);
-  const columnTracks = columns.projected(view.x, view.width - left);
+  function scrollOrigin(node: HTMLElement) {
+    const portX = Math.max(0, node.clientWidth - left);
+    const portY = Math.max(0, node.clientHeight - top);
+    return {
+      x: contentOffset(node.scrollLeft, columns.total, capFromScrollport(node.scrollWidth, left, columns.total), portX),
+      y: contentOffset(node.scrollTop, rows.total, capFromScrollport(node.scrollHeight, top, rows.total), portY),
+      portX, portY,
+    };
+  }
+  function placeHorizontal(node: HTMLElement, offset: number) {
+    const port = Math.max(0, node.clientWidth - left);
+    const next = placeScroll(offset, columns.total, node.scrollLeft, capFromScrollport(node.scrollWidth, left, columns.total), port);
+    if (next !== node.scrollLeft) node.scrollLeft = next;
+  }
+  function placeVertical(node: HTMLElement, offset: number) {
+    const port = Math.max(0, node.clientHeight - top);
+    const next = placeScroll(offset, rows.total, node.scrollTop, capFromScrollport(node.scrollHeight, top, rows.total), port);
+    if (next !== node.scrollTop) node.scrollTop = next;
+  }
+  useEffect(() => {
+    if (projectionView.width === 0 || projectionView.width !== view.width || projectionView.height !== view.height) {
+      setProjectionView(view);
+      return undefined;
+    }
+    if (projectionView.x === view.x && projectionView.y === view.y) return undefined;
+    const timer = window.setTimeout(() => setProjectionView(view), 80);
+    return () => window.clearTimeout(timer);
+  }, [view, projectionView.x, projectionView.y, projectionView.width, projectionView.height]);
+  const rowTracks = useMemo(() => rows.projected(view.y, view.height - top), [rows, view.y, view.height, top]);
+  const columnTracks = useMemo(() => columns.projected(view.x, view.width - left), [columns, view.x, view.width, left]);
+  const projectedRowTracks = useMemo(() => rows.projected(projectionView.y, projectionView.height - top),
+    [rows, projectionView.y, projectionView.height, top]);
+  const projectedColumnIndexes = useMemo(() => columns.projected(projectionView.x, projectionView.width - left).map(column => column.index),
+    [columns, projectionView.x, projectionView.width, left]);
   const areas = selectionAreas(selection);
   const cellId = (point: Coordinate) => id + '-' + address(point);
 
   function measure() {
     const node = scroll.current;
     if (!node) return;
-    const next = { x: node.scrollLeft, y: node.scrollTop, width: node.clientWidth, height: node.clientHeight };
+    lastScroll.current = { left: node.scrollLeft, top: node.scrollTop };
+    const origin = scrollOrigin(node);
+    const next = { x: origin.x, y: origin.y, width: node.clientWidth, height: node.clientHeight };
     setView(current => current.x === next.x && current.y === next.y &&
       current.width === next.width && current.height === next.height ? current : next);
+  }
+
+  function handleScroll() {
+    const node = scroll.current;
+    if (!node) return;
+    if (node.scrollLeft === lastScroll.current.left && node.scrollTop === lastScroll.current.top) return;
+    measure();
   }
 
   useEffect(() => {
@@ -203,9 +305,10 @@ export function Worksheet(props: WorksheetProps) {
     const node = scroll.current;
     if (!node) return { x: 0, y: 0 };
     const bounds = node.getBoundingClientRect();
+    const origin = scrollOrigin(node);
     return {
-      x: logicalPoint(clientX - bounds.left, left, columns, node.scrollLeft, scale),
-      y: logicalPoint(clientY - bounds.top, top, rows, node.scrollTop, scale),
+      x: logicalPoint(clientX - bounds.left, left, columns, origin.x, scale),
+      y: logicalPoint(clientY - bounds.top, top, rows, origin.y, scale),
     };
   }
 
@@ -291,9 +394,45 @@ export function Worksheet(props: WorksheetProps) {
   function reveal(point: Coordinate) {
     const node = scroll.current;
     if (!node) return;
-    node.scrollLeft = columns.reveal(point.column, node.scrollLeft, node.clientWidth - left);
-    node.scrollTop = rows.reveal(point.row, node.scrollTop, node.clientHeight - top);
-    measure();
+    const width = node.clientWidth;
+    const height = node.clientHeight;
+    const portX = Math.max(0, width - left);
+    const portY = Math.max(0, height - top);
+    const capX = capFromScrollport(node.scrollWidth, left, columns.total);
+    const capY = capFromScrollport(node.scrollHeight, top, rows.total);
+    const currentLeft = node.scrollLeft;
+    const currentTop = node.scrollTop;
+    const originX = contentOffset(currentLeft, columns.total, capX, portX);
+    const originY = contentOffset(currentTop, rows.total, capY, portY);
+    const targetX = columns.reveal(point.column, originX, portX);
+    const targetY = rows.reveal(point.row, originY, portY);
+    let moved = false;
+    if (targetX !== originX) {
+      const nextLeft = placeScroll(targetX, columns.total, currentLeft, capX, portX);
+      if (nextLeft !== currentLeft) {
+        node.scrollLeft = nextLeft;
+        moved = true;
+      }
+    }
+    if (targetY !== originY) {
+      const nextTop = placeScroll(targetY, rows.total, currentTop, capY, portY);
+      if (nextTop !== currentTop) {
+        node.scrollTop = nextTop;
+        moved = true;
+      }
+    }
+    if (!moved && view.x === originX && view.y === originY && view.width === width && view.height === height) return;
+    const finalLeft = moved ? node.scrollLeft : currentLeft;
+    const finalTop = moved ? node.scrollTop : currentTop;
+    lastScroll.current = { left: finalLeft, top: finalTop };
+    const next = {
+      x: finalLeft === currentLeft ? originX : contentOffset(finalLeft, columns.total, capX, portX),
+      y: finalTop === currentTop ? originY : contentOffset(finalTop, rows.total, capY, portY),
+      width,
+      height,
+    };
+    setView(current => current.x === next.x && current.y === next.y &&
+      current.width === next.width && current.height === next.height ? current : next);
   }
 
   function focus() {
@@ -368,17 +507,17 @@ export function Worksheet(props: WorksheetProps) {
           bottom: borderPreview.area.row + borderPreview.area.rows - 1, right: borderPreview.area.column + borderPreview.area.columns - 1 },
       } : { segments: borderPreview.segments, pen: props.borderPen ?? { style: 'dashed' } }),
       frozenRows: rows.frozen, frozenColumns: columns.frozen, frozenHeight: rows.frozenSize, frozenWidth: columns.frozenSize,
-      resizePreview,
+      resizePreview, rowHeaderWidth: rowHeader, themeVersion: palette,
     });
   }, [sheet, view, rowTracks, columnTracks, selection, areas, scale, headings, gridlines, showFormulas, staleCells, calculatingCells,
-    separator, props.referenceArea, props.tables, props.borderTool, props.borderPen, borderPreview, resizePreview, rows, columns, palette]);
+    separator, props.referenceArea, props.tables, props.borderTool, props.borderPen, borderPreview, resizePreview, rows, columns, palette, rowHeader]);
 
   function alignTo(point: Coordinate) {
     const node = scroll.current!;
-    const nextRow = rows.tracks.find(track => track.index >= point.row);
-    const nextColumn = columns.tracks.find(track => track.index >= point.column);
-    if (nextRow) node.scrollTop = Math.max(0, nextRow.start - rows.frozenSize);
-    if (nextColumn) node.scrollLeft = Math.max(0, nextColumn.start - columns.frozenSize);
+    const nextRow = rows.trackAtOrAfter(point.row);
+    const nextColumn = columns.trackAtOrAfter(point.column);
+    if (nextRow) placeVertical(node, Math.max(0, nextRow.start - rows.frozenSize));
+    if (nextColumn) placeHorizontal(node, Math.max(0, nextColumn.start - columns.frozenSize));
     measure();
   }
 
@@ -386,12 +525,13 @@ export function Worksheet(props: WorksheetProps) {
     const node = scroll.current!;
     const locate = (axis: GridAxis, position: number, header: number, offset: number, size: number) => {
       const relative = (bounded ? clamp(position, header, size - 0.01) : position) - header;
-      return (axis.atScreen(relative, offset) ?? (bounded && relative >= 0 ? axis.tracks.at(-1) : undefined))?.index;
+      return (axis.atScreen(relative, offset) ?? (bounded && relative >= 0 ? axis.last : undefined))?.index;
     };
-    const row = kind === 'columns' || kind === 'sheet' ? rows.tracks[0]?.index :
-      locate(rows, y, top, node.scrollTop, node.clientHeight);
-    const column = kind === 'rows' || kind === 'sheet' ? columns.tracks[0]?.index :
-      locate(columns, x, left, node.scrollLeft, node.clientWidth);
+    const origin = scrollOrigin(node);
+    const row = kind === 'columns' || kind === 'sheet' ? rows.first?.index :
+      locate(rows, y, top, origin.y, node.clientHeight);
+    const column = kind === 'rows' || kind === 'sheet' ? columns.first?.index :
+      locate(columns, x, left, origin.x, node.clientWidth);
     return row !== undefined && column !== undefined ? { row, column } : undefined;
   }
 
@@ -401,7 +541,8 @@ export function Worksheet(props: WorksheetProps) {
     const axis: Axis | undefined = x < left && y >= top ? 'row' : y < top && x >= left ? 'column' : undefined;
     if (!axis) return;
     const coord = axis === 'row' ? y - top : x - left;
-    const offset = axis === 'row' ? node.scrollTop : node.scrollLeft;
+    const origin = scrollOrigin(node);
+    const offset = axis === 'row' ? origin.y : origin.x;
     const tracks = axis === 'row' ? rows : columns;
     const track = tracks.atScreen(edge ? Math.max(0, coord - 4) : coord, offset);
     if (track && (!edge || Math.abs(tracks.screen(track, offset) + track.size - coord) <= 4)) return { axis, track };
@@ -416,8 +557,9 @@ export function Worksheet(props: WorksheetProps) {
     const y = active.y - originY;
     const xOverflow = active.kind === 'rows' ? 0 : x - clamp(x, left, node.clientWidth);
     const yOverflow = active.kind === 'columns' ? 0 : y - clamp(y, top, node.clientHeight);
-    node.scrollLeft += clamp(xOverflow, -35, 35);
-    node.scrollTop += clamp(yOverflow, -30, 30);
+    const origin = scrollOrigin(node);
+    placeHorizontal(node, origin.x + clamp(xOverflow, -35, 35));
+    placeVertical(node, origin.y + clamp(yOverflow, -30, 30));
     const point = pointAt(x, y, active.kind, true);
     if (point && (point.row !== active.selection.end.row || point.column !== active.selection.end.column)) {
       active.selection = select(active.selection, point, active.kind, true);
@@ -437,7 +579,8 @@ export function Worksheet(props: WorksheetProps) {
 
   function borderHit(x: number, y: number, erase: boolean) {
     const node = scroll.current!;
-    return hitBorder(sheet, { rows, columns, scrollX: node.scrollLeft, scrollY: node.scrollTop }, x - left, y - top, erase);
+    const origin = scrollOrigin(node);
+    return hitBorder(sheet, { rows, columns, scrollX: origin.x, scrollY: origin.y }, x - left, y - top, erase);
   }
 
   function addErase(active: BorderDrag, hit: BorderHit | undefined) {
@@ -450,8 +593,9 @@ export function Worksheet(props: WorksheetProps) {
     const box = node.getBoundingClientRect();
     const rawX = event.clientX - box.left, rawY = event.clientY - box.top;
     const x = clamp(rawX, left, node.clientWidth - .01), y = clamp(rawY, top, node.clientHeight - .01);
-    node.scrollLeft += clamp(rawX - x, -35, 35);
-    node.scrollTop += clamp(rawY - y, -30, 30);
+    const origin = scrollOrigin(node);
+    placeHorizontal(node, origin.x + clamp(rawX - x, -35, 35));
+    placeVertical(node, origin.y + clamp(rawY - y, -30, 30));
     if (active.mode === 'erase') {
       const dx = x - active.x, dy = y - active.y;
       const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 4));
@@ -500,7 +644,9 @@ export function Worksheet(props: WorksheetProps) {
       const apply = props.onHeaderResize(header.axis, header.track.index);
       if (!apply) return;
       const origin = header.axis === 'row' ? event.clientY : event.clientX;
-      resize.current = { id: event.pointerId, axis: header.axis, origin, size: header.track.size / scale, apply };
+      const boundOrigin = header.axis === 'row' ? bounds.top : bounds.left;
+      resize.current = { id: event.pointerId, axis: header.axis, origin, boundOrigin, size: header.track.size / scale, apply };
+      setGuide({ axis: header.axis, offset: origin - boundOrigin });
       event.preventDefault();
       node.setPointerCapture(event.pointerId);
       return;
@@ -530,10 +676,20 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
+    const sizing = resize.current;
+    if (sizing?.id === event.pointerId) {
+      const offset = (sizing.axis === 'row' ? event.clientY : event.clientX) - sizing.boundOrigin;
+      if (guideRef.current) {
+        guideRef.current.style.transform = sizing.axis === 'row'
+          ? `translate3d(0, ${offset}px, 0)`
+          : `translate3d(${offset}px, 0, 0)`;
+      }
+      return;
+    }
     const node = event.currentTarget;
     const bounds = node.getBoundingClientRect();
     const header = headerAt(event.clientX - bounds.left, event.clientY - bounds.top, true);
-    const axis = resize.current?.axis ?? header?.axis;
+    const axis = header?.axis;
     const heading = header ?? headerAt(event.clientX - bounds.left, event.clientY - bounds.top, false);
     node.style.cursor = axis === 'row' ? 'row-resize' : axis === 'column' ? 'col-resize' :
       heading?.axis === 'row' ? `url("${selectRowCursor}") 14 8, default` :
@@ -542,11 +698,6 @@ export function Worksheet(props: WorksheetProps) {
     const stroke = borderDrag.current;
     if (stroke?.id === event.pointerId) {
       if (stroke.mode === props.borderTool) updateBorder(stroke, event);
-      return;
-    }
-    if (resize.current?.id === event.pointerId) {
-      const offset = axis === 'row' ? event.clientY - bounds.top : event.clientX - bounds.left;
-      setGuide({ axis: axis!, offset });
       return;
     }
     const active = drag.current;
@@ -642,7 +793,7 @@ export function Worksheet(props: WorksheetProps) {
       event.preventDefault();
       const kind = key !== ' ' || control && shiftKey ? 'sheet' : control ? 'columns' : 'rows';
       const point = key.toLowerCase() === 'a' ? {
-        row: rows.tracks[0]?.index ?? anchor.row, column: columns.tracks[0]?.index ?? anchor.column,
+        row: rows.first?.index ?? anchor.row, column: columns.first?.index ?? anchor.column,
       } : anchor;
       if (onSelection(select(selection, point, kind)) && point !== anchor) reveal(point);
       return;
@@ -666,23 +817,36 @@ export function Worksheet(props: WorksheetProps) {
   }
 
   // Keep the active descendant mounted even when native scrolling moves it outside the viewport.
-  const projected = new Map(rowTracks.slice(0, 64).map(row => [row.index, columnTracks.map(column => column.index)]));
+  const projected = new Map<number, readonly number[]>(projectedRowTracks.slice(0, 64).map(row => [row.index, projectedColumnIndexes]));
+  let sortProjectedRows = false;
   function mountCell(row: number, column: number) {
-    const indexes = projected.get(row) ?? [];
-    if (!indexes.includes(column)) projected.set(row, [...indexes, column].sort((a, b) => a - b));
+    const indexes = projected.get(row);
+    if (!indexes) {
+      projected.set(row, [column]);
+      sortProjectedRows = true;
+    } else if (!indexes.includes(column)) {
+      projected.set(row, [...indexes, column].sort((a, b) => a - b));
+    }
   }
-  for (const [row, indexes] of [...projected]) {
-    for (const column of indexes) {
-      const merge = mergeAt(sheet, row, column);
-      if (merge) mountCell(merge.row, merge.column);
+  if (sheet.merges.length) {
+    for (const [row, indexes] of [...projected]) {
+      for (const column of indexes) {
+        const merge = mergeAt(sheet, row, column);
+        if (merge) mountCell(merge.row, merge.column);
+      }
     }
   }
   mountCell(selection.anchor.row, selection.anchor.column);
+  if (selection.end.row !== selection.anchor.row || selection.end.column !== selection.anchor.column) {
+    mountCell(selection.end.row, selection.end.column);
+  }
   const editMerge = editAt && mergeAt(sheet, editAt.row, editAt.column);
-  const editRow = editAt && (rows.track(editAt.row) ?? (editMerge && rows.tracks.find(track =>
-    track.index >= editAt.row && track.index < editAt.row + editMerge.rows)));
-  const editColumn = editAt && (columns.track(editAt.column) ?? (editMerge && columns.tracks.find(track =>
-    track.index >= editAt.column && track.index < editAt.column + editMerge.columns)));
+  const editRowTrack = editAt && rows.trackAtOrAfter(editAt.row);
+  const editColumnTrack = editAt && columns.trackAtOrAfter(editAt.column);
+  const editRow = editAt && (rows.track(editAt.row) ?? (editMerge && editRowTrack &&
+    editRowTrack.index < editAt.row + editMerge.rows ? editRowTrack : undefined));
+  const editColumn = editAt && (columns.track(editAt.column) ?? (editMerge && editColumnTrack &&
+    editColumnTrack.index < editAt.column + editMerge.columns ? editColumnTrack : undefined));
   const bodyWidth = Math.max(0, view.width - left);
   const bodyHeight = Math.max(0, view.height - top);
   const editorWidth = Math.min(bodyWidth, Math.max(80, editMerge ? columns.span(editMerge.column, editMerge.column + editMerge.columns - 1) : editColumn?.size ?? 0));
@@ -770,6 +934,7 @@ export function Worksheet(props: WorksheetProps) {
   function filterControls() {
     const filter = sheet.filter;
     const tables = (props.tables ?? []).filter(table => !table.area.invalid && table.area.sheetId === sheet.id);
+    if (!filter && !tables.length) return [];
     const headers = new Set<number>();
     if (filter) headers.add(filter.row);
     for (const table of tables) {
@@ -813,11 +978,11 @@ export function Worksheet(props: WorksheetProps) {
 
   return (
     <div className="worksheet">
-      <div ref={scroll} className="worksheet-scroll" role="grid" aria-label={sheet.name}
+      <div ref={scroll} className="worksheet-scroll" role="grid" aria-label={sheet.name} data-row-header={left}
         aria-rowcount={worksheetViewport.rows} aria-colcount={worksheetViewport.columns}
         aria-multiselectable="true" aria-activedescendant={cellId(selection.anchor)} tabIndex={0}
         aria-describedby={id + '-help'} onBlur={() => { exitOnTab.current = false; }}
-        onScroll={measure} onKeyDown={keyDown} onPointerDown={pointerDown} onPointerMove={pointerMove}
+        onScroll={handleScroll} onKeyDown={keyDown} onPointerDown={pointerDown} onPointerMove={pointerMove}
         onPointerLeave={event => { if (!resize.current) event.currentTarget.style.cursor = ''; }}
         onCopy={event => props.onClipboard(event, 'copy')} onCut={event => props.onClipboard(event, 'cut')}
         onPaste={event => props.onClipboard(event, 'paste')}
@@ -844,24 +1009,25 @@ export function Worksheet(props: WorksheetProps) {
               pointAt(x, y, 'cells')) props.onEdit();
         }}
         onPointerUp={endDrag} onPointerCancel={endDrag} onLostPointerCapture={endDrag}>
-        <div aria-hidden="true" className="worksheet-spacer" style={{ width: left + columns.total, height: top + rows.total }} />
+        <div aria-hidden="true" className="worksheet-spacer" style={{ width: scrollSpacer(columns.total, left), height: scrollSpacer(rows.total, top) }} />
         <div className="worksheet-projection">
-          {[...projected].sort(([a], [b]) => a - b).filter(([, indexes]) => indexes.length > 0).map(([row, indexes]) => (
-            <div key={row} role="row" aria-rowindex={row}>
-              {indexes.map(column => {
-                const point = { row, column };
-                const merge = mergeAt(sheet, row, column);
-                if (merge && (merge.row !== row || merge.column !== column)) return null;
-                const cell = findCell(sheet, point);
-                const value = cellDisplay(cell, showFormulas, separator);
-                return <div key={column} id={cellId(point)} role="gridcell" aria-colindex={column} aria-rowspan={merge?.rows} aria-colspan={merge?.columns}
-                  aria-selected={areas.some(area => includes(area, point))}
-                  aria-description={cell && calculatingCells.has(cell.id) ? 'Calculating' :
-                    cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
-                  aria-label={address(point) + (value ? ', ' + value : ', blank')} />;
-              })}
-            </div>
-          ))}
+          {(sortProjectedRows ? [...projected].sort(([a], [b]) => a - b) : [...projected]).filter(([, indexes]) => indexes.length > 0).map(([row, indexes]) => {
+            let selectedColumn = -1;
+            let rowAreas: readonly Area[] | undefined;
+            if (areas.length === 1) {
+              const area = areas[0]!;
+              if (row >= area.top && row <= area.bottom) {
+                selectedColumn = area.left === area.right ? area.left : -2;
+                if (selectedColumn === -2) rowAreas = areas;
+              }
+            } else if (areas.some(area => row >= area.top && row <= area.bottom)) {
+              selectedColumn = -2;
+              rowAreas = areas;
+            }
+            return <ProjectedRow key={row} row={row} columns={indexes} sheet={sheet} showFormulas={showFormulas}
+              separator={separator} staleCells={staleCells} calculatingCells={calculatingCells} idPrefix={id}
+              selectedColumn={selectedColumn} areas={rowAreas} />;
+          })}
         </div>
       </div>
       <p className="worksheet-projection" id={id + '-help'}>
@@ -882,7 +1048,7 @@ export function Worksheet(props: WorksheetProps) {
           const label = item.label ?? `Figure placement ${index + 1}`;
           return <div key={item.placement.id} className={'figure-placement' + (selected ? ' selected' : '') +
             (props.rangePicking ? ' range-picking' : '')} role="group" aria-label={label}
-            style={{ left: bounds.x, top: bounds.y, width: bounds.width, height: bounds.height }}
+            style={{ transform: `translate3d(${bounds.x}px, ${bounds.y}px, 0)`, width: bounds.width, height: bounds.height }}
             onPointerDown={event => {
               if (props.rangePicking || (event.target as HTMLElement).closest('[data-figure-delete]')) return;
               const edge = (event.target as HTMLElement).closest<HTMLElement>('[data-figure-edge]')?.dataset.figureEdge as FigureEdge | undefined;
@@ -915,7 +1081,7 @@ export function Worksheet(props: WorksheetProps) {
           const preview = draftPlacement && figureScreenRect(draftPlacement, rows, columns, scale, view.x, view.y, left, top);
           return <>
             {preview && <div aria-hidden="true" className="figure-placement-preview" style={{
-              left: preview.x, top: preview.y, width: preview.width, height: preview.height,
+              transform: `translate3d(${preview.x}px, ${preview.y}px, 0)`, width: preview.width, height: preview.height,
             }}><img src={`data:image/png;base64,${pending.figure.pngBase64}`} alt="" /></div>}
             <div className="figure-placement-capture" aria-label="Place Python Figure on worksheet"
               style={{ left, top, width: bodyWidth, height: bodyHeight }}
@@ -932,8 +1098,8 @@ export function Worksheet(props: WorksheetProps) {
           </>;
         })()}
       </div>
-      {guide && <div aria-hidden="true" className={'dimension-guide ' + guide.axis}
-        style={guide.axis === 'row' ? { top: guide.offset } : { left: guide.offset }} />}
+      {guide && <div ref={guideRef} aria-hidden="true" className={'dimension-guide ' + guide.axis}
+        style={{ transform: guide.axis === 'row' ? `translate3d(0, ${guide.offset}px, 0)` : `translate3d(${guide.offset}px, 0, 0)` }} />}
       {editRow && editColumn && <div className="inline-editor-layer" style={{
         left, top, width: bodyWidth, height: bodyHeight,
       }}>
@@ -949,7 +1115,7 @@ export function Worksheet(props: WorksheetProps) {
         className={'filter-button' + (control.active ? ' filter-active' : '')}
         aria-label={'Filter ' + control.label}
         title={'Filter ' + control.label}
-        style={{ left: control.left, top: control.top, width: control.width, height: control.height }}
+        style={{ transform: `translate3d(${control.left}px, ${control.top}px, 0)`, width: control.width, height: control.height }}
         onClick={event => {
           const bounds = event.currentTarget.getBoundingClientRect();
           props.onFilter?.(control.row, control.column, bounds.left, bounds.bottom);
@@ -977,8 +1143,7 @@ export function Worksheet(props: WorksheetProps) {
             aria-label={'Resize table ' + table.name}
             title={'Resize table ' + table.name}
             style={{
-              left: bounds.right - 9,
-              top: bounds.bottom - 9,
+              transform: `translate3d(${bounds.right - 9}px, ${bounds.bottom - 9}px, 0)`,
             }}
             onPointerDown={e => onStartResizeHandle(e, table)}
             onKeyDown={e => onHandleKeyDown(e, table)}

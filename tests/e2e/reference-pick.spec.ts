@@ -14,9 +14,10 @@ async function enter(page: Page, address: string, value: string) {
 }
 
 async function point(page: Page, row: number, column: number) {
-  const grid = (await page.getByRole('grid').boundingBox())!;
-  // 100% zoom, 44px row header, 26px column header, 96×26px cells.
-  return { x: grid.x + 44 + (column - 0.5) * 96, y: grid.y + 26 + (row - 0.5) * 26 };
+  const node = page.getByRole('grid');
+  const grid = (await node.boundingBox())!;
+  const header = Number(await node.getAttribute('data-row-header'));
+  return { x: grid.x + header + (column - 0.5) * 96, y: grid.y + 26 + (row - 0.5) * 26 };
 }
 
 test('formula bar picks a reverse drag, replaces the picked reference, and commits to the original cell', async ({ page }) => {

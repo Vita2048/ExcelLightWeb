@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { activeFormatBrush, captureFormatBrush, formatStyles, paintStyles } from '../../src/application/style-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { fillPatterns, fillShadings, underlineOptions, underlinePatch } from '../../src/core/formats/appearance';
-import { emptySheet, findCell, type CellStyle, type WorkbookDocument } from '../../src/core/workbook';
+import { documentLimits, emptySheet, findCell, type CellStyle, type WorkbookDocument } from '../../src/core/workbook';
 
 function fixture() {
   const original: WorkbookDocument = { id: 'book', formatVersion: 1, dateSystem: '1900', names: [],
@@ -97,7 +97,7 @@ it('paints the detached style pattern across sheets while preserving content, ca
   expect(session.redo()).toBe(true);
   expect(session.active).toEqual(after);
   expect(paintStyles(session.capture(), range(6, 1, 1, 1, 'second'), brush).edits).toHaveLength(1);
-  expect(() => paintStyles(session.capture(), range(1, 100), brush)).toThrow(/outside/);
+  expect(() => paintStyles(session.capture(), range(1, documentLimits.columns), brush)).toThrow(/outside/);
   session.adopt(original);
   expect(activeFormatBrush(session.capture(), brush)).toBeUndefined();
   expect(() => paintStyles(session.capture(), target, brush)).toThrow(/different workbook/);

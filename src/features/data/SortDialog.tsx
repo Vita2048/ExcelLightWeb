@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
-import { findCell, type SheetDocument } from '../../core/workbook';
+import type { SheetDocument } from '../../core/workbook';
 import { sortKeyFor } from '../../application/data-commands';
 import { columnLetters } from '../../core/formula-references';
 import { lastColumn, lastRow } from '../../core/workbook-names';
@@ -44,9 +44,11 @@ export function SortDialog({ sheet, range, draft, onSubmit, onOptions, onCancel 
   const [ascending, setAscending] = useState(draft.ascending);
   const [header, setHeader] = useState(draft.header);
   const first = header ? range.row + 1 : range.row;
+  const last = lastRow(range);
   let allText = true, anyValue = false;
-  for (let row = first; row <= lastRow(range); row++) {
-    const key = sortKeyFor(findCell(sheet, { row, column }), row);
+  for (const cell of sheet.cells) {
+    if (cell.row < first || cell.row > last || cell.column !== column) continue;
+    const key = sortKeyFor(cell, cell.row);
     if (key.kind === 'blank') continue;
     anyValue = true;
     if (key.kind !== 'text') allText = false;

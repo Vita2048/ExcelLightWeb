@@ -11,8 +11,8 @@ for (const path of ['/', '/ExcelLightWeb/']) {
     const icon = await page.request.get(new URL(favicon!, page.url()).href);
     expect(icon.ok()).toBe(true);
     expect((await icon.body()).subarray(0, 4)).toEqual(Buffer.from([0, 0, 1, 0]));
-    await expect(page.getByRole('grid', { name: 'Sheet1' })).toHaveAttribute('aria-rowcount', '1000');
-    await expect(page.getByRole('grid')).toHaveAttribute('aria-colcount', '26');
+    await expect(page.getByRole('grid', { name: 'Sheet1' })).toHaveAttribute('aria-rowcount', '1048576');
+    await expect(page.getByRole('grid')).toHaveAttribute('aria-colcount', '16384');
     await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
     for (const selector of ['.title-bar', '.ribbon', '.formula-bar']) {
       await expect(page.locator(selector)).toHaveCSS('background-color', 'rgb(0, 0, 0)');

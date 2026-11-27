@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { memo, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { borderModes, borderPen, borderPresets, borderStyles, type BorderAction, type BorderMode, type BorderStyle } from '../../core/formats/borders';
 import { BorderSample } from './BorderTab';
@@ -16,7 +16,7 @@ export interface BorderRibbonProps {
   readonly onDialog: () => void;
 }
 
-export function BorderRibbon({ action, style, color, mode, onAction, onStyle, onColor, onDialog }: BorderRibbonProps) {
+export const BorderRibbon = memo(function BorderRibbon({ action, style, color, mode, onAction, onStyle, onColor, onDialog }: BorderRibbonProps) {
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -59,4 +59,4 @@ export function BorderRibbon({ action, style, color, mode, onAction, onStyle, on
         </div>
       </div>, document.body)}
   </div>;
-}
+});

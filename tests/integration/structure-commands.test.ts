@@ -3,7 +3,7 @@ import { changeDimensions, changeSheet, editAxis } from '../../src/application/s
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { shiftReferences } from '../../src/core/formula-references';
-import { emptySheet, findCell, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
+import { documentLimits, emptySheet, findCell, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
 
 function fixture() {
   let id = 0;
@@ -82,7 +82,7 @@ describe('structural workbook commands', () => {
 
   it('rejects overflow and stale proposals without partial changes', () => {
     const { session } = fixture();
-    session.execute({ kind: 'set-cells', edits: [{ target: { sheetId: 'data', row: 10000, column: 1 },
+    session.execute({ kind: 'set-cells', edits: [{ target: { sheetId: 'data', row: documentLimits.rows, column: 1 },
       content: { kind: 'text', value: 'edge' } }] });
     const basis = session.capture();
     expect(() => editAxis(basis, 'data', { axis: 'row', start: 1, count: 1, delete: false })).toThrow(/boundary/);
