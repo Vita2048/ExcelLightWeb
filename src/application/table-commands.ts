@@ -1,4 +1,4 @@
-import { columnLetters, parseFormula, quoteSheet, referenceBox, shiftEnclosedRows } from '../core/formula-references';
+import { columnLetters, parseFormula, quoteSheet, referenceBox, renameTableReferences, shiftEnclosedRows } from '../core/formula-references';
 import { formatCellValue } from '../core/formats/cell-format';
 import { cellKey, findCell, type CellContent, type CellDocument, type IdFactory, type SheetDocument,
   type TableDesign, type WorkbookDocument, type WorkbookName } from '../core/workbook';
@@ -57,8 +57,18 @@ function replaceSheet(document: WorkbookDocument, next: SheetDocument): Workbook
 
 function renamePython(document: WorkbookDocument, oldName: string, newName: string): WorkbookDocument {
   return { ...document, sheets: document.sheets.map(sheet => {
-    const cells = sheet.cells.map(cell => cell.content.kind === 'python' ?
-      { ...cell, content: renamePythonContent(cell.content, oldName, newName) } : cell);
+    const cells = sheet.cells.map(cell => {
+      if (cell.content.kind === 'python') {
+        return { ...cell, content: renamePythonContent(cell.content, oldName, newName) };
+      }
+      if (cell.content.kind === 'formula') {
+        const source = renameTableReferences(cell.content.source, oldName, newName);
+        if (source === cell.content.source) return cell;
+        const { cache: _cache, ...rest } = cell;
+        return { ...rest, content: { ...cell.content, source } };
+      }
+      return cell;
+    });
     return cells.some((cell, index) => cell !== sheet.cells[index]) ? { ...sheet, cells } : sheet;
   }) };
 }

@@ -123,7 +123,8 @@ export function pythonInsertCommand(document: WorkbookDocument, target: CellRefe
     const row = target.row + Math.floor(index / columns);
     const column = target.column + index % columns;
     const existing = byPosition.get(`${row}:${column}`);
-    const { spillOwner: _spillOwner, cache: _cache, requiresExternalCalculation: _external,
+    const { spillOwner: _spillOwner, spillKind: _spillKind, spillExtent: _spillExtent,
+      cache: _cache, requiresExternalCalculation: _external,
       content: _content, ...rest } = existing ?? { id: makeId(), row, column, content: { kind: 'blank' as const } };
     const id = existing?.id ?? (index === 0 ? anchor.id : rest.id);
     replacements.set(`${row}:${column}`, { ...rest, id, row, column, content: pythonResultContent(values[index]) });

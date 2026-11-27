@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { nativeFunctions, type NativeFunction } from '../../calculation/formula-functions';
+import { ribbonInsertFunctions, type NativeFunction } from '../../calculation/formula-functions';
 import type { CalculationMode } from '../../calculation/native-scheduler';
 import type { EditAction } from '../editing/useWorksheetEditing';
 import type { CellDocument, CellStyle, TableDesign, WorkbookName } from '../../core/workbook';
@@ -271,7 +271,7 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
           </> : name === 'Formulas' ? <>
             <fieldset>
               <legend>Function Library</legend>
-              <RibbonFlyout label="Insert Function" icon="Insert Function" large items={nativeFunctions.map(name => ({
+              <RibbonFlyout label="Insert Function" icon="Insert Function" large items={ribbonInsertFunctions.map(name => ({
                 label: name + '(…)', select: () => onInsertFunction(name),
               }))} />
               <AutoSum onEdit={onEdit} />

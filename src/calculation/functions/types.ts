@@ -1,5 +1,5 @@
 import type { FormulaExpression } from '../../core/formula-references';
-import type { FormulaValue, Range, Scalar } from '../formula-values';
+import type { FormulaArray, FormulaLambda, FormulaValue, Range, Scalar } from '../formula-values';
 
 export interface FunctionContext {
   readonly evaluate: (expression: FormulaExpression, includeRanges?: boolean) => FormulaValue;
@@ -11,6 +11,10 @@ export interface FunctionContext {
   readonly text: (value: Exclude<Scalar, FormulaErrorLike>) => string;
   readonly locale: string;
   readonly today: number;
+  readonly env: ReadonlyMap<string, FormulaValue>;
+  readonly evaluateInEnv: (expression: FormulaExpression, env: ReadonlyMap<string, FormulaValue>, includeRanges?: boolean) => FormulaValue;
+  readonly invokeLambda: (lambda: FormulaLambda, argValues: readonly FormulaValue[]) => FormulaValue;
+  readonly arrayOf: (value: FormulaValue) => FormulaArray | undefined;
 }
 
 type FormulaErrorLike = Extract<Scalar, { kind: 'error' }>;

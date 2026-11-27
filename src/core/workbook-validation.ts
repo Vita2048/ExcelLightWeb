@@ -295,6 +295,15 @@ function validateSheets(document: WorkbookDocument, addId: (id: DocumentId) => v
       if (cell.spillOwner !== undefined) {
         validateId(cell.spillOwner);
       }
+      if (cell.spillKind !== undefined) {
+        requireDocument(cell.spillKind === 'python' || cell.spillKind === 'formula' || cell.spillKind === 'pivot', 'Invalid spill kind.');
+        requireDocument(cell.spillOwner !== undefined, 'Spill kind requires spill ownership.');
+      }
+      if (cell.spillExtent !== undefined) {
+        requireDocument(cell.content.kind === 'formula' && inRange(cell.spillExtent.rows, 1, limits.rows) &&
+          inRange(cell.spillExtent.columns, 1, limits.columns) && cell.spillExtent.rows * cell.spillExtent.columns <= 100_000,
+          'Invalid formula spill extent.');
+      }
       validateCellValue(cell.content);
       if (cell.content.kind === 'formula') {
         requireDocument(++formulas <= limits.formulas, 'A workbook may contain at most 10,000 formulas.');
@@ -369,18 +378,20 @@ function equalContentToCache(content: CellContent, expected: CellCache | null): 
 }
 
 function validateSpills(document: WorkbookDocument): void {
-  const spillChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
+  const pythonChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
+  const formulaChildren = new Map<DocumentId, { sheetId: DocumentId; cell: CellDocument }[]>();
   for (const sheet of document.sheets) {
     for (const cell of sheet.cells) {
       if (cell.spillOwner !== undefined) {
-        const list = spillChildren.get(cell.spillOwner) ?? [];
+        const target = cell.spillKind === 'formula' ? formulaChildren : pythonChildren;
+        const list = target.get(cell.spillOwner) ?? [];
         list.push({ sheetId: sheet.id, cell });
-        spillChildren.set(cell.spillOwner, list);
+        target.set(cell.spillOwner, list);
       }
     }
   }
 
-  for (const [ownerId, children] of spillChildren) {
+  for (const [ownerId, children] of pythonChildren) {
     let anchorSheet: SheetDocument | undefined;
     let anchorCell: CellDocument | undefined;
     for (const s of document.sheets) {
@@ -417,8 +428,50 @@ function validateSpills(document: WorkbookDocument): void {
     }
   }
 
+  for (const [ownerId, children] of formulaChildren) {
+    let anchorSheet: SheetDocument | undefined;
+    let anchorCell: CellDocument | undefined;
+    for (const s of document.sheets) {
+      const match = s.cells.find(c => c.id === ownerId && c.content.kind === 'formula');
+      if (match) {
+        anchorSheet = s;
+        anchorCell = match;
+        break;
+      }
+    }
+    if (!anchorSheet || !anchorCell || !anchorCell.spillExtent) {
+      throw new DocumentError('Formula spill anchor is missing.');
+    }
+    const lastR = anchorCell.row + anchorCell.spillExtent.rows - 1;
+    const lastC = anchorCell.column + anchorCell.spillExtent.columns - 1;
+    for (const { sheetId, cell } of children) {
+      if (sheetId !== anchorSheet.id || cell.row < anchorCell.row || cell.row > lastR ||
+          cell.column < anchorCell.column || cell.column > lastC ||
+          (cell.row === anchorCell.row && cell.column === anchorCell.column)) {
+        throw new DocumentError('Cannot change part of a formula spill; edit or move its complete output at the anchor.');
+      }
+    }
+  }
+
   for (const sheet of document.sheets) {
     for (const cell of sheet.cells) {
+      if (cell.content.kind === 'formula' && cell.spillExtent) {
+        const startRow = cell.row;
+        const startCol = cell.column;
+        const lastR = startRow + cell.spillExtent.rows - 1;
+        const lastC = startCol + cell.spillExtent.columns - 1;
+        requireDocument(inRange(lastR, 1, limits.rows) && inRange(lastC, 1, limits.columns), 'Selection exceeds rectangular cell limits.');
+        const children = formulaChildren.get(cell.id) ?? [];
+        requireDocument(children.length === cell.spillExtent.rows * cell.spillExtent.columns - 1,
+          'Formula spill children do not match spill extent.');
+        const extent = { row: startRow, column: startCol, rows: cell.spillExtent.rows, columns: cell.spillExtent.columns };
+        requireDocument(!sheet.merges.some(merge => overlaps(merge, extent)), 'Formula spill cannot overlap merged cells.');
+        for (const name of document.names) {
+          if (name.isTable && !name.area.invalid && name.area.sheetId === sheet.id) {
+            requireDocument(!overlaps(name.area, extent), 'Formula spill cannot overlap a workbook table.');
+          }
+        }
+      }
       if (cell.content.kind !== 'python' || !cell.content.block?.spillActive) continue;
       const table = cell.content.block.lastTable;
       if (!table) continue;
@@ -427,7 +480,7 @@ function validateSpills(document: WorkbookDocument): void {
       const lastR = startRow + table.rows - 1;
       const lastC = startCol + table.columns - 1;
       requireDocument(inRange(lastR, 1, limits.rows) && inRange(lastC, 1, limits.columns), 'Selection exceeds rectangular cell limits.');
-      const children = spillChildren.get(cell.content.blockId) ?? [];
+      const children = pythonChildren.get(cell.content.blockId) ?? [];
       if (children.length !== table.cells.length - 1) {
         throw new DocumentError('Cannot split a Python spill; select its complete output or its anchor.');
       }

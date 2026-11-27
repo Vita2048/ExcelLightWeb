@@ -15,7 +15,7 @@ function evaluateAndOr(kind: 'AND' | 'OR', args: readonly FormulaExpression[], c
         for (const range of input) yield* ctx.values(range);
       })();
     } else if (isArray(input)) values = arrayValues(input);
-    else values = [input];
+    else values = [ctx.scalar(input)];
     for (const value of values) {
       if (isArray(input) && (value === null || typeof value === 'string' || isError(value))) continue;
       if (isError(value)) return value;

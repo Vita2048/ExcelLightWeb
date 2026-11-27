@@ -138,4 +138,34 @@ describe('structural workbook commands', () => {
     expect(session.undo()).toBe(true);
     expect(session.active).toEqual(basis.document);
   });
+
+  it('rewrites and shrinks 3D sheet references across rename, axis shift, and delete', () => {
+    let id = 0;
+    const makeId = () => 's3d-' + ++id;
+    const document: WorkbookDocument = {
+      id: 'book-3d',
+      formatVersion: 1,
+      dateSystem: '1900',
+      sheets: [
+        emptySheet('q1', 'Q1'),
+        emptySheet('q2', 'Q2'),
+        emptySheet('q3', 'Q3'),
+        {
+          ...emptySheet('sum', 'Summary'),
+          cells: [{ id: 'f1', row: 1, column: 1, content: { kind: 'formula', source: '=SUM(Q1:Q3!B2:B4)' } }],
+        },
+      ],
+      names: [],
+    };
+    const session = new WorkbookSession(document, { makeId });
+    session.execute(changeSheet(session.capture(), 'q1', { kind: 'rename', name: 'Jan' }, makeId).command);
+    expect(findCell(session.active.sheets[3]!, { row: 1, column: 1 })?.content)
+      .toEqual({ kind: 'formula', source: '=SUM(Jan:Q3!B2:B4)' });
+    session.execute(editAxis(session.capture(), 'q2', { axis: 'row', start: 2, count: 1, delete: false }));
+    expect(findCell(session.active.sheets[3]!, { row: 1, column: 1 })?.content)
+      .toEqual({ kind: 'formula', source: '=SUM(Jan:Q3!B3:B5)' });
+    session.execute(changeSheet(session.capture(), 'q1', { kind: 'delete' }, makeId).command);
+    expect(findCell(session.active.sheets[2]!, { row: 1, column: 1 })?.content)
+      .toEqual({ kind: 'formula', source: '=SUM(Q2:Q3!B3:B5)' });
+  });
 });

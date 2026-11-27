@@ -102,8 +102,10 @@ describe('S06 clipboard transactions and references', () => {
     expect(copyReferences('=LOG10(A1)+SUM(\'Other sheet\'!A1:A2)+$B1+C$2+$D$3+"A1"+Data_1', 2, 3))
       .toBe('=LOG10(D3)+SUM(\'Other sheet\'!D3:D4)+$B3+F$2+$D$3+"A1"+Data_1');
     expect(copyReferences('=SUM(A1:B2)+A:A+$1:$2', -1, 1)).toBe('=SUM(#REF!)+B:B+$1:$2');
+    expect(copyReferences('=SUM(Sheet1:Sheet2!A1)+SUM(A1#)+@Sales[Col]', 1, 0))
+      .toBe('=SUM(Sheet1:Sheet2!A2)+SUM(A2#)+@Sales[Col]');
     expect(() => copyReferences('=SUM(', 1, 0)).toThrow(/malformed/);
-    expect(() => copyReferences('=SUM(Sheet1:Sheet2!A1)', 1, 0)).toThrow(/unsupported/);
+    expect(() => copyReferences('=SUM([1]Sheet1!A1)', 1, 0)).toThrow(/unsupported/);
     expect(() => copyReferences("='[Book.xlsx]Sheet1'!A1", 1, 0)).toThrow(/unsupported/);
   });
 

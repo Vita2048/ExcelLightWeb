@@ -54,11 +54,14 @@ export function* aggregateInputs(args: readonly FormulaExpression[], ctx: Functi
       for (const item of arrayValues(value)) {
         if (code !== 3 || typeof item === 'number' || isError(item)) yield item;
       }
-    } else if (code === 3 || isError(value) || value === null) {
-      yield value;
     } else {
-      const numeric = ctx.number(value);
-      yield Number.isNaN(numeric) ? error('#VALUE!') : finite(numeric);
+      const scalarVal = ctx.scalar(value);
+      if (code === 3 || isError(scalarVal) || scalarVal === null) {
+        yield scalarVal;
+      } else {
+        const numeric = ctx.number(scalarVal);
+        yield Number.isNaN(numeric) ? error('#VALUE!') : finite(numeric);
+      }
     }
   }
 }

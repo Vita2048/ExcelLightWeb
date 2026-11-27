@@ -165,6 +165,11 @@ export interface PythonBlock {
   readonly placements?: readonly FigurePlacement[];
 }
 
+export type SpillKind = 'python' | 'formula' | 'pivot';
+export interface SpillDimensions {
+  readonly rows: number;
+  readonly columns: number;
+}
 export type CellContent = CellScalar
   | { readonly kind: 'blank' }
   | { readonly kind: 'formula'; readonly source: string }
@@ -176,6 +181,8 @@ export interface CellDocument extends Coordinate {
   readonly cache?: CellCache;
   readonly requiresExternalCalculation?: boolean;
   readonly spillOwner?: DocumentId;
+  readonly spillKind?: SpillKind;
+  readonly spillExtent?: SpillDimensions;
 }
 export interface SheetDocument {
   readonly id: DocumentId;

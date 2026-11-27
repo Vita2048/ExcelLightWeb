@@ -25,9 +25,10 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
   let label: string;
   if (change.kind === 'delete') {
     requireDocument(sheets.length > 1, 'A workbook must retain at least one worksheet.');
+    const originalOrder = sheets.map(sheet => sheet.name);
     sheets.splice(index, 1);
     active = sheets[Math.min(index, sheets.length - 1)]!.id;
-    sheets = sheets.map(sheet => rewriteCells(sheet, source => rewriteSheetReferences(source, target.name)));
+    sheets = sheets.map(sheet => rewriteCells(sheet, source => rewriteSheetReferences(source, target.name, undefined, originalOrder)));
     names = names.map(name => name.area.sheetId === id ? { ...name, area: { ...name.area, invalid: true } } : name);
     label = 'Delete Sheet';
   } else if (change.kind === 'rename') {
@@ -175,13 +176,14 @@ export function editAxis(basis: WorkbookSnapshot, id: string, edit: AxisEdit): S
     requireDocument(next !== undefined || edit.delete, 'Insertion would discard authored cells or dimensions at the worksheet boundary.');
     return next;
   }
+  const sheetOrder = basis.document.sheets.map(sheet => sheet.name);
   const sheets = basis.document.sheets.map(sheet => {
-    if (sheet.id !== id) return rewriteCells(sheet, source => shiftReferences(source, sheet.name, target.name, edit));
+    if (sheet.id !== id) return rewriteCells(sheet, source => shiftReferences(source, sheet.name, target.name, edit, sheetOrder));
     const cells = sheet.cells.flatMap(cell => {
       const hit = !edit.lane || cell[other] >= edit.lane[0] && cell[other] <= edit.lane[1];
       const index = hit ? moved(cell[edit.axis]) : cell[edit.axis];
       if (index === undefined) return [];
-      const next = rewriteCell(cell, source => shiftReferences(source, sheet.name, target.name, edit));
+      const next = rewriteCell(cell, source => shiftReferences(source, sheet.name, target.name, edit, sheetOrder));
       return index === cell[edit.axis] ? [next] : [{ ...next, [edit.axis]: index }];
     });
     const dimensions = sheet[key].flatMap(dimension => {

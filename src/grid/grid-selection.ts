@@ -107,6 +107,23 @@ export function presentCell(cell: CellDocument | undefined, source: boolean, sep
   return formatCellValue(cell, numberFormat);
 }
 
+export function formulaSpillArea(sheet: SheetDocument, point: Coordinate): Area | undefined {
+  const cell = findCell(sheet, point);
+  if (!cell) return undefined;
+  const anchor = cell.content.kind === 'formula' && cell.spillExtent
+    ? cell
+    : cell.spillKind === 'formula' && cell.spillOwner
+      ? sheet.cells.find(item => item.id === cell.spillOwner && item.content.kind === 'formula' && item.spillExtent)
+      : undefined;
+  if (!anchor?.spillExtent) return undefined;
+  return {
+    top: anchor.row,
+    left: anchor.column,
+    bottom: anchor.row + anchor.spillExtent.rows - 1,
+    right: anchor.column + anchor.spillExtent.columns - 1,
+  };
+}
+
 export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[], filtered: RowMask = filteredRows(sheet)) {
   let hiddenRows: Set<number> | undefined;
   for (const row of sheet.rows) {
@@ -120,10 +137,12 @@ export function selectionStatistics(sheet: SheetDocument, areas: readonly Area[]
   let numeric = 0;
   let sum = 0;
   function include(cell: CellDocument | undefined) {
-    if (!cell || cell.content.kind === 'blank' || hiddenRows?.has(cell.row) || hiddenColumns?.has(cell.column) ||
+    if (!cell || (cell.content.kind === 'blank' && !(cell.spillKind === 'formula' && cell.cache)) ||
+        hiddenRows?.has(cell.row) || hiddenColumns?.has(cell.column) ||
         filtered.has(cell.row)) return;
     count++;
-    const value = cell.content.kind === 'formula' || cell.content.kind === 'python' ? cell.cache : cell.content;
+    const value = cell.content.kind === 'formula' || cell.content.kind === 'python' || cell.spillKind === 'formula'
+      ? cell.cache : cell.content;
     if (value?.kind === 'number') {
       numeric++;
       sum += value.value;

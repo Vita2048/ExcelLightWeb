@@ -27,7 +27,7 @@ This file records limitations that remain open after release acceptance. An item
 ## Compatibility limits
 
 - The native `.exlt` writer emits format version 1 only. There is no migration decision for a future incompatible schema; older legacy fields are read and migrated.
-- XLSX support is the reviewed desktop subset, not general Excel round-tripping. Export materializes scalar Python results only; Python code, bindings, tables and figures stay native and appear in the loss report. CSV, macros, pivots, external workbooks, native dynamic arrays and full chart/table models remain excluded.
+- XLSX support is the reviewed desktop subset, not general Excel round-tripping. Export materializes scalar Python results only; Python code, bindings, tables and figures stay native and appear in the loss report. CSV, macros, pivots, external workbooks and full chart/table models remain excluded.
 - The desktop's current ClosedXML reader drops the column-width attribute its own exporter writes, so desktop width fidelity cannot be asserted; the web adapter preserves the attribute on import and export.
 - Six ribbon rows render without glyphs because the web glyph map has none: AutoFit Row Height, AutoFit Column Width, Hide Rows, Hide Columns, Unhide Rows and Unhide Columns. Their command order is still checked.
 - Browser storage is origin-scoped and subject to quota, eviction and private-mode loss. Export is the portable backup; project paths on one `github.io` origin are not a security boundary.

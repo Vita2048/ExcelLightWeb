@@ -11,10 +11,15 @@ import { statisticalFunctions } from './statistical';
 import { textFunctions } from './text';
 import type { FunctionContext, FunctionSignature, FunctionSpec } from './types';
 
-export const nativeFunctions = [
+export const ribbonInsertFunctions = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'COUNTA', 'IF', 'AND', 'OR', 'NOT', 'IFERROR',
   'ABS', 'ROUND', 'ROUNDUP', 'ROUNDDOWN', 'SUMIF', 'COUNTIF', 'LEFT', 'RIGHT', 'MID',
   'LEN', 'TRIM', 'UPPER', 'LOWER', 'DATE', 'YEAR', 'MONTH', 'DAY', 'TODAY', 'VLOOKUP', 'SUBTOTAL',
+] as const;
+
+export const nativeFunctions = [
+  ...ribbonInsertFunctions,
+  'LET', 'LAMBDA', 'ISOMITTED', 'MAP', 'REDUCE', 'SCAN', 'BYROW', 'BYCOL', 'MAKEARRAY',
 ] as const;
 
 export type NativeFunction = typeof nativeFunctions[number];

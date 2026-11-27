@@ -1,14 +1,23 @@
 import { formatCellValue } from '../core/formats/cell-format';
-import type { CacheUpdate } from '../application/workbook-protocol';
-import { parseFormula, referenceBox, UnsupportedFormulaReference, type FormulaExpression, type FormulaReference } from '../core/formula-references';
+import type { CacheUpdate, FormulaSpillResult } from '../application/workbook-protocol';
+import {
+  parseFormula, referenceBox, UnsupportedFormulaReference,
+  type FormulaExpression, type FormulaReference,
+} from '../core/formula-references';
 import { maskRows, RowMask } from '../core/row-mask';
-import { cellKey, documentLimits, resolvedCellStyle, type CellDocument, type CellReference, type SheetDocument, type WorkbookDocument } from '../core/workbook';
-import { lastColumn, lastRow, resolveWorkbookName } from '../core/workbook-names';
-import { ordinalNameKey } from '../core/workbook-validation';
+import {
+  cellKey, documentLimits, resolvedCellStyle,
+  type CellCache, type CellDocument, type CellExtent, type CellReference, type SheetDocument, type WorkbookDocument,
+} from '../core/workbook';
+import { lastColumn, lastRow, resolveStructuredReference, resolveWorkbookName } from '../core/workbook-names';
+import { overlaps, ordinalNameKey } from '../core/workbook-validation';
 import { todaySerial } from './formula-dates';
 import { evaluateFunction, isVolatileFunction, sumIfRange, supportedFunctions } from './formula-functions';
-import { compare, error, finite, formulaNodes, isArray, isError, isRange, matchesComparison, numberValue, scalarCache, textValue,
-  type FormulaArray, type FormulaError, type FormulaValue, type Range, type Scalar } from './formula-values';
+import {
+  arrayFromMatrix, compare, error, finite, isArray, isError, isLambda, isOmitted, isRange,
+  matchesComparison, numberValue, omitted, scalarCache, textValue,
+  type FormulaArray, type FormulaError, type FormulaLambda, type FormulaValue, type Range, type Scalar,
+} from './formula-values';
 
 interface FormulaNode {
   readonly id: string;
@@ -19,6 +28,7 @@ interface FormulaNode {
   readonly dependents: FormulaNode[];
   readonly containsSubtotal: boolean;
   readonly volatile: boolean;
+  readonly hasSpillRef: boolean;
   readonly diagnostic?: 'malformed' | 'unsupported';
 }
 export interface NativeCalculation {
@@ -33,7 +43,10 @@ function address(sheet: SheetDocument, cell: CellDocument): CellReference {
 }
 
 function baseValue(cell: CellDocument | undefined): Scalar {
-  if (!cell || cell.content.kind === 'blank') return null;
+  if (!cell) return null;
+  if (cell.content.kind === 'blank') {
+    return cell.spillKind === 'formula' && cell.cache?.kind === 'error' ? cell.cache : null;
+  }
   if (cell.content.kind === 'python') {
     const block = cell.content.block;
     const value = block?.hasResult ? block.lastValue : undefined;
@@ -140,6 +153,7 @@ export function prepareNativeGraph(document: WorkbookDocument) {
   const sheets = new Map(document.sheets.map(sheet => [ordinalNameKey(sheet.name), sheet]));
   const formulas = new Map(document.sheets.map(sheet => [sheet.id, sheet.cells.filter(cell => cell.content.kind === 'formula')
     .sort((a, b) => cellKey(a) - cellKey(b))]));
+  const cellLookup = new Map(document.sheets.map(sheet => [sheet.id, new Map(sheet.cells.map(cell => [cellKey(cell), cell]))]));
   const nodes = new Map<string, FormulaNode>();
   const resolvedReferences = new Map<FormulaReference, Range>();
   function resolve(sheet: SheetDocument, ref: FormulaReference): Range | undefined {
@@ -148,6 +162,7 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     if (!target || bounds.bottom > documentLimits.rows || bounds.right > documentLimits.columns) return;
     return { sheetId: target.id, ...bounds };
   }
+
   for (const sheet of document.sheets) for (const cell of formulas.get(sheet.id)!) {
     if (cell.content.kind !== 'formula') continue;
     const target = address(sheet, cell);
@@ -155,38 +170,121 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     let parsed: ReturnType<typeof parseFormula>;
     try { parsed = parseFormula(cell.content.source); }
     catch (exception) {
-      nodes.set(cell.id, { ...base, ranges: [], containsSubtotal: false, volatile: false,
+      nodes.set(cell.id, { ...base, ranges: [], containsSubtotal: false, volatile: false, hasSpillRef: false,
         diagnostic: cell.requiresExternalCalculation || exception instanceof UnsupportedFormulaReference ? 'unsupported' : 'malformed' });
       continue;
     }
+
     let containsSubtotal = false;
     let volatile = false;
+    let hasSpillRef = false;
     let unsupported = !!cell.requiresExternalCalculation;
-    for (const node of formulaNodes(parsed.expression)) {
-      if (node.kind === 'name') {
-        const area = resolveWorkbookName(document, node.name);
-        if (!area) unsupported = true;
+    const ranges: Range[] = [];
+
+    for (const ref of parsed.references) {
+      if (ref.endSheet !== undefined) {
+        unsupported = true;
+        continue;
       }
-      if (node.kind === 'call') {
-        if (!supportedFunctions.has(node.name)) unsupported = true;
-        if (node.name === 'SUBTOTAL') containsSubtotal = true;
-        if (isVolatileFunction(node.name)) volatile = true;
-      }
-    }
-    const ranges = parsed.references.flatMap(ref => {
       const range = resolve(sheet, ref);
-      if (!range) return [];
+      if (!range) continue;
       resolvedReferences.set(ref, range);
-      return [range];
-    });
-    for (const node of formulaNodes(parsed.expression)) {
-      if (node.kind === 'name') {
-        const area = resolveWorkbookName(document, node.name);
-        if (area && !area.invalid) {
-          ranges.push({ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) });
+      ranges.push(range);
+    }
+
+    function analyze(expression: FormulaExpression, scope: ReadonlySet<string>): void {
+      switch (expression.kind) {
+        case 'name': {
+          if (!scope.has(expression.name.toUpperCase())) {
+            const area = resolveWorkbookName(document, expression.name);
+            if (!area) unsupported = true;
+            else if (!area.invalid) {
+              ranges.push({ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) });
+            }
+          }
+          break;
+        }
+        case 'structured': {
+          const area = resolveStructuredReference(document, expression.reference, target);
+          if (!area) {
+            if (expression.reference.table &&
+                !document.names.some(n => n.isTable && ordinalNameKey(n.name) === ordinalNameKey(expression.reference.table!))) {
+              unsupported = true;
+            }
+          } else if (!area.invalid) {
+            ranges.push({ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) });
+          }
+          break;
+        }
+        case 'spill': {
+          hasSpillRef = true;
+          analyze(expression.target, scope);
+          if (expression.target.kind === 'reference') {
+            const anchorRange = resolvedReferences.get(expression.target.reference);
+            if (anchorRange && anchorRange.top === anchorRange.bottom && anchorRange.left === anchorRange.right) {
+              const anchorCell = cellLookup.get(anchorRange.sheetId)?.get(cellKey({ row: anchorRange.top, column: anchorRange.left }));
+              if (anchorCell?.spillExtent) {
+                ranges.push({
+                  sheetId: anchorRange.sheetId,
+                  top: anchorRange.top,
+                  left: anchorRange.left,
+                  bottom: anchorRange.top + anchorCell.spillExtent.rows - 1,
+                  right: anchorRange.left + anchorCell.spillExtent.columns - 1,
+                });
+              }
+            }
+          }
+          break;
+        }
+        case 'invoke':
+          analyze(expression.callee, scope);
+          for (const arg of expression.args) analyze(arg, scope);
+          break;
+        case 'union':
+          for (const part of expression.parts) analyze(part, scope);
+          break;
+        case 'unary':
+          analyze(expression.value, scope);
+          break;
+        case 'binary':
+          analyze(expression.left, scope);
+          analyze(expression.right, scope);
+          break;
+        case 'call': {
+          if (expression.name === 'LET') {
+            const inner = new Set(scope);
+            for (let i = 0; i < expression.args.length - 1; i += 2) {
+              if (i + 1 < expression.args.length) analyze(expression.args[i + 1]!, inner);
+              const nameNode = expression.args[i];
+              if (nameNode?.kind === 'name') inner.add(nameNode.name.toUpperCase());
+            }
+            if (expression.args.length > 0 && expression.args.length % 2 === 1) {
+              analyze(expression.args.at(-1)!, inner);
+            }
+            break;
+          }
+          if (expression.name === 'LAMBDA') {
+            const inner = new Set(scope);
+            for (let i = 0; i < expression.args.length - 1; i++) {
+              const param = expression.args[i];
+              if (param?.kind === 'name') inner.add(param.name.toUpperCase());
+            }
+            if (expression.args.length > 0) analyze(expression.args.at(-1)!, inner);
+            break;
+          }
+          if (!scope.has(expression.name)) {
+            if (!supportedFunctions.has(expression.name)) unsupported = true;
+            if (expression.name === 'SUBTOTAL') containsSubtotal = true;
+            if (isVolatileFunction(expression.name)) volatile = true;
+          }
+          for (const arg of expression.args) analyze(arg, scope);
+          break;
         }
       }
     }
+
+    analyze(parsed.expression, new Set());
+
     function candidateRanges(expression: FormulaExpression | undefined): Range[] {
       if (expression?.kind === 'reference') {
         const range = resolvedReferences.get(expression.reference);
@@ -196,18 +294,22 @@ export function prepareNativeGraph(document: WorkbookDocument) {
         const area = resolveWorkbookName(document, expression.name);
         return area && !area.invalid ? [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }] : [];
       }
+      if (expression?.kind === 'structured') {
+        const area = resolveStructuredReference(document, expression.reference, target);
+        return area && !area.invalid ? [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }] : [];
+      }
       if (expression?.kind === 'call' && expression.name === 'IF') return expression.args.slice(1).flatMap(candidateRanges);
       return [];
     }
-    for (const expression of formulaNodes(parsed.expression)) {
-      if (expression.kind !== 'call' || expression.name !== 'SUMIF' || expression.args.length !== 3) continue;
-      const [criteria, , sum] = expression.args;
-      for (const source of candidateRanges(criteria)) for (const target of candidateRanges(sum)) {
-        const expanded = sumIfRange(source, target);
+    for (const expr of walkCalls(parsed.expression)) {
+      if (expr.kind !== 'call' || expr.name !== 'SUMIF' || expr.args.length !== 3) continue;
+      const [criteria, , sum] = expr.args;
+      for (const source of candidateRanges(criteria)) for (const sumTarget of candidateRanges(sum)) {
+        const expanded = sumIfRange(source, sumTarget);
         if (expanded) ranges.push(expanded);
       }
     }
-    nodes.set(cell.id, { ...base, expression: parsed.expression, ranges, containsSubtotal, volatile,
+    nodes.set(cell.id, { ...base, expression: parsed.expression, ranges, containsSubtotal, volatile, hasSpillRef,
       ...(unsupported && { diagnostic: 'unsupported' as const }) });
   }
   const dependencies = new Map<string, readonly CellReference[]>();
@@ -215,6 +317,31 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     const inputs = new Set<FormulaNode>();
     for (const range of node.ranges) {
       for (const other of cellsIn(formulas.get(range.sheetId)!, range)) inputs.add(nodes.get(other.id)!);
+      const anchor = cellLookup.get(range.sheetId)?.get(cellKey({ row: range.top, column: range.left }));
+      if (anchor?.spillKind === 'formula' && anchor.spillOwner) {
+        const ownerNode = nodes.get(anchor.spillOwner);
+        if (ownerNode && ownerNode !== node) inputs.add(ownerNode);
+      }
+      // Also attach any formula anchor whose existing spill overlaps `range`.
+      for (const formulaCell of formulas.get(range.sheetId)!) {
+        if (!formulaCell.spillExtent) continue;
+        const spillBox = {
+          row: formulaCell.row,
+          column: formulaCell.column,
+          rows: formulaCell.spillExtent.rows,
+          columns: formulaCell.spillExtent.columns,
+        };
+        const rangeBox = {
+          row: range.top,
+          column: range.left,
+          rows: range.bottom - range.top + 1,
+          columns: range.right - range.left + 1,
+        };
+        if (overlaps(spillBox, rangeBox)) {
+          const ownerNode = nodes.get(formulaCell.id);
+          if (ownerNode && ownerNode !== node) inputs.add(ownerNode);
+        }
+      }
     }
     const list = [...inputs];
     node.inputs.push(...list);
@@ -222,6 +349,22 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     dependencies.set(id, list.map(input => input.target));
   }
   return { nodes, resolvedReferences, dependencies, names: document.names, ...evaluationOrder(nodes.values()) };
+}
+
+function* walkCalls(expression: FormulaExpression): Iterable<FormulaExpression> {
+  const stack = [expression];
+  while (stack.length) {
+    const node = stack.pop()!;
+    yield node;
+    switch (node.kind) {
+      case 'call': stack.push(...node.args); break;
+      case 'invoke': stack.push(...node.args, node.callee); break;
+      case 'spill': stack.push(node.target); break;
+      case 'union': stack.push(...node.parts); break;
+      case 'binary': stack.push(node.right, node.left); break;
+      case 'unary': stack.push(node.value); break;
+    }
+  }
 }
 
 export function indexNativeInputs(document: WorkbookDocument) {
@@ -233,6 +376,8 @@ export function indexNativeInputs(document: WorkbookDocument) {
 export function calculateNative(document: WorkbookDocument, options: CalculationOptions = {}): NativeCalculation {
   return evaluateNative(indexNativeInputs(document), prepareNativeGraph(document), undefined, options);
 }
+
+const emptyEnv: ReadonlyMap<string, FormulaValue> = new Map();
 
 export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, graph: ReturnType<typeof prepareNativeGraph>,
   selected: ReadonlySet<FormulaNode> | undefined, options: CalculationOptions): NativeCalculation {
@@ -250,13 +395,28 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
   const diagnostics = new Map<string, string>();
   const filtered = new Map<SheetDocument, RowMask>();
   const manual = new Map<SheetDocument, ReadonlySet<number>>();
+  const docView = {
+    id: '',
+    formatVersion: 1 as const,
+    dateSystem: '1900' as const,
+    sheets: [...inputs.values()].map(entry => entry.sheet),
+    names,
+  } satisfies WorkbookDocument;
+
+  const liveSpills = new Map<string, { readonly rows: number; readonly columns: number }>();
+  const liveSheetSpills = new Map<string, Map<number, { readonly ownerId: string; readonly value: Scalar }>>();
+  const clearedSheetSpills = new Map<string, Set<number>>();
 
   function computedValue(cell: CellDocument | undefined): Scalar {
     if (cell?.requiresExternalCalculation) return error('#NAME?');
     return (cell && evaluated.get(cell)) ?? baseValue(cell);
   }
   function read(range: Range, row: number, column: number): Scalar {
-    return computedValue(inputs.get(range.sheetId)!.cells.get(cellKey({ row, column })));
+    const key = cellKey({ row, column });
+    const live = liveSheetSpills.get(range.sheetId)?.get(key);
+    if (live !== undefined) return live.value;
+    if (clearedSheetSpills.get(range.sheetId)?.has(key)) return null;
+    return computedValue(inputs.get(range.sheetId)!.cells.get(key));
   }
 
   function rangeCells(range: Range) {
@@ -269,8 +429,31 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
   }
 
   function* entries(range: Range) {
+    const liveMap = liveSheetSpills.get(range.sheetId);
+    const clearedSet = clearedSheetSpills.get(range.sheetId);
+    if (!liveMap?.size && !clearedSet?.size) {
+      for (const cell of rangeCells(range)) {
+        yield { row: cell.row, column: cell.column, value: computedValue(cell) };
+      }
+      return;
+    }
+    const seen = new Set<number>();
     for (const cell of rangeCells(range)) {
-      yield { row: cell.row, column: cell.column, value: computedValue(cell) };
+      const key = cellKey(cell);
+      seen.add(key);
+      const live = liveMap?.get(key);
+      if (live !== undefined) yield { row: cell.row, column: cell.column, value: live.value };
+      else if (!clearedSet?.has(key)) yield { row: cell.row, column: cell.column, value: computedValue(cell) };
+    }
+    if (liveMap) {
+      for (const [key, entry] of liveMap) {
+        if (seen.has(key)) continue;
+        const row = Math.floor(key / documentLimits.columns) + 1;
+        const column = (key % documentLimits.columns) + 1;
+        if (row >= range.top && row <= range.bottom && column >= range.left && column <= range.right) {
+          yield { row, column, value: entry.value };
+        }
+      }
     }
   }
 
@@ -281,6 +464,18 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
     const rows = area.bottom - area.top + 1, columns = area.right - area.left + 1;
     if (rows === 1 && columns === 1) return;
     return { kind: 'array', rows, columns, at: (row, column) => read(area, area.top + row, area.left + column) };
+  }
+
+  function arrayOf(value: FormulaValue): FormulaArray | undefined {
+    if (isArray(value)) return value;
+    if (isRange(value)) {
+      if (value.length !== 1) return undefined;
+      const area = value[0]!;
+      const rows = area.bottom - area.top + 1, columns = area.right - area.left + 1;
+      return { kind: 'array', rows, columns, at: (row, column) => read(area, area.top + row, area.left + column) };
+    }
+    if (isOmitted(value) || isLambda(value)) return undefined;
+    return arrayFromMatrix(1, 1, [value]);
   }
 
   function* values(range: Range, subtotal?: { skipHidden: boolean }): Iterable<Scalar> {
@@ -294,29 +489,116 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
         hidden = manual.get(sheet);
       }
     }
-    for (const cell of rangeCells(range)) {
-      if (subtotal && (excluded?.has(cell.row) || hidden?.has(cell.row) || nodes.get(cell.id)?.containsSubtotal)) continue;
-      yield computedValue(cell);
+    const liveMap = liveSheetSpills.get(range.sheetId);
+    const clearedSet = clearedSheetSpills.get(range.sheetId);
+    if (!liveMap?.size && !clearedSet?.size) {
+      for (const cell of rangeCells(range)) {
+        if (subtotal && (excluded?.has(cell.row) || hidden?.has(cell.row) || nodes.get(cell.id)?.containsSubtotal)) continue;
+        yield computedValue(cell);
+      }
+      return;
     }
+    for (const entry of entries(range)) {
+      const existing = inputs.get(range.sheetId)!.cells.get(cellKey({ row: entry.row, column: entry.column }));
+      if (subtotal && (excluded?.has(entry.row) || hidden?.has(entry.row) || (existing && nodes.get(existing.id)?.containsSubtotal))) continue;
+      yield entry.value;
+    }
+  }
+
+  function clearAnchorSpill(sheetId: string, anchor: CellDocument) {
+    if (!anchor.spillExtent) return;
+    let cleared = clearedSheetSpills.get(sheetId);
+    if (!cleared) clearedSheetSpills.set(sheetId, cleared = new Set());
+    const liveMap = liveSheetSpills.get(sheetId);
+    for (let r = 0; r < anchor.spillExtent.rows; r++) for (let c = 0; c < anchor.spillExtent.columns; c++) {
+      if (r === 0 && c === 0) continue;
+      const key = cellKey({ row: anchor.row + r, column: anchor.column + c });
+      cleared.add(key);
+      if (liveMap?.get(key)?.ownerId === anchor.id) liveMap.delete(key);
+    }
+  }
+
+  function trySpillResult(sheet: SheetDocument, anchor: CellDocument, rows: number, columns: number,
+    at: (row: number, column: number) => Scalar): { cache: CellCache; spill?: FormulaSpillResult } {
+    if (rows * columns <= 1) {
+      return { cache: scalarCache(at(0, 0)) };
+    }
+    if (rows * columns > 100_000 || anchor.row + rows - 1 > documentLimits.rows || anchor.column + columns - 1 > documentLimits.columns) {
+      return { cache: error('#SPILL!') };
+    }
+    const extent: CellExtent = { row: anchor.row, column: anchor.column, rows, columns };
+    if (sheet.merges.some(merge => overlaps(merge, extent))) {
+      return { cache: error('#SPILL!') };
+    }
+    if (names.some(name => name.isTable && !name.area.invalid && name.area.sheetId === sheet.id && overlaps(name.area, extent))) {
+      return { cache: error('#SPILL!') };
+    }
+
+    const sheetCells = inputs.get(sheet.id)!.cells;
+    const liveMap = liveSheetSpills.get(sheet.id);
+    const clearedSet = clearedSheetSpills.get(sheet.id);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < columns; c++) {
+      if (r === 0 && c === 0) continue;
+      const key = cellKey({ row: anchor.row + r, column: anchor.column + c });
+      const live = liveMap?.get(key);
+      if (live !== undefined && live.ownerId !== anchor.id) {
+        return { cache: error('#SPILL!') };
+      }
+      if (clearedSet?.has(key)) continue;
+      const existing = sheetCells.get(key);
+      if (existing && (existing.content.kind !== 'blank' || (existing.spillOwner !== undefined && existing.spillOwner !== anchor.id) ||
+          (existing.spillKind === 'formula' && existing.spillOwner !== anchor.id))) {
+        return { cache: error('#SPILL!') };
+      }
+    }
+
+    const cells: (CellCache | null)[] = new Array(rows * columns);
+    const scalars: Scalar[] = new Array(rows * columns);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < columns; c++) {
+      const val = at(r, c);
+      const index = r * columns + c;
+      scalars[index] = val;
+      cells[index] = val === null ? null : scalarCache(val);
+    }
+
+    let targetLive = liveMap;
+    if (!targetLive) liveSheetSpills.set(sheet.id, targetLive = new Map());
+    for (let r = 0; r < rows; r++) for (let c = 0; c < columns; c++) {
+      if (r === 0 && c === 0) continue;
+      const key = cellKey({ row: anchor.row + r, column: anchor.column + c });
+      clearedSet?.delete(key);
+      targetLive.set(key, { ownerId: anchor.id, value: scalars[r * columns + c] ?? null });
+    }
+    liveSpills.set(anchor.id, { rows, columns });
+
+    const anchorCache = cells[0] ?? { kind: 'number', value: 0 };
+    return { cache: anchorCache, spill: { rows, columns, cells } };
   }
 
   const updates: CacheUpdate[] = [];
   for (const node of order) {
     if (selected && !selected.has(node)) continue;
     const { target, expression, diagnostic } = node;
+    const sheet = inputs.get(target.sheetId)!.sheet;
     const cell = inputs.get(target.sheetId)!.cells.get(cellKey(target))!;
-    let value: Scalar;
+    clearAnchorSpill(target.sheetId, cell);
+
+    let cache: CellCache | undefined;
+    let spill: FormulaSpillResult | undefined;
+
     if (diagnostic === 'unsupported') {
       diagnostics.set(cell.id, 'Unsupported function or reference');
-      value = error('#NAME?');
+      cache = error('#NAME?');
     } else if (cycles.has(node)) {
       diagnostics.set(cell.id, 'Circular reference');
-      value = error('#REF!');
+      cache = error('#REF!');
     } else if (!expression) {
       diagnostics.set(cell.id, 'Malformed formula');
-      value = error('#VALUE!');
+      cache = error('#VALUE!');
     } else {
       const scalar = (value: FormulaValue): Scalar => {
+        if (isOmitted(value)) return null;
+        if (isLambda(value)) return error('#CALC!');
         if (isArray(value)) return value.at(0, 0);
         if (!isRange(value)) return value;
         if (value.length !== 1) return error('#VALUE!');
@@ -326,24 +608,48 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
         if (range.top === range.bottom && cell.column >= range.left && cell.column <= range.right) return read(range, range.top, cell.column);
         return error('#VALUE!');
       };
-      // Flat operator chains can fill the source-length limit without nesting parentheses.
-      function evaluate(expression: FormulaExpression, includeRanges = false): FormulaValue {
+
+      const implicitIntersect = (value: FormulaValue): FormulaValue => {
+        if (isRange(value)) {
+          if (value.length !== 1) return error('#VALUE!');
+          const range = value[0]!;
+          if (range.left === range.right && range.top === range.bottom) return read(range, range.top, range.left);
+          if (range.left === range.right && cell.row >= range.top && cell.row <= range.bottom) return read(range, cell.row, range.left);
+          if (range.top === range.bottom && cell.column >= range.left && cell.column <= range.right) return read(range, range.top, cell.column);
+          return error('#VALUE!');
+        }
+        if (isArray(value)) return value.at(0, 0);
+        if (isOmitted(value)) return null;
+        if (isLambda(value)) return error('#VALUE!');
+        return value;
+      };
+
+      function evaluateInEnv(
+        expression: FormulaExpression,
+        env: ReadonlyMap<string, FormulaValue>,
+        includeRanges = false,
+        depth = 0,
+      ): FormulaValue {
         const operators: Extract<FormulaExpression, { kind: 'binary' | 'unary' }>[] = [];
         while (expression.kind === 'binary' || expression.kind === 'unary') {
           operators.push(expression);
           expression = expression.kind === 'binary' ? expression.left : expression.value;
         }
-        let value = evaluateTerm(expression);
+        let value = evaluateTerm(expression, env, depth);
         while (operators.length) {
-          const expression = operators.pop()!;
+          const opExpr = operators.pop()!;
+          if (opExpr.kind === 'unary' && opExpr.operator === '@') {
+            value = implicitIntersect(value);
+            continue;
+          }
           const leftArray = asArray(value, includeRanges);
           const left = leftArray ? null : scalar(value);
           if (isError(left)) return left;
-          if (expression.kind === 'binary') {
-            const right = evaluate(expression.right, includeRanges);
+          if (opExpr.kind === 'binary') {
+            const right = evaluateInEnv(opExpr.right, env, includeRanges, depth);
             const rightArray = asArray(right, includeRanges);
             const apply = (a: Scalar, b: Scalar) => isError(a) ? a : isError(b) ? b :
-              evaluateBinary(expression.operator, a, b, number, text);
+              evaluateBinary(opExpr.operator, a, b, number, text);
             const rightScalar = rightArray ? null : scalar(right);
             value = leftArray || rightArray
               ? new OperatorArray(leftArray ?? left, rightArray ?? rightScalar, apply)
@@ -353,21 +659,38 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
               if (isError(input)) return input;
               const numeric = number(input);
               if (Number.isNaN(numeric)) return error('#VALUE!');
-              return finite(expression.operator === '-' ? -numeric : expression.operator === '%' ? numeric / 100 : numeric);
+              return finite(opExpr.operator === '-' ? -numeric : opExpr.operator === '%' ? numeric / 100 : numeric);
             };
             value = leftArray ? new OperatorArray(leftArray, null, apply) : apply(left);
           }
         }
         return value;
       }
-      function evaluateTerm(expression: Exclude<FormulaExpression, { kind: 'unary' | 'binary' }>): FormulaValue {
+
+      function invokeLambda(lambda: FormulaLambda, argValues: readonly FormulaValue[], depth = 0): FormulaValue {
+        if (depth >= 64) return error('#NUM!');
+        if (argValues.length !== lambda.params.length) return error('#VALUE!');
+        const callEnv = new Map(lambda.env);
+        for (let i = 0; i < lambda.params.length; i++) {
+          callEnv.set(lambda.params[i]!, argValues[i]!);
+        }
+        return evaluateInEnv(lambda.body, callEnv, true, depth + 1);
+      }
+
+      function evaluateTerm(
+        expression: Exclude<FormulaExpression, { kind: 'unary' | 'binary' }>,
+        env: ReadonlyMap<string, FormulaValue>,
+        depth: number,
+      ): FormulaValue {
         switch (expression.kind) {
-          case 'missing': return null;
+          case 'missing': return omitted;
           case 'literal': return typeof expression.value === 'number' ? finite(expression.value) : expression.value;
           case 'error': return error(expression.value as Parameters<typeof error>[0]);
           case 'array': return { kind: 'array', rows: expression.rows.length, columns: expression.rows[0]!.length,
-            at: (row, column) => scalar(evaluateTerm(expression.rows[row]![column]!)) };
+            at: (row, column) => scalar(evaluateTerm(expression.rows[row]![column]!, env, depth)) };
           case 'name': {
+            const key = expression.name.toUpperCase();
+            if (env.has(key)) return env.get(key)!;
             const nameDoc = { names } as WorkbookDocument;
             const area = resolveWorkbookName(nameDoc, expression.name);
             if (!area) return error('#NAME?');
@@ -378,23 +701,123 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
             const range = resolvedReferences.get(expression.reference);
             return range ? [range] : error('#REF!');
           }
+          case 'structured': {
+            const area = resolveStructuredReference(docView, expression.reference, target);
+            if (!area) {
+              const hasTable = !expression.reference.table ||
+                names.some(n => n.isTable && ordinalNameKey(n.name) === ordinalNameKey(expression.reference.table!));
+              return error(hasTable ? '#REF!' : '#NAME?');
+            }
+            if (area.invalid) return error('#REF!');
+            return [{ sheetId: area.sheetId, top: area.row, left: area.column, bottom: lastRow(area), right: lastColumn(area) }];
+          }
+          case 'spill': {
+            const inner = evaluateInEnv(expression.target, env, true, depth);
+            if (!isRange(inner)) return isError(inner) ? inner : error('#VALUE!');
+            if (inner.length !== 1) return error('#VALUE!');
+            const anchorRange = inner[0]!;
+            if (anchorRange.top !== anchorRange.bottom || anchorRange.left !== anchorRange.right) return error('#VALUE!');
+            const anchorCell = inputs.get(anchorRange.sheetId)?.cells.get(cellKey({ row: anchorRange.top, column: anchorRange.left }));
+            if (!anchorCell) return error('#REF!');
+            if (anchorCell.content.kind === 'formula') {
+              const live = liveSpills.get(anchorCell.id);
+              const ext = live ?? anchorCell.spillExtent;
+              if (!ext) return [anchorRange];
+              return [{
+                sheetId: anchorRange.sheetId,
+                top: anchorRange.top,
+                left: anchorRange.left,
+                bottom: anchorRange.top + ext.rows - 1,
+                right: anchorRange.left + ext.columns - 1,
+              }];
+            }
+            if (anchorCell.content.kind === 'python' && anchorCell.content.block?.spillActive && anchorCell.content.block.lastTable) {
+              const t = anchorCell.content.block.lastTable;
+              return [{
+                sheetId: anchorRange.sheetId,
+                top: anchorRange.top,
+                left: anchorRange.left,
+                bottom: anchorRange.top + t.rows - 1,
+                right: anchorRange.left + t.columns - 1,
+              }];
+            }
+            return error('#REF!');
+          }
+          case 'invoke': {
+            const callee = evaluateInEnv(expression.callee, env, true, depth);
+            if (!isLambda(callee)) return isError(callee) ? callee : error('#VALUE!');
+            const argValues = expression.args.map(arg => evaluateInEnv(arg, env, true, depth));
+            return invokeLambda(callee, argValues, depth);
+          }
           case 'union': {
             const ranges: Range[] = [];
             for (const part of expression.parts) {
-              const value = evaluate(part);
+              const value = evaluateInEnv(part, env, true, depth);
               if (!isRange(value)) return !isArray(value) && isError(value) ? value : error('#VALUE!');
               ranges.push(...value);
             }
             return ranges;
           }
-          case 'call': return evaluateFunction(expression.name, expression.args, { evaluate, scalar, read, values, entries, number, text, locale, today });
+          case 'call': {
+            const bound = env.get(expression.name);
+            if (bound !== undefined) {
+              if (!isLambda(bound)) return error('#VALUE!');
+              const argValues = expression.args.map(arg => evaluateInEnv(arg, env, true, depth));
+              return invokeLambda(bound, argValues, depth);
+            }
+            return evaluateFunction(expression.name, expression.args, {
+              evaluate: (expr, inc) => evaluateInEnv(expr, env, inc, depth),
+              scalar,
+              read,
+              values,
+              entries,
+              number,
+              text,
+              locale,
+              today,
+              env,
+              evaluateInEnv: (expr, nextEnv, inc) => evaluateInEnv(expr, nextEnv, inc, depth),
+              invokeLambda: (fn, argVals) => invokeLambda(fn, argVals, depth),
+              arrayOf,
+            });
+          }
         }
       }
-      value = scalar(evaluate(expression, true));
+
+      const raw = evaluateInEnv(expression, emptyEnv, true, 0);
+      if (isLambda(raw)) {
+        cache = error('#CALC!');
+      } else if (isArray(raw)) {
+        if (raw.rows * raw.columns > 1) {
+          ({ cache, spill } = trySpillResult(sheet, cell, raw.rows, raw.columns, (r, c) => raw.at(r, c)));
+        } else {
+          cache = scalarCache(raw.at(0, 0));
+        }
+      } else if (isRange(raw)) {
+        if (raw.length !== 1) {
+          cache = error('#VALUE!');
+        } else {
+          const area = raw[0]!;
+          const rows = area.bottom - area.top + 1;
+          const columns = area.right - area.left + 1;
+          if (rows * columns > 1) {
+            ({ cache, spill } = trySpillResult(sheet, cell, rows, columns, (r, c) => read(area, area.top + r, area.left + c)));
+          } else {
+            cache = scalarCache(read(area, area.top, area.left));
+          }
+        }
+      } else {
+        cache = scalarCache(scalar(raw));
+      }
     }
-    const cache = scalarCache(value);
-    evaluated.set(cell, cache.kind === 'error' ? cache : cache.value);
-    updates.push({ target: node.target, cache: cell.requiresExternalCalculation && cell.cache ? cell.cache : cache });
+
+    const finalCache = cell.requiresExternalCalculation && cell.cache ? cell.cache : cache;
+    evaluated.set(cell, finalCache.kind === 'error' ? finalCache : finalCache.value);
+    updates.push({
+      target: node.target,
+      cache: finalCache,
+      ...(spill && { spill }),
+    });
   }
   return { updates, diagnostics, dependencies };
 }

@@ -47,7 +47,8 @@ function resolveRange(document: WorkbookDocument, localSheetId: string, referenc
   }
 
   const parsed = parseFormula('=' + reference).expression;
-  requireDocument(parsed.kind === 'reference' && parsed.reference.first.row !== undefined && parsed.reference.first.column !== undefined,
+  requireDocument(parsed.kind === 'reference' && parsed.reference.endSheet === undefined &&
+    parsed.reference.first.row !== undefined && parsed.reference.first.column !== undefined,
     `Python reference '${reference}' is not a supported cell range, workbook name or table.`);
   const referencePart = parsed.reference;
   const sheet = referencePart.sheet === undefined ? document.sheets.find(item => item.id === localSheetId) :
@@ -125,7 +126,7 @@ function cacheValue(cache: CellCache | null | undefined, cell: CellDocument | un
   staleFormulaIds: ReadonlySet<string>, pythonBlocks: ReadonlyMap<string, PythonBlock>): PythonInputValue {
   if (!cell) return null;
   if (cell.requiresExternalCalculation) throw new Error('Python input contains an unverified formula; correct it before running.');
-  if (cell.spillOwner) {
+  if (cell.spillOwner && cell.spillKind !== 'formula') {
     const owner = pythonBlocks.get(cell.spillOwner);
     if (!owner?.hasResult || owner.status !== 'succeeded') throw new Error('Upstream Python spill is stale; run its anchor first.');
   }

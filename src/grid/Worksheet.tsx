@@ -22,7 +22,7 @@ import selectColumnCursor from './cursors/select-column.svg';
 import selectRowCursor from './cursors/select-row.svg';
 import { address, capFromScrollport, clamp, contentOffset, GridAxis, gridMetrics, placeScroll, rowHeaderWidth, scrollSpacer } from './grid-geometry';
 import {
-  cellDisplay, includes, mergeSelection, navigate, primaryArea, select, selectionAreas, singleSelection,
+  cellDisplay, formulaSpillArea, includes, mergeSelection, navigate, primaryArea, select, selectionAreas, singleSelection,
   type Area, type AreaKind, type GridSelection,
 } from './grid-selection';
 
@@ -161,6 +161,7 @@ const ProjectedRow = memo(function ProjectedRow({
           areas!.some(area => includes(area, point));
         return <div key={column} id={idPrefix + '-' + labelAddress} role="gridcell" aria-colindex={column} aria-rowspan={merge?.rows} aria-colspan={merge?.columns}
           aria-selected={selected}
+          aria-readonly={cell?.spillOwner ? 'true' : undefined}
           aria-description={cell && calculatingCells.has(cell.id) ? 'Calculating' :
             cell && staleCells.has(cell.id) ? 'Calculation needed' : undefined}
           aria-label={labelAddress + (value ? ', ' + value : ', blank')} />;
@@ -981,9 +982,15 @@ export function Worksheet(props: WorksheetProps) {
     return controls;
   }
 
+  const activeSpill = formulaSpillArea(sheet, selection.anchor);
+  const activeSpillRange = activeSpill
+    ? `${address({ row: activeSpill.top, column: activeSpill.left })}:${address({ row: activeSpill.bottom, column: activeSpill.right })}`
+    : undefined;
+
   return (
     <div className="worksheet">
       <div ref={scroll} className="worksheet-scroll" role="grid" aria-label={sheet.name} data-row-header={left}
+        data-spill-range={activeSpillRange}
         aria-rowcount={worksheetViewport.rows} aria-colcount={worksheetViewport.columns}
         aria-multiselectable="true" aria-activedescendant={cellId(selection.anchor)} tabIndex={0}
         aria-describedby={id + '-help'} onBlur={() => { exitOnTab.current = false; }}

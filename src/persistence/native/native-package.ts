@@ -514,7 +514,7 @@ function readFilter(root: Record<string, unknown>): SheetFilter | undefined {
 
 function readCell(item: unknown, styledRows?: ReadonlySet<number>, styledCols?: ReadonlySet<number>): CellDocument {
   const cell = requireObject(item, 'cell');
-  rejectUnknown(cell, 'id', 'row', 'column', 'content', 'style', 'cache', 'requiresExternalCalculation', 'spillOwner');
+  rejectUnknown(cell, 'id', 'row', 'column', 'content', 'style', 'cache', 'requiresExternalCalculation', 'spillOwner', 'spillKind', 'spillExtent');
 
   const id = requireGuid(requireProperty(cell, 'id'), 'id');
   const row = requireInt(requireProperty(cell, 'row'), 'row');
@@ -579,6 +579,27 @@ function readCell(item: unknown, styledRows?: ReadonlySet<number>, styledCols?: 
     ? requireGuid(cell.spillOwner, 'spillOwner')
     : undefined;
 
+  let spillKind: CellDocument['spillKind'];
+  if (Object.hasOwn(cell, 'spillKind') && cell.spillKind !== null) {
+    const rawKind = requireString(cell.spillKind, 'spillKind');
+    if (rawKind !== 'python' && rawKind !== 'formula' && rawKind !== 'pivot') {
+      throw new PackageException(`Invalid spillKind '${rawKind}'.`);
+    }
+    spillKind = rawKind;
+  }
+
+  let spillExtent: CellDocument['spillExtent'];
+  if (Object.hasOwn(cell, 'spillExtent') && cell.spillExtent !== null) {
+    const ext = requireObject(cell.spillExtent, 'spillExtent');
+    rejectUnknown(ext, 'rows', 'columns');
+    const rows = requireInt(requireProperty(ext, 'rows'), 'rows');
+    const columns = requireInt(requireProperty(ext, 'columns'), 'columns');
+    if (rows < 1 || columns < 1 || rows > documentLimits.rows || columns > documentLimits.columns || rows * columns > 100_000) {
+      throw new PackageException('Invalid spillExtent.');
+    }
+    spillExtent = { rows, columns };
+  }
+
   return {
     id,
     row,
@@ -588,6 +609,8 @@ function readCell(item: unknown, styledRows?: ReadonlySet<number>, styledCols?: 
     ...(cache ? { cache } : {}),
     ...(requiresExternalCalculation ? { requiresExternalCalculation: true } : {}),
     ...(spillOwner ? { spillOwner } : {}),
+    ...(spillKind ? { spillKind } : {}),
+    ...(spillExtent ? { spillExtent } : {}),
   };
 }
 
@@ -1081,6 +1104,12 @@ function serializeCell(cell: CellDocument): Record<string, unknown> {
 
   if (cell.spillOwner !== undefined) {
     obj.spillOwner = cell.spillOwner;
+  }
+  if (cell.spillKind !== undefined) {
+    obj.spillKind = cell.spillKind;
+  }
+  if (cell.spillExtent !== undefined) {
+    obj.spillExtent = { rows: cell.spillExtent.rows, columns: cell.spillExtent.columns };
   }
 
   const content: Record<string, unknown> = { kind: cell.content.kind };

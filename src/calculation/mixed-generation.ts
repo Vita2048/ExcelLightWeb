@@ -1,5 +1,5 @@
 import type { CacheUpdate, WorkbookSnapshot } from '../application/workbook-protocol';
-import { applyPythonResult } from '../core/python-spills';
+import { applyFormulaSpillUpdates, applyPythonResult } from '../core/python-spills';
 import { cellKey, findCell, type CellDocument, type PythonBlock, type WorkbookDocument } from '../core/workbook';
 import { buildPythonInputs, type PythonInputAnchor } from '../python/python-inputs';
 import { pythonBlockFromOutput } from '../python/python-results';
@@ -45,32 +45,8 @@ export interface MixedGenerationResult {
   readonly messages: ReadonlyMap<string, string>;
 }
 
-function applyNativeUpdates(document: WorkbookDocument, updates: readonly CacheUpdate[]): WorkbookDocument {
-  const bySheet = new Map<string, Map<number, CacheUpdate>>();
-  for (const update of updates) {
-    let values = bySheet.get(update.target.sheetId);
-    if (!values) bySheet.set(update.target.sheetId, values = new Map());
-    values.set(cellKey(update.target), update);
-  }
-  let changed = false;
-  const sheets = document.sheets.map(sheet => {
-    const values = bySheet.get(sheet.id);
-    if (!values) return sheet;
-    const cells = sheet.cells.map(cell => {
-      const update = values.get(cellKey(cell));
-      if (!update) return cell;
-      values.delete(cellKey(cell));
-      if (cell.content.kind !== 'formula') throw new Error('Native worker targeted a non-formula cell.');
-      if (JSON.stringify(cell.cache) === JSON.stringify(update.cache)) return cell;
-      changed = true;
-      const { cache: _cache, ...rest } = cell;
-      return update.cache === undefined ? rest : { ...rest, cache: update.cache };
-    });
-    if (values.size) throw new Error('Native worker returned a missing formula target.');
-    return cells.every((cell, index) => cell === sheet.cells[index]) ? sheet : { ...sheet, cells };
-  });
-  if ([...bySheet.values()].some(values => values.size)) throw new Error('Native worker returned a missing worksheet.');
-  return changed ? { ...document, sheets } : document;
+function applyNativeUpdates(document: WorkbookDocument, updates: readonly CacheUpdate[], makeId: () => string): WorkbookDocument {
+  return applyFormulaSpillUpdates(document, updates, makeId);
 }
 
 function pythonAnchor(document: WorkbookDocument, id: string): PythonInputAnchor | undefined {
@@ -152,7 +128,7 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
       if (nativeTargets.size) {
         const native = await services.calculateNative(document, [...nativeTargets], signal,
           cellIds => services.onNativeCalculating?.(id, cellIds));
-        document = applyNativeUpdates(document, native.updates);
+        document = applyNativeUpdates(document, native.updates, services.makeId);
         staleFormulaIds.clear();
         for (const stale of native.staleCellIds) staleFormulaIds.add(stale);
       }
@@ -218,7 +194,7 @@ export async function calculateMixedGeneration(request: MixedGenerationRequest,
     try {
       const native = await services.calculateNative(document, [...nativeOutputs], signal,
         cellIds => services.onNativeCalculating?.([...roots][0] ?? '', cellIds));
-      document = applyNativeUpdates(document, native.updates);
+      document = applyNativeUpdates(document, native.updates, services.makeId);
       staleFormulaIds.clear();
       for (const stale of native.staleCellIds) staleFormulaIds.add(stale);
     } catch (error) {

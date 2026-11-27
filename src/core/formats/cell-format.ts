@@ -219,6 +219,7 @@ export function displayCellValue(cell: CellDocument | undefined, source = false)
     if (block?.hasResult && block.lastValue) return block.lastValue;
     return cell.cache ?? { kind: 'blank' };
   }
+  if (cell.content.kind === 'blank' && cell.spillKind === 'formula' && cell.cache) return cell.cache;
   return cell.content.kind === 'formula' ? cell.cache ?? cell.content : cell.content;
 }
 

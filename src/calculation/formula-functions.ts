@@ -6,6 +6,7 @@ export {
   getFunctionSpec,
   isVolatileFunction,
   nativeFunctions,
+  ribbonInsertFunctions,
   supportedFunctions,
   type NativeFunction,
 } from './functions/registry';

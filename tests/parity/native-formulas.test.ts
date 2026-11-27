@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../fixtures/formulas/S08-desktop.json';
 import smokeExcel from '../fixtures/formulas/smoke-excel.json';
+import dynamicArrays from '../fixtures/formulas/dynamic-arrays.json';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { nativeFunctions, supportedFunctions } from '../../src/calculation/formula-functions';
-import { emptySheet, ownDto, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
+import { emptySheet, ownDto, type CellCache, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
 
 function formula(id: string, row: number, column: number, source: string): CellDocument {
   return { id, row, column, content: { kind: 'formula', source } };
@@ -45,6 +46,13 @@ for (const input of fixture) {
   });
 }
 
+function assertOracleScalar(cache: CellCache | undefined, kind: string, value: string) {
+  expect(cache?.kind).toBe(kind);
+  if (kind === 'number') expect(cache?.value).toBeCloseTo(Number(value), 11);
+  else if (kind === 'boolean') expect(cache?.value).toBe(value === 'true');
+  else expect(cache?.value).toBe(value);
+}
+
 describe(smokeExcel.id, () => {
   const main = cells('smoke-main', smokeExcel.cells as (number | boolean | string)[][]);
   const other = cells('smoke-other', smokeExcel.other as (number | boolean | string)[][]);
@@ -60,23 +68,60 @@ describe(smokeExcel.id, () => {
       const document = workbook([...main, formula('test', 1, 20, entry.expression)], other);
       const result = calculateNative(document, { locale: 'cs-CZ' });
       const cache = result.updates.find(update => update.target.column === 20)?.cache;
-      expect(cache?.kind).toBe(entry.kind);
-      if (entry.kind === 'number') expect(cache?.value).toBeCloseTo(Number(entry.value), 11);
-      else if (entry.kind === 'boolean') expect(cache?.value).toBe(entry.value === 'true');
-      else expect(cache?.value).toBe(entry.value);
+      assertOracleScalar(cache, entry.kind, entry.value ?? '');
     });
   }
 });
 
-it('exercises valid and invalid arguments for all 31 functions and evaluates TODAY from a deterministic clock', () => {
-  const cases = fixture.flatMap(input => input.cases);
+describe(dynamicArrays.id, () => {
+  const main = cells('dyn-main', dynamicArrays.cells as (number | boolean | string)[][]);
+  const other = cells('dyn-other', dynamicArrays.other as (number | boolean | string)[][]);
+
+  for (const entry of dynamicArrays.cases as readonly {
+    readonly expression: string;
+    readonly kind: string;
+    readonly value?: string;
+    readonly rows?: number;
+    readonly columns?: number;
+    readonly matrix?: readonly (readonly { readonly kind: string; readonly value: string }[])[];
+  }[]) {
+    it(`${entry.expression} matches Excel ${dynamicArrays.excelVersion} build ${dynamicArrays.excelBuild}`, () => {
+      const document = workbook([...main, formula('test', 1, 20, entry.expression)], other);
+      const result = calculateNative(document, { locale: 'en-US' });
+      const update = result.updates.find(u => u.target.column === 20);
+      if (entry.kind === 'array' && entry.matrix) {
+        const rows = entry.rows ?? entry.matrix.length;
+        const columns = entry.columns ?? entry.matrix[0]?.length ?? 0;
+        expect(update?.spill).toBeDefined();
+        expect(update?.spill?.rows).toBe(rows);
+        expect(update?.spill?.columns).toBe(columns);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < columns; c++) {
+            const expected = entry.matrix[r]![c]!;
+            const actual = update!.spill!.cells[r * columns + c] ?? undefined;
+            assertOracleScalar(actual, expected.kind, expected.value);
+          }
+        }
+      } else {
+        expect(update?.spill).toBeUndefined();
+        assertOracleScalar(update?.cache, entry.kind, entry.value ?? '');
+      }
+    });
+  }
+});
+
+it('exercises valid and invalid arguments for all 40 functions and evaluates TODAY from a deterministic clock', () => {
+  const cases = [
+    ...fixture.flatMap(input => input.cases),
+    ...dynamicArrays.cases,
+  ];
   for (const kind of ['result', 'error']) {
     const examples = cases.filter(test => (test.kind === 'error') === (kind === 'error'));
     const names = new Set(examples.flatMap(test =>
-      [...test.expression.matchAll(/([A-Z]+)\(/giu)].map(match => match[1]!.toUpperCase())));
+      [...test.expression.matchAll(/([A-Z.]+)\(/giu)].map(match => match[1]!.toUpperCase())));
     expect(nativeFunctions.filter(name => !names.has(name)), kind).toEqual([]);
   }
-  expect(nativeFunctions).toHaveLength(31);
+  expect(nativeFunctions).toHaveLength(40);
   let clockReads = 0;
   const result = calculateNative(workbook([formula('today', 1, 1, '=TODAY()'), formula('next', 1, 2, '=TODAY()+A1')]), {
     clock: () => { clockReads++; return new Date(2024, 0, 15, 23, 59); },

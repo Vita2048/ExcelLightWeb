@@ -26,10 +26,17 @@ export interface NativeCalculationRequest extends WorkerBasis {
   readonly document: WorkbookDocument;
 }
 
+export interface FormulaSpillResult {
+  readonly rows: number;
+  readonly columns: number;
+  readonly cells: readonly (CellCache | null)[];
+}
+
 export interface CacheUpdate {
   readonly target: CellReference;
   /** Omit cache to remove a previously cached result. */
   readonly cache?: CellCache;
+  readonly spill?: FormulaSpillResult;
 }
 
 export interface NativeCalculationReply extends WorkerBasis {

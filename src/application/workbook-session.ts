@@ -3,13 +3,15 @@ import {
   sameAuthoredCell, sameAuthoredWorkbook, type CellChange, type WorkbookDelta,
 } from '../core/workbook-delta';
 import {
-  cellKey, DocumentError, documentLimits, findReferencedCell, ownDto, type CellContent, type CellReference,
+  cellKey, DocumentError, documentLimits, findReferencedCell, inRange, ownDto, type CellContent, type CellReference,
   type CellExtent, type CellStyle, type DocumentId, type IdFactory, type WorkbookDocument, type WorkbookName,
 } from '../core/workbook';
 import {
   requireDocument, validateCellValue, validateId, validateTarget, validateWorkbook,
 } from '../core/workbook-validation';
-import { removeOrphanedPythonSpillCells } from '../core/python-spills';
+import {
+  applyFormulaSpillUpdates, removeOrphanedFormulaSpillCells, removeOrphanedPythonSpillCells,
+} from '../core/python-spills';
 import {
   workbookProtocolVersion, type NativeCalculationRequest, type NativeCalculationReply,
   type SnapshotBasis, type WorkerBasis, type WorkbookSnapshot,
@@ -175,7 +177,7 @@ export class WorkbookSession {
       default:
         throw new DocumentError('Unsupported workbook command.');
     }
-    candidate = removeOrphanedPythonSpillCells(candidate);
+    candidate = removeOrphanedFormulaSpillCells(removeOrphanedPythonSpillCells(candidate));
     if (candidate === this.active) return { changed: false, revision: this.revision, delta: emptyDelta };
     validateWorkbook(candidate);
     const delta = diffWorkbook(this.active, candidate);
@@ -208,7 +210,7 @@ export class WorkbookSession {
   tryCommitGeneration(basis: SnapshotBasis, document: WorkbookDocument, label: string): boolean {
     if (!this.isCurrent(basis)) return false;
     requireDocument(typeof label === 'string' && label.length <= 256, 'Invalid command label.');
-    const candidate = removeOrphanedPythonSpillCells(ownDto(document));
+    const candidate = removeOrphanedFormulaSpillCells(removeOrphanedPythonSpillCells(ownDto(document)));
     requireDocument(candidate?.id === this.active.id, 'Calculation generation cannot replace workbook identity.');
     validateWorkbook(candidate);
     if (equalDto(candidate, this.active)) return true;
@@ -248,20 +250,27 @@ export class WorkbookSession {
     requireDocument(Array.isArray(reply.updates) && reply.updates.length <= documentLimits.formulas, 'Invalid calculation batch size.');
     const sheetIds = new Set(this.active.sheets.map(sheet => sheet.id));
     const seen = new Set<string>();
-    const changes: CellChange[] = [];
+    let hasSpillPayload = false;
     for (const update of reply.updates) {
       requireDocument(update?.target, 'Missing calculation target.');
-      const { target, cache } = update;
+      const { target, cache, spill } = update;
       const key = this.#validateTarget(target, sheetIds, seen);
       seen.add(key);
       const cell = findReferencedCell(this.active, target);
       requireDocument(cell?.content.kind === 'formula', 'Calculation can update only existing native formula caches.');
       if (cache !== undefined) validateCellValue(cache, true);
-      if (equalDto(cell.cache, cache)) continue;
-      const { cache: _prior, ...rest } = cell;
-      changes.push({ target, after: cache === undefined ? rest : { ...rest, cache } });
+      if (spill !== undefined) {
+        hasSpillPayload = true;
+        requireDocument(inRange(spill.rows, 1, documentLimits.rows) && inRange(spill.columns, 1, documentLimits.columns) &&
+          spill.rows * spill.columns <= 100_000 && Array.isArray(spill.cells) && spill.cells.length === spill.rows * spill.columns,
+          'Invalid formula spill payload.');
+        for (const item of spill.cells) {
+          if (item !== null) validateCellValue(item, true);
+        }
+      }
     }
-    const candidate = applyCellChanges(this.active, changes);
+    const candidate = applyFormulaSpillUpdates(this.active, reply.updates, this.#makeId);
+    if (hasSpillPayload) validateWorkbook(candidate);
     if (candidate !== this.active) this.#advance(candidate, this.sourceFingerprint, this.isDirty, false);
     this.#nativeRequest = undefined;
     return true;
@@ -298,7 +307,7 @@ export class WorkbookSession {
     const entry = from.at(-1);
     if (!entry) return false;
     requireDocument(this.sourceFingerprint === (undo ? entry.after : entry.before), 'History does not match the workbook.');
-    const document = applyDelta(this.active, undo ? entry.inverse : entry.forward);
+    const document = removeOrphanedFormulaSpillCells(applyDelta(this.active, undo ? entry.inverse : entry.forward));
     validateWorkbook(document);
     const identity = undo ? entry.before : entry.after;
     const dirty = this.#isDirtyAt(document, identity);
@@ -328,7 +337,9 @@ export class WorkbookSession {
       if (edit.cellId !== undefined) validateId(edit.cellId);
       const prior = findReferencedCell(document, target);
       requireDocument(!prior?.spillOwner || equalDto(content, prior.content),
-        `Generated cell is read-only; edit its Python anchor instead.`);
+        prior?.spillKind === 'formula'
+          ? 'Generated cell is read-only; edit its formula anchor instead.'
+          : 'Generated cell is read-only; edit its Python anchor instead.');
       const style = edit.preserveStyle === false ? edit.style : prior?.style;
       const sameContent = equalDto(content, prior?.content);
       const external = edit.requiresExternalCalculation || sameContent && prior?.requiresExternalCalculation;
@@ -342,6 +353,7 @@ export class WorkbookSession {
         id: edit.cellId ?? prior?.id ?? this.#makeId(), row: target.row, column: target.column, content,
         ...(style !== undefined && { style }), ...(cache && { cache }),
         ...(external && { requiresExternalCalculation: true }),
+        ...(sameContent && !edit.resetCache && prior?.spillExtent && { spillExtent: prior.spillExtent }),
       };
       if (!equalDto(prior, after)) changes.push({ target, after });
     }

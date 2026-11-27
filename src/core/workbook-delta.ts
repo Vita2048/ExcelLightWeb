@@ -15,9 +15,17 @@ export function equalDto(left: unknown, right: unknown): boolean {
     ));
 }
 
-function withoutCaches(cell: CellDocument): Omit<CellDocument, 'cache'> {
-  const { cache: _cache, ...authored } = cell;
-  return authored;
+function withoutCaches(cell: CellDocument): Omit<CellDocument, 'cache' | 'spillExtent'> {
+  const { cache: _cache, spillExtent: _spillExtent, ...rest } = cell;
+  if (rest.spillKind === 'formula') {
+    const { spillOwner: _owner, spillKind: _kind, content: _content, ...styled } = rest;
+    return { ...styled, content: { kind: 'blank' } };
+  }
+  return rest;
+}
+
+function isAuthoredCell(cell: CellDocument): boolean {
+  return cell.spillKind !== 'formula' || cell.style !== undefined;
 }
 
 export function sameAuthoredCell(left: CellDocument, right: CellDocument): boolean {
@@ -31,10 +39,12 @@ export function sameAuthoredWorkbook(left: WorkbookDocument, right: WorkbookDocu
   return left.sheets.every((sheet, index) => {
     const other = right.sheets[index]!;
     if (sheet === other) return true;
-    if (!equalDto(sheetState(sheet), sheetState(other)) || sheet.cells.length !== other.cells.length) return false;
-    return sheet.cells.every(cell => {
+    const leftCells = sheet.cells.filter(isAuthoredCell);
+    const rightCells = other.cells.filter(isAuthoredCell);
+    if (!equalDto(sheetState(sheet), sheetState(other)) || leftCells.length !== rightCells.length) return false;
+    return leftCells.every(cell => {
       const match = findCell(other, cell);
-      return match !== undefined && sameAuthoredCell(cell, match);
+      return match !== undefined && isAuthoredCell(match) && sameAuthoredCell(cell, match);
     });
   });
 }

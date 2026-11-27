@@ -16,13 +16,39 @@ export interface FormulaArray {
   readonly columns: number;
   readonly at: (row: number, column: number) => Scalar;
 }
-export type FormulaValue = Scalar | readonly Range[] | FormulaArray;
+export interface FormulaOmitted {
+  readonly kind: 'omitted';
+}
+export interface FormulaLambda {
+  readonly kind: 'lambda';
+  readonly params: readonly string[];
+  readonly body: FormulaExpression;
+  readonly env: ReadonlyMap<string, FormulaValue>;
+}
+export type FormulaValue = Scalar | readonly Range[] | FormulaArray | FormulaOmitted | FormulaLambda;
+
+export const omitted: FormulaOmitted = Object.freeze({ kind: 'omitted' });
 export const error = (value: FormulaError['value']): FormulaError => ({ kind: 'error', value });
-export const isError = (value: Scalar): value is FormulaError => typeof value === 'object' && value !== null;
+export const isError = (value: FormulaValue): value is FormulaError =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) && 'kind' in value && value.kind === 'error';
 export const isRange = (value: FormulaValue): value is readonly Range[] => Array.isArray(value);
 export const isArray = (value: FormulaValue): value is FormulaArray =>
-  typeof value === 'object' && value !== null && 'kind' in value && value.kind === 'array';
+  typeof value === 'object' && value !== null && !Array.isArray(value) && 'kind' in value && value.kind === 'array';
+export const isOmitted = (value: FormulaValue): value is FormulaOmitted =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) && 'kind' in value && value.kind === 'omitted';
+export const isLambda = (value: FormulaValue): value is FormulaLambda =>
+  typeof value === 'object' && value !== null && !Array.isArray(value) && 'kind' in value && value.kind === 'lambda';
 export const finite = (value: number): Scalar => Number.isFinite(value) ? value || 0 : error('#NUM!');
+
+export function arrayFromMatrix(rows: number, columns: number, cells: readonly Scalar[]): FormulaArray {
+  return {
+    kind: 'array',
+    rows,
+    columns,
+    at: (row, column) => cells[row * columns + column] ?? null,
+  };
+}
+
 const numericText = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/iu;
 
 export function numberValue(value: Scalar, decimal = '.', group = ''): number {
@@ -87,6 +113,8 @@ export function* formulaNodes(expression: FormulaExpression): Iterable<FormulaEx
     yield node;
     switch (node.kind) {
       case 'call': remaining.push(...node.args); break;
+      case 'invoke': remaining.push(...node.args, node.callee); break;
+      case 'spill': remaining.push(node.target); break;
       case 'union': remaining.push(...node.parts); break;
       case 'binary': remaining.push(node.right, node.left); break;
       case 'unary': remaining.push(node.value); break;

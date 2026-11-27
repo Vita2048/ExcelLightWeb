@@ -23,7 +23,7 @@ export function pythonAnchorAt(snapshot: WorkbookSnapshot, sheetId: string, poin
   const sheet = snapshot.document.sheets.find(candidate => candidate.id === sheetId);
   if (!sheet) return undefined;
   let cell: CellDocument | undefined = findCell(sheet, point);
-  if (cell?.spillOwner) {
+  if (cell?.spillOwner && cell.spillKind !== 'formula') {
     const owner = cell.spillOwner;
     cell = sheet.cells.find(candidate => candidate.content.kind === 'python' && candidate.content.blockId === owner);
   }

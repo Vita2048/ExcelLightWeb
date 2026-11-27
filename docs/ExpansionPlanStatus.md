@@ -9,8 +9,8 @@ Live status tracker for [ExpansionPlan.md](ExpansionPlan.md). Update after every
 | Sprint | Scope | Status | Verification | Date |
 | --- | --- | --- | --- | --- |
 | **1.1** | Excel COM oracle harness, `src/calculation/functions/` modularization, `#SPILL!`/`#CALC!` errors | Done | `npm run check` (45/45 files: 1177 passed, 5 skipped, 0 failed) + Excel 16.0.17932 smoke oracle (15 captured, 10 run & passed, 5 skipped pending Sprints 1.3–1.4) | 2026-11-27 |
-| **1.2** | Parser & reference upgrade (`#`, `@`, structured refs, 3D refs, higher-order calls) | Not started | — | — |
-| **1.3** | Dynamic array spilling, broadcasting, `LET`/`LAMBDA`/helpers, volatile/dynamic refs | Not started | — | — |
+| **1.2** | Parser & reference upgrade (`#`, `@`, structured refs, 3D refs, higher-order calls) | Done | `npm run check` (46/46 files: 1184 passed, 5 skipped, 0 failed; `vite build` 72 files, 43.99 MiB) | 2026-11-27 |
+| **1.3** | Dynamic array spilling, broadcasting, `LET`/`LAMBDA`/helpers, volatile/dynamic refs | Done | `npm run check` (47/47 files: 1221 passed, 5 skipped, 0 failed) + Excel 16.0.17932 dynamic-arrays oracle (34/34 passed) + Chromium e2e (5/5 passed) | 2026-11-27 |
 | **1.4** | Core Function Wave A (Lookup, Dynamic Arrays, Logical, Info ~50 functions) | Not started | — | — |
 | **1.5** | Core Function Wave B (Math, Aggregates, Text, Date/Time, Core Stats/Financial ~85 functions) | Not started | — | — |
 | **Phase 2** | PivotTables *(detail sprints after Phase 1)* | Planned (detail after prior phase) | — | — |
@@ -21,13 +21,14 @@ Live status tracker for [ExpansionPlan.md](ExpansionPlan.md). Update after every
 
 ## Latest Verification Ledger
 
-- **Date**: 2026-11-27 (Sprint 1.1)
-- **Excel Oracle Build Version**: Excel `16.0` build `17932` (`tests/fixtures/formulas/smoke-excel.json`)
+- **Date**: 2026-11-27 (Sprint 1.3)
+- **Excel Oracle Build Version**: Excel `16.0` build `17932` (`tests/fixtures/formulas/smoke-excel.json`, `tests/fixtures/formulas/dynamic-arrays.json`)
 - **Commands Run**:
-  - `powershell -ExecutionPolicy Bypass -File scripts/generate-excel-oracle.ps1 -SpecPath tests/fixtures/formulas/specs/smoke.spec.json -OutPath tests/fixtures/formulas/smoke-excel.json` -> exit 0, captured 15 cases (scalar, error, and 2x2 `SEQUENCE` array).
-  - `npm run check` (`tsc --noEmit -p tsconfig.model.json && tsc --noEmit`, `vitest run`, `vite build` + `finalize-static-build.mjs`) -> exit 0.
-- **Pass / Fail / Skipped**: `45/45` Vitest files passed (`1177` passed, `0` failed, `5` skipped in `tests/parity/native-formulas.test.ts` for `smoke-excel.json` `FILTER`/`SEQUENCE`/array cases pending Sprints 1.3–1.4).
-- **Unrun**: `scripts/extract-xlsx-oracle.mjs` was not executed against a manual `.xlsx` file (Excel COM succeeded directly); `npm run test:e2e` and `npm run test:worksheet` were not run (no UI changes in Sprint 1.1).
+  - `powershell -ExecutionPolicy Bypass -File scripts/generate-excel-oracle.ps1 -SpecPath tests/fixtures/formulas/specs/dynamic-arrays.spec.json -OutPath tests/fixtures/formulas/dynamic-arrays.json` -> exit 0 (`34` cases captured).
+  - `npm run check` (`tsc --noEmit -p tsconfig.model.json && tsc --noEmit`, `vitest run`, `vite build` + `finalize-static-build.mjs`) -> exit 0 (`72` files, `44.01 MiB` uncompressed / `33.54 MiB` gzip).
+  - `npm run test:e2e -- tests/e2e/dynamic-arrays.spec.ts tests/e2e/ribbon-parity.spec.ts --project=chromium` -> exit 0.
+- **Pass / Fail / Skipped**: Vitest `47/47` files passed (`1221` passed, `0` failed, `5` skipped in `smoke-excel.json` for Sprint 1.4 `FILTER`/`SEQUENCE` cases; `34/34` `dynamic-arrays.json` oracle cases passed); Playwright Chromium `5/5` passed.
+- **Unrun**: Full cross-browser e2e matrix (`firefox`, `webkit`), `npm run test:worksheet`, and `npm run test:performance` were not run in Sprint 1.3 (scheduled for Phase 1 completion in Sprint 1.5).
 
 ---
 

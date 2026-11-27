@@ -5,7 +5,7 @@ import { displayCellValue } from '../core/formats/cell-format';
 import { drawBorder } from './border-rendering';
 import { cellFont, drawCellFill, drawAlignedText, effectiveCellStyle, usesLightPaper } from './cell-appearance';
 import { columnName, gridMetrics, type GridAxis, type Track } from './grid-geometry';
-import { presentCell, includes, type Area, type GridSelection } from './grid-selection';
+import { formulaSpillArea, presentCell, includes, type Area, type GridSelection } from './grid-selection';
 
 export interface GridViewport {
   readonly x: number;
@@ -330,6 +330,14 @@ export function drawWorksheet(canvas: HTMLCanvasElement, frame: GridFrame): void
       if (lastColumn.index === area.right) { context.moveTo(rightEdge, topEdge); context.lineTo(rightEdge, bottomEdge); }
       context.stroke();
     };
+    const spillArea = formulaSpillArea(frame.sheet, selection.anchor);
+    if (spillArea) {
+      context.save();
+      context.strokeStyle = forced ? 'Highlight' : accent;
+      context.globalAlpha = forced ? 1 : 0.65;
+      outline(spillArea, 1.5);
+      context.restore();
+    }
     context.strokeStyle = accent;
     for (const area of areas) outline(area);
     const activeRow = rows.find(row => row.index === selection.anchor.row);

@@ -177,12 +177,16 @@ function formulaNeedsExternalCalculation(source: string): boolean {
   function visit(node: ReturnType<typeof parseFormula>['expression']): boolean {
     switch (node.kind) {
       case 'call': return !supportedFunctions.has(node.name) || node.args.some(visit);
+      case 'reference': return node.reference.endSheet !== undefined;
       case 'name':
+      case 'structured':
+      case 'spill':
+      case 'invoke':
       case 'array':
         return true;
       case 'union': return node.parts.some(visit);
-      case 'unary': return visit(node.value);
-      case 'binary': return visit(node.left) || visit(node.right);
+      case 'unary': return node.operator === '@' || visit(node.value);
+      case 'binary': return node.operator === ':' || node.operator === ' ' || visit(node.left) || visit(node.right);
       default:
         return false;
     }

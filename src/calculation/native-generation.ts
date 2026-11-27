@@ -61,9 +61,13 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
       const contentChanged = !equalDto(before?.content, cell.content) ||
         !!before?.requiresExternalCalculation !== !!cell.requiresExternalCalculation;
       if (formula && (contentChanged || before?.id !== cell.id)) topologyChanged = true;
+      if (!equalDto(before?.spillExtent, cell.spillExtent) || before?.spillOwner !== cell.spillOwner ||
+          before?.spillKind !== cell.spillKind) {
+        topologyChanged = true;
+      }
       const expected = before?.content.kind === 'formula' ? previous!.caches.get(before.id) : before?.cache;
       const cacheChanged = !equalDto(expected, cell.cache);
-      if (contentChanged || cacheChanged) changes.push(cell);
+      if (contentChanged || cacheChanged || !equalDto(before?.spillExtent, cell.spillExtent)) changes.push(cell);
       // Filter display uses the cache at the start of the generation.
       if (filter && criteria.has(cell.column) && cell.row > filter.row && cell.row < filter.row + filter.rows &&
           (contentChanged || resolvedCellStyle(prior.sheet, cell, before)?.numberFormat !== resolvedCellStyle(input.sheet, cell, cell)?.numberFormat ||
@@ -72,7 +76,7 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
     for (const [key, before] of prior.cells) {
       if (input.cells.has(key)) continue;
       changes.push(before);
-      if (before.content.kind === 'formula') topologyChanged = true;
+      if (before.content.kind === 'formula' || before.spillExtent) topologyChanged = true;
       if (filter && criteria.has(before.column) && before.row > filter.row && before.row < filter.row + filter.rows) {
         visibilityChanged.add(sheetId);
       }
@@ -91,6 +95,7 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
         !equalDto(priorNode.ranges, node.ranges) || priorNode.diagnostic !== node.diagnostic ||
         previous!.graph.cycles.has(priorNode) !== graph.cycles.has(node) ||
         previous!.stale.has(priorNode) || !ownCell.cache || !equalDto(previous!.caches.get(id), ownCell.cache) ||
+        (ownCell.cache.kind === 'error' && ownCell.cache.value === '#SPILL!' && (changed.get(target.sheetId)?.length ?? 0) > 0) ||
         node.ranges.some(range => (node.containsSubtotal && visibilityChanged.has(range.sheetId)) ||
           !cellsIn(changed.get(range.sheetId) ?? [], range).next().done)) {
       stale.add(node);

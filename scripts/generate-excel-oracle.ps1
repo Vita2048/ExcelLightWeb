@@ -43,6 +43,12 @@ function Set-InputCells($worksheet, $entries) {
     } elseif ($val -is [string]) {
       if ($val -eq '') {
         $cell.Formula = '=""'
+      } elseif ($val.StartsWith('=')) {
+        try {
+          $cell.Formula2 = $val
+        } catch {
+          $cell.Formula = $val
+        }
       } else {
         $cell.NumberFormat = '@'
         $cell.Value2 = $val

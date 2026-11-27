@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { clear, pasteText } from '../../src/application/editing-commands';
 import { changeSheet } from '../../src/application/structure-commands';
 import {
-  changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, resizeTable,
+  changeTableDesign, createTable, defineName, deleteName, deleteTableSelection, nextTableName, renameTable, resizeTable,
 } from '../../src/application/table-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { calculateNative } from '../../src/calculation/native-calculator';
@@ -252,6 +252,20 @@ describe('workbook names and tables', () => {
     expect(value(session, 4, 2)).toEqual({ kind: 'number', value: 8 });
     expect(value(session, 5, 1)).toEqual({ kind: 'text', value: 'Total' });
     expect(value(session, 5, 2)).toEqual({ kind: 'formula', source: '=SUBTOTAL(109,B2:B4)' });
+  });
+
+  it('rewrites native structured table formulas when a table is renamed', () => {
+    const { session, makeId, sheetId } = book([
+      cell(1, 1, { kind: 'text', value: 'Item' }), cell(1, 2, { kind: 'text', value: 'Amount' }),
+      cell(2, 1, { kind: 'text', value: 'Pen' }), cell(2, 2, { kind: 'number', value: 12 }),
+      cell(3, 1, { kind: 'text', value: 'Pad' }), cell(3, 2, { kind: 'number', value: 18 }),
+      cell(1, 4, { kind: 'formula', source: '=SUM(Orders[Amount])' }),
+    ]);
+    session.execute(createTable(session.capture(), table(sheetId, 'Orders', 1, 1, 3, 2, 'orders'), true, makeId));
+    session.execute(renameTable(session.capture(), 'orders', 'Invoices'));
+    expect(value(session, 1, 4)).toEqual({ kind: 'formula', source: '=SUM(Invoices[Amount])' });
+    expect(calculateNative(session.active).updates.find(u => u.target.row === 1 && u.target.column === 4)?.cache)
+      .toEqual({ kind: 'number', value: 30 });
   });
 
 });
