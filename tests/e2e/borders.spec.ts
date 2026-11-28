@@ -10,6 +10,7 @@ async function go(page: Page, at: string) {
   const input = page.getByRole('textbox', { name: 'Name box' });
   await input.fill(at);
   await input.press('Enter');
+  await expect(input).toHaveValue(at);
 }
 async function pixel(page: Page, x: number, y: number) {
   return page.locator('.worksheet-canvas').evaluate((element: HTMLCanvasElement, point) => {

@@ -164,7 +164,7 @@ const catalog: Record<NativeFunction, FunctionMetadata> = {
   YEAR: { category: 'Date & Time', description: 'Returns the year (1900–9999) corresponding to a date serial number.' },
   YEARFRAC: { category: 'Date & Time', description: 'Calculates the fraction of a year represented by whole days between two dates.' },
 
-  // Lookup & Reference (34)
+  // Lookup & Reference (35)
   ADDRESS: { category: 'Lookup & Reference', description: 'Creates a cell address string from row and column numbers.' },
   AREAS: { category: 'Lookup & Reference', description: 'Returns the number of rectangular areas in a reference.' },
   CHOOSE: { category: 'Lookup & Reference', description: 'Uses index_num to select and return a value from the list of arguments.' },
@@ -176,6 +176,7 @@ const catalog: Record<NativeFunction, FunctionMetadata> = {
   EXPAND: { category: 'Lookup & Reference', description: 'Expands or pads an array to specified row and column dimensions.' },
   FILTER: { category: 'Lookup & Reference', description: 'Filters a range of data based on criteria you define.' },
   FORMULATEXT: { category: 'Lookup & Reference', description: 'Returns a formula as a text string from the referenced cell.' },
+  GETPIVOTDATA: { category: 'Lookup & Reference', description: 'Returns visible aggregated data stored in a PivotTable report.' },
   HLOOKUP: { category: 'Lookup & Reference', description: 'Searches the top row of a table and returns a value in the specified row.' },
   HSTACK: { category: 'Lookup & Reference', description: 'Appends arrays horizontally into a single wider array.' },
   HYPERLINK: { category: 'Lookup & Reference', description: 'Returns friendly text or link text for a hyperlink formula.' },

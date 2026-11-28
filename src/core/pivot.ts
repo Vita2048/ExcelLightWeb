@@ -49,6 +49,7 @@ export interface PivotAxisField {
   readonly subtotal?: 'automatic' | 'none';
   readonly sort?: PivotSortRule;
   readonly hiddenItems?: readonly string[];
+  readonly numberFormat?: string;
 }
 
 export interface PivotValueField {

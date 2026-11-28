@@ -113,6 +113,85 @@ try {
   $stage = 'set input cells'
   Set-InputCells $sheet1 $spec.cells
 
+  if ($spec.pivots) {
+    $pivotFunctions = @{
+      'sum'          = -4157
+      'count'        = -4112
+      'average'      = -4106
+      'max'          = -4136
+      'min'          = -4139
+      'product'      = -4149
+      'countNumbers' = -4113
+    }
+    foreach ($p in $spec.pivots) {
+      $stage = "create PivotTable $($p.name)"
+      $cache = $workbook.PivotCaches().Create(1, $sheet1.Range([string]$p.source))
+      $pt = $cache.CreatePivotTable($sheet1.Range([string]$p.target), [string]$p.name)
+      $pt.ManualUpdate = $true
+      $pos = 1
+      if ($p.rows) {
+        foreach ($f in $p.rows) {
+          $pf = $pt.PivotFields([string]$f)
+          $pf.Orientation = 1
+          $pf.Position = $pos++
+        }
+      }
+      $pos = 1
+      if ($p.columns) {
+        foreach ($f in $p.columns) {
+          $pf = $pt.PivotFields([string]$f)
+          $pf.Orientation = 2
+          $pf.Position = $pos++
+        }
+      }
+      $pos = 1
+      if ($p.filters) {
+        foreach ($f in $p.filters) {
+          $pf = $pt.PivotFields([string]$f)
+          $pf.Orientation = 3
+          $pf.Position = $pos++
+        }
+      }
+      if ($p.values) {
+        foreach ($v in $p.values) {
+          $df = $pt.AddDataField($pt.PivotFields([string]$v.field))
+          if ($v.aggregation -and $pivotFunctions.ContainsKey([string]$v.aggregation)) {
+            $df.Function = $pivotFunctions[[string]$v.aggregation]
+          }
+          if ($v.customName -and ([string]$df.Caption -ne [string]$v.customName)) {
+            $df.Caption = [string]$v.customName
+          }
+        }
+      }
+      if ($p.grandTotals) {
+        $pt.ColumnGrand = [bool]$p.grandTotals.rows
+        $pt.RowGrand = [bool]$p.grandTotals.columns
+      }
+      $pt.ManualUpdate = $false
+      $pt.RefreshTable() | Out-Null
+
+      if ($p.hiddenItems) {
+        foreach ($rule in $p.hiddenItems) {
+          $pf = $pt.PivotFields([string]$rule.field)
+          $hiddenSet = @{}
+          foreach ($itemName in $rule.items) { $hiddenSet[[string]$itemName] = $true }
+          foreach ($pi in $pf.PivotItems()) {
+            if ($hiddenSet.ContainsKey([string]$pi.Name)) {
+              $pi.Visible = $false
+            }
+          }
+        }
+      }
+      if ($p.collapsed) {
+        foreach ($colRule in $p.collapsed) {
+          $pf = $pt.PivotFields([string]$colRule.field)
+          $pf.PivotItems([string]$colRule.item).ShowDetail = $false
+        }
+      }
+      $pt.RefreshTable() | Out-Null
+    }
+  }
+
   $cases = @()
   foreach ($entry in $spec.expressions) {
     $expr = if ($entry -is [string]) { $entry } else { [string]$entry.expression }
@@ -199,6 +278,9 @@ function To-JsonRows($entries) {
     cells        = $cellsOut
     other        = $otherOut
     cases        = $cases
+  }
+  if ($spec.pivots) {
+    $output['pivots'] = $spec.pivots
   }
 
   $outDir = Split-Path -Parent $OutPath

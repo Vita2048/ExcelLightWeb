@@ -320,13 +320,30 @@ describe('pivot engine', () => {
     });
     expect(evaluatePivotTable(formatted, countPivot).cells.find(c => c.role === 'data')?.style?.numberFormat).toBeUndefined();
 
-    // Explicit value field format overrides source format.
+    // Explicit value field format overrides source format, including explicit 'General'.
     const overridePivot = makePivot(formatted, {
       columns: [],
       rows: [{ fieldName: 'Region' }],
       values: [{ id: 'v1', fieldName: 'Amount', aggregation: 'sum', numberFormat: '0.0' }],
     });
     expect(evaluatePivotTable(formatted, overridePivot).cells.find(c => c.role === 'data')?.style?.numberFormat).toBe('0.0');
+
+    const generalOverride = makePivot(formatted, {
+      columns: [],
+      rows: [{ fieldName: 'Region' }],
+      values: [{ id: 'v1', fieldName: 'Amount', aggregation: 'sum', numberFormat: 'General' }],
+    });
+    expect(evaluatePivotTable(formatted, generalOverride).cells.find(c => c.role === 'data')?.style?.numberFormat).toBeUndefined();
+
+    // Numeric axis fields inherit source format or apply explicit PivotAxisField.numberFormat without breaking canonical filtering.
+    const axisFormatted = evaluatePivotTable(formatted, makePivot(formatted, {
+      columns: [],
+      rows: [{ fieldName: 'Amount', numberFormat: '$#,##0.00', hiddenItems: ['200'] }],
+      values: [{ id: 'v1', fieldName: 'Amount', aggregation: 'count' }],
+    }));
+    const rowLabels = axisFormatted.cells.filter(c => c.role === 'rowLabel').map(c => c.content.kind === 'text' ? c.content.value : '');
+    expect(rowLabels).toContain('$100.00');
+    expect(rowLabels).not.toContain('$200.00');
   });
 
   it('renders emptyCellText on blank data intersections, supports 8 styles, and resolves active fields & collapsible keys', () => {

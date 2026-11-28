@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { pasteText } from '../../src/application/editing-commands';
+import { createPivotTable } from '../../src/application/pivot-commands';
 import { WorkbookSession } from '../../src/application/workbook-session';
 import { documentLimits, newWorkbook, type CellDocument, type SheetDocument, type WorkbookDocument } from '../../src/core/workbook';
 import { readProbeParts } from '../../src/persistence/bounded-zip';
@@ -216,6 +217,45 @@ it('round trips whole-column, whole-row, coalesced sheet styles, and explicit no
   expect(reSheet.rows).toEqual(document.sheets[0]!.rows);
   expect(reSheet.cells.find(c => c.row === 2 && c.column === 2)?.style).toEqual({});
   expect(reSheet.cells.find(c => c.row === 3 && c.column === 2)?.style).toBeUndefined();
+});
+
+it('exports materialized PivotTable headers, formatted values, and errors with explicit XLSX pivot loss reporting', async () => {
+  const base = workbookOf([
+    { id: makeId(), row: 1, column: 1, content: { kind: 'text', value: 'Region' } },
+    { id: makeId(), row: 1, column: 2, content: { kind: 'text', value: 'Sales' } },
+    { id: makeId(), row: 2, column: 1, content: { kind: 'text', value: 'East' } },
+    { id: makeId(), row: 2, column: 2, content: { kind: 'number', value: 1250 }, style: { numberFormat: '$#,##0.00' } },
+    { id: makeId(), row: 3, column: 1, content: { kind: 'text', value: 'West' } },
+    { id: makeId(), row: 3, column: 2, content: { kind: 'formula', source: '=1/0' }, cache: { kind: 'error', value: '#DIV/0!' } },
+  ]);
+  const sheetId = base.sheets[0]!.id;
+  const session = new WorkbookSession(base, { makeId });
+  session.execute(createPivotTable(session.capture(), {
+    source: { kind: 'range', area: { sheetId, row: 1, column: 1, rows: 3, columns: 2 } },
+    target: { sheetId, row: 1, column: 5 },
+    rows: [{ fieldName: 'Region' }],
+    values: [{ id: makeId(), fieldName: 'Sales', aggregation: 'sum', numberFormat: '$#,##0.00' }],
+  }, makeId));
+
+  const inspected = inspectXlsxExport(session.active);
+  expect(inspected.has('pivots')).toBe(true);
+  expect(inspected.issues.find(i => i.code === 'pivots')?.detail).toContain('pivotTableDefinition');
+
+  const { blob, report } = await writeXlsx(session.active);
+  expect(report.has('pivots')).toBe(true);
+
+  const parts = await partsOf(blob);
+  expect(parts.get('xl/worksheets/sheet1.xml')).toContain('t="e"><v>#DIV/0!</v>');
+
+  const reimported = await importXlsx(blob);
+  expect(reimported.document.pivots).toBeUndefined();
+  expect(reimported.report.has('constant-error')).toBe(true);
+  const sheet = reimported.document.sheets[0]!;
+  expect(sheet.cells.find(c => c.row === 1 && c.column === 5)?.content).toEqual({ kind: 'text', value: 'Row Labels' });
+  const eastCell = sheet.cells.find(c => c.row === 2 && c.column === 6);
+  expect(eastCell?.content).toEqual({ kind: 'number', value: 1250 });
+  expect(eastCell?.style?.numberFormat).toBe('$#,##0.00');
+  expect(sheet.cells.find(c => c.row === 3 && c.column === 6)?.content).toEqual({ kind: 'text', value: '#DIV/0!' });
 });
 
 it('writes exports for the desktop XLSX oracle when S19_XLSX_OUT is set', async () => {

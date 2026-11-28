@@ -72,19 +72,19 @@ export function PivotOptionsDialog({
           </div>
           <label className="pivot-options-check">
             <input type="checkbox" checked={autoFitColumns} onChange={event => setAutoFitColumns(event.currentTarget.checked)} />
-            Autofit column widths on update
+            <span>Autofit column widths on update</span>
           </label>
           <label className="pivot-options-check">
             <input type="checkbox" checked={showButtons} onChange={event => setShowButtons(event.currentTarget.checked)} />
-            Show expand/collapse buttons
+            <span>Show expand/collapse buttons</span>
           </label>
           <label className="pivot-options-check">
             <input type="checkbox" checked={showFieldHeaders} onChange={event => setShowFieldHeaders(event.currentTarget.checked)} />
-            Display field captions and filter drop downs
+            <span>Display field captions and filter drop downs</span>
           </label>
           <label className="pivot-options-check">
             <input type="checkbox" checked={repeatLabels} onChange={event => setRepeatLabels(event.currentTarget.checked)} />
-            Repeat all item labels
+            <span>Repeat all item labels</span>
           </label>
         </fieldset>
 
@@ -92,11 +92,11 @@ export function PivotOptionsDialog({
           <legend>Totals &amp; Filters</legend>
           <label className="pivot-options-check">
             <input type="checkbox" checked={grandTotalRows} onChange={event => setGrandTotalRows(event.currentTarget.checked)} />
-            Show grand totals for rows
+            <span>Show grand totals for rows</span>
           </label>
           <label className="pivot-options-check">
             <input type="checkbox" checked={grandTotalCols} onChange={event => setGrandTotalCols(event.currentTarget.checked)} />
-            Show grand totals for columns
+            <span>Show grand totals for columns</span>
           </label>
         </fieldset>
 

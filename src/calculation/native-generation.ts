@@ -84,6 +84,8 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
     if (changes.length) changed.set(sheetId, changes.sort((a, b) => cellKey(a) - cellKey(b)));
   }
 
+  const pivotsChanged = !equalDto(previous?.graph.pivots ?? [], document.pivots ?? []);
+  if (pivotsChanged) topologyChanged = true;
   const graph = topologyChanged ? prepareNativeGraph(document) : previous!.graph;
   const stale = new Set<Node>();
   for (const node of graph.order) {
@@ -95,6 +97,7 @@ export function runNativeGeneration(document: WorkbookDocument, scope: NativeCal
         !equalDto(priorNode.ranges, node.ranges) || priorNode.diagnostic !== node.diagnostic ||
         previous!.graph.cycles.has(priorNode) !== graph.cycles.has(node) ||
         previous!.stale.has(priorNode) || !ownCell.cache || !equalDto(previous!.caches.get(id), ownCell.cache) ||
+        (pivotsChanged && node.usesGetPivotData) ||
         (ownCell.cache.kind === 'error' && ownCell.cache.value === '#SPILL!' && (changed.get(target.sheetId)?.length ?? 0) > 0) ||
         node.ranges.some(range => (node.containsSubtotal && visibilityChanged.has(range.sheetId)) ||
           !cellsIn(changed.get(range.sheetId) ?? [], range).next().done)) {

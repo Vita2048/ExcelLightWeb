@@ -618,11 +618,25 @@ function validatePivots(document: WorkbookDocument, addId: (id: DocumentId) => v
     requireDocument(pivotReportLayouts.includes(pivot.reportLayout), 'Invalid PivotTable report layout.');
     requireDocument(pivotSubtotalPositions.includes(pivot.subtotals), 'Invalid PivotTable subtotals position.');
     requireDocument(pivotStyles.includes(pivot.style), 'Invalid PivotTable style.');
+    for (const af of [...pivot.rows, ...pivot.columns]) {
+      requireDocument(
+        af.numberFormat === undefined ||
+        (typeof af.numberFormat === 'string' && validText(af.numberFormat, limits.numberFormatLength) &&
+          af.numberFormat.length > 0 && !/[\u0000-\u001f]/u.test(af.numberFormat)),
+        'Invalid PivotTable field number format.',
+      );
+    }
     for (const vf of pivot.values) {
       validateId(vf.id);
       requireDocument(pivotAggregations.includes(vf.aggregation), 'Invalid PivotTable aggregation.');
       requireDocument(vf.showValuesAs === undefined || pivotShowValuesAsModes.includes(vf.showValuesAs),
         'Invalid PivotTable Show Values As calculation.');
+      requireDocument(
+        vf.numberFormat === undefined ||
+        (typeof vf.numberFormat === 'string' && validText(vf.numberFormat, limits.numberFormatLength) &&
+          vf.numberFormat.length > 0 && !/[\u0000-\u001f]/u.test(vf.numberFormat)),
+        'Invalid PivotTable value field number format.',
+      );
     }
   }
 }

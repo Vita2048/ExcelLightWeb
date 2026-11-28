@@ -9,8 +9,12 @@ import mathOracle from '../fixtures/formulas/math.json';
 import textOracle from '../fixtures/formulas/text.json';
 import datetimeOracle from '../fixtures/formulas/datetime.json';
 import statsFinancialOracle from '../fixtures/formulas/stats-financial.json';
+import getpivotdataOracle from '../fixtures/formulas/getpivotdata.json';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { nativeFunctions, supportedFunctions } from '../../src/calculation/formula-functions';
+import { createPivotTable, parsePivotRangeReference, parsePivotTargetCell, updatePivotLayout } from '../../src/application/pivot-commands';
+import { WorkbookSession } from '../../src/application/workbook-session';
+import type { PivotAggregation } from '../../src/core/pivot';
 import { emptySheet, ownDto, type CellCache, type CellDocument, type WorkbookDocument } from '../../src/core/workbook';
 
 function formula(id: string, row: number, column: number, source: string): CellDocument {
@@ -133,7 +137,7 @@ runOracleSuite(textOracle as OracleSuite, 'cs-CZ');
 runOracleSuite(datetimeOracle as OracleSuite, 'en-US');
 runOracleSuite(statsFinancialOracle as OracleSuite, 'en-US');
 
-it('exercises valid and invalid arguments for all 225 functions and evaluates TODAY from a deterministic clock', () => {
+it('exercises valid and invalid arguments for all 226 functions and evaluates TODAY from a deterministic clock', () => {
   const cases = [
     ...fixture.flatMap(input => input.cases),
     ...dynamicArrays.cases,
@@ -144,6 +148,7 @@ it('exercises valid and invalid arguments for all 225 functions and evaluates TO
     ...textOracle.cases,
     ...datetimeOracle.cases,
     ...statsFinancialOracle.cases,
+    ...getpivotdataOracle.cases,
   ];
   for (const kind of ['result', 'error']) {
     const examples = cases.filter(test => (test.kind === 'error') === (kind === 'error'));
@@ -151,7 +156,7 @@ it('exercises valid and invalid arguments for all 225 functions and evaluates TO
       [...test.expression.matchAll(/([A-Z][A-Z0-9.]*)\(/giu)].map(match => match[1]!.toUpperCase())));
     expect(nativeFunctions.filter(name => !names.has(name)), kind).toEqual([]);
   }
-  expect(nativeFunctions).toHaveLength(225);
+  expect(nativeFunctions).toHaveLength(226);
   let clockReads = 0;
   const result = calculateNative(workbook([formula('today', 1, 1, '=TODAY()'), formula('next', 1, 2, '=TODAY()+A1')]), {
     clock: () => { clockReads++; return new Date(2024, 0, 15, 23, 59); },
@@ -227,4 +232,62 @@ it('evaluates a 500-cell reverse-order chain and preserves the source and extern
   expect(result(2)).toEqual(external.cache);
   expect(result(3)?.value).toBe('#NAME?');
   expect(document.sheets[0]?.cells[500]?.content).toEqual(external.content);
+});
+
+describe(getpivotdataOracle.id, () => {
+  let idSeq = 0;
+  const makeId = () => `gpd-${++idSeq}`;
+  const main = cells('gpd-main', getpivotdataOracle.cells as (number | boolean | string)[][]);
+  const session = new WorkbookSession(workbook(main), { makeId });
+  for (const spec of getpivotdataOracle.pivots) {
+    const hiddenByField = new Map<string, string[]>(
+      spec.hiddenItems.map(rule => [rule.field, [...rule.items]]),
+    );
+    const source = parsePivotRangeReference(session.active, 'one', spec.source)!;
+    const target = parsePivotTargetCell(session.active, 'one', spec.target)!;
+    session.execute(createPivotTable(session.capture(), {
+      name: spec.name,
+      source,
+      target,
+      rows: spec.rows.map(fieldName => ({
+        fieldName,
+        ...(hiddenByField.has(fieldName) ? { hiddenItems: hiddenByField.get(fieldName)! } : {}),
+      })),
+      columns: spec.columns.map(fieldName => ({
+        fieldName,
+        ...(hiddenByField.has(fieldName) ? { hiddenItems: hiddenByField.get(fieldName)! } : {}),
+      })),
+      filters: spec.filters.map(fieldName => ({
+        fieldName,
+        ...(hiddenByField.has(fieldName) ? { hiddenItems: hiddenByField.get(fieldName)! } : {}),
+      })),
+      values: spec.values.map(v => ({
+        id: makeId(),
+        fieldName: v.field,
+        aggregation: v.aggregation as PivotAggregation,
+        customName: v.customName,
+      })),
+      grandTotals: spec.grandTotals,
+    }, makeId));
+    if (spec.collapsed.length > 0) {
+      const createdId = session.active.pivots![session.active.pivots!.length - 1]!.id;
+      session.execute(updatePivotLayout(session.capture(), createdId, {
+        collapsedKeys: spec.collapsed.map(item => item.item),
+      }, makeId));
+    }
+  }
+  const pivotDoc = session.active;
+  const baseCells = pivotDoc.sheets[0]!.cells;
+
+  it.each(getpivotdataOracle.cases)('$expression matches real Excel (16.0 build 17932)', ({ expression, kind, value }) => {
+    const docWithFormula: WorkbookDocument = ownDto({
+      ...pivotDoc,
+      sheets: pivotDoc.sheets.map((s, idx) => idx === 0
+        ? { ...s, cells: [...baseCells, formula('test-gpd', 1, 20, expression)] }
+        : s),
+    });
+    const result = calculateNative(docWithFormula, { locale: 'en-US' });
+    const update = result.updates.find(u => u.target.column === 20);
+    assertOracleScalar(update?.cache, kind, value ?? '');
+  });
 });

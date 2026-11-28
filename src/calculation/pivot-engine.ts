@@ -1,3 +1,4 @@
+import { formatNumber } from '../core/formats/cell-format';
 import {
   defaultPivotValueLabel,
   type PivotAggregation,
@@ -79,6 +80,7 @@ export interface PivotEvaluationResult {
 
 interface ItemEntry {
   readonly label: string;
+  readonly displayLabel: string;
   readonly raw: PivotScalar;
 }
 
@@ -282,11 +284,16 @@ function buildAxisTree(
   records: readonly PivotRecord[],
   fields: readonly PivotAxisField[],
   values: readonly PivotValueField[],
+  fieldFormats: Readonly<Record<string, string>>,
   level = 0,
   parentKey = '',
 ): readonly AxisNode[] {
   if (level >= fields.length) return [];
   const field = fields[level]!;
+  const explicitAxisFmt = field.numberFormat;
+  const axisFmt = explicitAxisFmt !== undefined
+    ? (/^general$/iu.test(explicitAxisFmt) ? undefined : explicitAxisFmt)
+    : fieldFormats[field.fieldName];
   const hidden = new Set(field.hiddenItems ?? []);
   const groups = new Map<string, { item: ItemEntry; records: PivotRecord[] }>();
   for (const record of records) {
@@ -295,7 +302,10 @@ function buildAxisTree(
     if (hidden.has(label)) continue;
     let bucket = groups.get(label);
     if (!bucket) {
-      bucket = { item: { label, raw }, records: [] };
+      const displayLabel = typeof raw === 'number' && axisFmt && !/^general$/iu.test(axisFmt)
+        ? formatNumber(raw, axisFmt).text
+        : label;
+      bucket = { item: { label, displayLabel, raw }, records: [] };
       groups.set(label, bucket);
     }
     bucket.records.push(record);
@@ -328,7 +338,7 @@ function buildAxisTree(
       key,
       parentKey,
       records: groupRecords,
-      children: buildAxisTree(groupRecords, fields, values, level + 1, key),
+      children: buildAxisTree(groupRecords, fields, values, fieldFormats, level + 1, key),
       subtotal: field.subtotal ?? 'automatic',
     };
   });
@@ -359,7 +369,7 @@ function flattenAxis(
         node,
         path: currentPath,
         valueIndex: 0,
-        label: node.item.label,
+        label: node.item.displayLabel,
         level: node.level,
         hasChildren,
         collapsed,
@@ -377,7 +387,7 @@ function flattenAxis(
           node,
           path: currentPath,
           valueIndex: 0,
-          label: `${node.item.label} Total`,
+          label: `${node.item.displayLabel} Total`,
           level: node.level,
           hasChildren: false,
           collapsed: false,
@@ -393,7 +403,7 @@ function flattenAxis(
         node,
         path: currentPath,
         valueIndex: 0,
-        label: node.item.label,
+        label: node.item.displayLabel,
         level: node.level,
         hasChildren: true,
         collapsed: false,
@@ -407,7 +417,7 @@ function flattenAxis(
         node,
         path: currentPath,
         valueIndex: 0,
-        label: node.item.label,
+        label: node.item.displayLabel,
         level: node.level,
         hasChildren: true,
         collapsed: false,
@@ -422,7 +432,7 @@ function flattenAxis(
         node,
         path: currentPath,
         valueIndex: 0,
-        label: `${node.item.label} Total`,
+        label: `${node.item.displayLabel} Total`,
         level: node.level,
         hasChildren: false,
         collapsed: false,
@@ -602,7 +612,14 @@ interface InternalPivotResult {
   readonly labelColCount: number;
   readonly dataStartCol: number;
   readonly dataBuckets: ReadonlyMap<string, readonly PivotRecord[]>;
+  readonly rowLines: readonly AxisLine[];
+  readonly colLines: readonly AxisLine[];
+  readonly displayMatrix: readonly (readonly RawValue[])[];
+  readonly valuesInRows: boolean;
+  readonly hasMultipleValues: boolean;
 }
+
+export type PivotEvaluationCache = Map<string, InternalPivotResult>;
 
 function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocument): InternalPivotResult {
   const { fields, records: allRecords, fieldFormats } = extractPivotRecords(document, pivot.source);
@@ -669,6 +686,11 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
       labelColCount: 1,
       dataStartCol: 1,
       dataBuckets,
+      rowLines: [],
+      colLines: [],
+      displayMatrix: [],
+      valuesInRows,
+      hasMultipleValues,
     };
   }
 
@@ -677,8 +699,8 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
     pivot.columns.every(cf => !cf.hiddenItems?.includes(formatPivotItemLabel(record[cf.fieldName] ?? null))),
   );
 
-  const rowTree = buildAxisTree(visibleRecords, pivot.rows, pivot.values);
-  const colTree = buildAxisTree(visibleRecords, pivot.columns, pivot.values);
+  const rowTree = buildAxisTree(visibleRecords, pivot.rows, pivot.values, fieldFormats);
+  const colTree = buildAxisTree(visibleRecords, pivot.columns, pivot.values, fieldFormats);
 
   const baseRowLines = pivot.rows.length > 0
     ? flattenAxis(rowTree, pivot.rows, pivot.subtotals, collapsed, repeatLabels, pivot.reportLayout)
@@ -916,18 +938,18 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
               const firstSeen = !seenTabularParents.has(anc.key);
               if (firstSeen) {
                 seenTabularParents.add(anc.key);
-                atLevel = anc.item.label;
+                atLevel = anc.item.displayLabel;
                 if (anc.children.length > 0 && pivot.rows.length > lvl + 1) {
                   attachCollapse = { collapsibleKey: anc.key, collapsed: false };
                 }
               } else if (repeatLabels) {
-                atLevel = anc.item.label;
+                atLevel = anc.item.displayLabel;
               }
             }
           } else {
             atLevel = lvl === rLine.level
               ? rLine.label
-              : (repeatLabels && rLine.path[lvl] ? rLine.path[lvl]!.item.label : '');
+              : (repeatLabels && rLine.path[lvl] ? rLine.path[lvl]!.item.displayLabel : '');
             if (lvl === rLine.level && rLine.collapsibleKey !== undefined) {
               attachCollapse = { collapsibleKey: rLine.collapsibleKey, collapsed: rLine.collapsed };
             }
@@ -978,8 +1000,10 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
       const fill = isTotal ? palette.totalFill : (rowBand || colBand) ? palette.bandFill : undefined;
       const countOrRank = vf?.showValuesAs === 'rankAscending' || vf?.showValuesAs === 'rankDescending' ||
         vf?.showValuesAs === 'index' || vf?.aggregation === 'count' || vf?.aggregation === 'countNumbers';
-      const numFmt = vf?.numberFormat
-        ?? (vf?.showValuesAs?.startsWith('percent') ? '0.00%' : countOrRank ? undefined : (vf ? fieldFormats[vf.fieldName] : undefined));
+      const explicitFmt = vf?.numberFormat;
+      const numFmt = explicitFmt !== undefined
+        ? (/^general$/iu.test(explicitFmt) ? undefined : explicitFmt)
+        : (vf?.showValuesAs?.startsWith('percent') ? '0.00%' : countOrRank ? undefined : (vf ? fieldFormats[vf.fieldName] : undefined));
       const style: CellStyle | undefined = isTotal || numFmt || fill
         ? {
           ...(isTotal && totalStyleBase),
@@ -1026,6 +1050,11 @@ function evaluatePivotInternal(document: WorkbookDocument, pivot: PivotTableDocu
     labelColCount,
     dataStartCol,
     dataBuckets,
+    rowLines,
+    colLines,
+    displayMatrix,
+    valuesInRows,
+    hasMultipleValues,
   };
 }
 
@@ -1145,13 +1174,13 @@ export function collectFieldCollapsibleKeys(
 ): readonly string[] {
   const fieldIndex = pivot.rows.findIndex(rf => rf.fieldName === fieldName);
   if (fieldIndex < 0 || fieldIndex >= pivot.rows.length - 1) return [];
-  const { records: allRecords } = extractPivotRecords(document, pivot.source);
+  const { records: allRecords, fieldFormats } = extractPivotRecords(document, pivot.source);
   const visibleRecords = allRecords.filter(record =>
     pivot.filters.every(filter => !filter.hiddenItems?.length || !filter.hiddenItems.includes(formatPivotItemLabel(record[filter.fieldName] ?? null))) &&
     pivot.rows.every(rf => !rf.hiddenItems?.length || !rf.hiddenItems.includes(formatPivotItemLabel(record[rf.fieldName] ?? null))) &&
     pivot.columns.every(cf => !cf.hiddenItems?.length || !cf.hiddenItems.includes(formatPivotItemLabel(record[cf.fieldName] ?? null))),
   );
-  const rowTree = buildAxisTree(visibleRecords, pivot.rows, pivot.values);
+  const rowTree = buildAxisTree(visibleRecords, pivot.rows, pivot.values, fieldFormats);
   const keys: string[] = [];
   const walk = (nodes: readonly AxisNode[]) => {
     for (const node of nodes) {
@@ -1275,4 +1304,111 @@ export function resolveActivePivotField(
     };
   }
   return undefined;
+}
+
+export function findPivotContainingCell(
+  document: WorkbookDocument,
+  target: CellReference,
+): PivotTableDocument | undefined {
+  for (const pivot of document.pivots ?? []) {
+    if (pivot.target.sheetId !== target.sheetId) continue;
+    const extent = pivot.extent;
+    if (extent) {
+      if (target.row >= extent.row && target.row < extent.row + extent.rows &&
+          target.column >= extent.column && target.column < extent.column + extent.columns) {
+        return pivot;
+      }
+    } else if (target.row === pivot.target.row && target.column === pivot.target.column) {
+      return pivot;
+    }
+  }
+  return undefined;
+}
+
+function matchesAxisItem(node: AxisNode, query: PivotScalar): boolean {
+  if (typeof query === 'object' && query !== null) return false;
+  if (typeof query === 'string') return query.toLowerCase() === node.item.label.toLowerCase();
+  if (typeof query === 'number') {
+    return (typeof node.item.raw === 'number' && node.item.raw === query) || String(query) === node.item.label;
+  }
+  if (typeof query === 'boolean') {
+    return (typeof node.item.raw === 'boolean' && node.item.raw === query) ||
+      (query ? 'TRUE' : 'FALSE') === node.item.label.toUpperCase();
+  }
+  return node.item.raw === null || node.item.label === '';
+}
+
+function matchesAxisLine(
+  line: AxisLine,
+  queries: ReadonlyMap<string, PivotScalar>,
+  axisLength: number,
+): boolean {
+  if (queries.size === 0) {
+    return axisLength === 0 ? line.path.length === 0 : line.kind === 'grandTotal';
+  }
+  if (line.kind === 'item' && line.hasChildren && !line.collapsed) return false;
+  if (line.path.length !== queries.size) return false;
+  return line.path.every(node => {
+    const fieldKey = node.fieldName.toLowerCase();
+    return queries.has(fieldKey) && matchesAxisItem(node, queries.get(fieldKey)!);
+  });
+}
+
+export function queryPivotData(
+  document: WorkbookDocument,
+  pivot: PivotTableDocument,
+  dataField: string,
+  pairs: readonly (readonly [string, PivotScalar])[],
+  cache?: PivotEvaluationCache,
+): PivotScalar {
+  const refErr: Extract<CellCache, { kind: 'error' }> = { kind: 'error', value: '#REF!' };
+  if (pivot.values.length === 0) return refErr;
+
+  const targetName = dataField.trim().toLowerCase();
+  if (!targetName) return refErr;
+  const valueIdx = pivot.values.findIndex(v =>
+    v.customName?.trim().toLowerCase() === targetName ||
+    defaultPivotValueLabel(v.fieldName, v.aggregation).toLowerCase() === targetName ||
+    v.fieldName.toLowerCase() === targetName,
+  );
+  if (valueIdx < 0) return refErr;
+
+  const rowFieldKeys = new Set(pivot.rows.map(rf => rf.fieldName.toLowerCase()));
+  const colFieldKeys = new Set(pivot.columns.map(cf => cf.fieldName.toLowerCase()));
+  const seenFields = new Set<string>();
+  const rowQueries = new Map<string, PivotScalar>();
+  const colQueries = new Map<string, PivotScalar>();
+
+  for (const [rawField, rawItem] of pairs) {
+    if (typeof rawItem === 'object' && rawItem !== null) return rawItem;
+    const key = rawField.trim().toLowerCase();
+    if (!key || seenFields.has(key)) return refErr;
+    seenFields.add(key);
+    if (rowFieldKeys.has(key)) rowQueries.set(key, rawItem);
+    else if (colFieldKeys.has(key)) colQueries.set(key, rawItem);
+    else return refErr;
+  }
+
+  let internal = cache?.get(pivot.id);
+  if (!internal) {
+    internal = evaluatePivotInternal(document, pivot);
+    cache?.set(pivot.id, internal);
+  }
+
+  const rIdx = internal.rowLines.findIndex(line =>
+    (!internal!.hasMultipleValues || !internal!.valuesInRows || line.valueIndex === valueIdx) &&
+    matchesAxisLine(line, rowQueries, pivot.rows.length),
+  );
+  if (rIdx < 0) return refErr;
+
+  const cIdx = internal.colLines.findIndex(line =>
+    (!internal!.hasMultipleValues || internal!.valuesInRows || line.valueIndex === valueIdx) &&
+    matchesAxisLine(line, colQueries, pivot.columns.length),
+  );
+  if (cIdx < 0) return refErr;
+
+  const cellVal = internal.displayMatrix[rIdx]?.[cIdx];
+  if (!cellVal || cellVal.kind === 'blank') return 0;
+  if (cellVal.kind === 'error') return cellVal;
+  return cellVal.value;
 }

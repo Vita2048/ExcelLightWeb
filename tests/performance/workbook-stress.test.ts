@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WorkbookSession } from '../../src/application/workbook-session';
+import { createPivotTable, refreshPivotTable } from '../../src/application/pivot-commands';
 import { runNativeGeneration } from '../../src/calculation/native-generation';
 import { calculateNative } from '../../src/calculation/native-calculator';
 import { documentLimits, ownDto, type CellDocument, type SheetDocument, type WorkbookDocument } from '../../src/core/workbook';
@@ -216,5 +217,68 @@ describe('maximum-bound workbook stress', () => {
       ...sheet, cells: [...sheet.cells, numberCell('extra-cell', 1_001, 1, 1)],
     }) });
     expect(() => validateWorkbook(extra)).toThrow(/200,000/u);
+  }, 120_000);
+
+  it('aggregates and refreshes a 10,000-row PivotTable with GETPIVOTDATA within budget', () => {
+    let seq = 0;
+    const makeId = () => `pivot-perf-${++seq}`;
+    const regions = ['North', 'South', 'East', 'West', 'Central'];
+    const categories = ['Hardware', 'Software', 'Services', 'Accessories'];
+    const cells: CellDocument[] = [
+      { id: makeId(), row: 1, column: 1, content: { kind: 'text', value: 'Region' } },
+      { id: makeId(), row: 1, column: 2, content: { kind: 'text', value: 'Category' } },
+      { id: makeId(), row: 1, column: 3, content: { kind: 'text', value: 'Amount' } },
+    ];
+    for (let r = 2; r <= 10_001; r++) {
+      cells.push(
+        { id: makeId(), row: r, column: 1, content: { kind: 'text', value: regions[r % regions.length]! } },
+        { id: makeId(), row: r, column: 2, content: { kind: 'text', value: categories[r % categories.length]! } },
+        { id: makeId(), row: r, column: 3, content: { kind: 'number', value: (r % 100) + 1 } },
+      );
+    }
+    cells.push({ id: makeId(), row: 1, column: 15, content: { kind: 'formula', source: '=GETPIVOTDATA("Amount",F1)' } });
+    const workbook: WorkbookDocument = ownDto({
+      id: 'pivot-perf-book',
+      formatVersion: 1,
+      dateSystem: '1900',
+      sheets: [{ id: 'sheet-1', name: 'Sales', cells, merges: [], rows: [], columns: [], frozenPanes: { rows: 0, columns: 0 } }],
+      names: [],
+    });
+    const basis0 = new WorkbookSession(workbook, { makeId }).capture();
+    let createdDoc!: WorkbookDocument;
+    const createMs = time(() => {
+      createdDoc = createPivotTable(basis0, {
+        source: { kind: 'range', area: { sheetId: 'sheet-1', row: 1, column: 1, rows: 10_001, columns: 3 } },
+        target: { sheetId: 'sheet-1', row: 1, column: 6 },
+        columns: [{ fieldName: 'Region' }],
+        rows: [{ fieldName: 'Category' }],
+        values: [{ id: makeId(), fieldName: 'Amount', aggregation: 'sum' }],
+      }, makeId).document;
+    });
+    const pivotId = createdDoc.pivots![0]!.id;
+    let refreshedDoc = createdDoc;
+    const refreshSamples = samples(5, index => {
+      const edited: WorkbookDocument = withLiteral(refreshedDoc, 0, 2, 3, 500 + index);
+      refreshedDoc = refreshPivotTable({
+        ...basis0,
+        document: edited,
+        revision: basis0.revision + index + 1,
+      }, pivotId, makeId).document;
+    });
+    let recalcResult!: ReturnType<typeof runNativeGeneration>;
+    const recalcMs = time(() => {
+      recalcResult = runNativeGeneration(refreshedDoc, 'workbook');
+    });
+    expect(recalcResult.updates.find(u => u.target.column === 15)?.cache?.kind).toBe('number');
+    record('S25-pivot-10k', {
+      environment: environment(),
+      sourceRows: 10_000,
+      measurements: summarize([
+        { name: 'create 10k-row PivotTable (ms)', samples: [createMs] },
+        { name: 'refresh 10k-row PivotTable (ms)', samples: refreshSamples },
+        { name: 'GETPIVOTDATA recalc on 10k-row PivotTable (ms)', samples: [recalcMs] },
+      ]),
+    });
+    expect(percentile(refreshSamples, 0.95)).toBeLessThan(2_000);
   }, 120_000);
 });

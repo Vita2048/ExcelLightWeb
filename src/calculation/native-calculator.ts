@@ -13,6 +13,7 @@ import { lastColumn, lastRow, resolveStructuredReference, resolveWorkbookName } 
 import { overlaps, ordinalNameKey } from '../core/workbook-validation';
 import { nowSerial, todaySerial } from './formula-dates';
 import { evaluateFunction, isVolatileFunction, sumIfRange, supportedFunctions } from './formula-functions';
+import { findPivotContainingCell, queryPivotData, type PivotEvaluationCache } from './pivot-engine';
 import {
   arrayFromMatrix, compare, error, finite, isArray, isError, isLambda, isOmitted, isRange,
   matchesComparison, numberValue, omitted, scalarCache, textValue,
@@ -27,6 +28,7 @@ interface FormulaNode {
   readonly inputs: FormulaNode[];
   readonly dependents: FormulaNode[];
   readonly containsSubtotal: boolean;
+  readonly usesGetPivotData: boolean;
   readonly volatile: boolean;
   readonly hasSpillRef: boolean;
   readonly diagnostic?: 'malformed' | 'unsupported';
@@ -45,7 +47,7 @@ function address(sheet: SheetDocument, cell: CellDocument): CellReference {
 function baseValue(cell: CellDocument | undefined): Scalar {
   if (!cell) return null;
   if (cell.content.kind === 'blank') {
-    return cell.spillKind === 'formula' && cell.cache?.kind === 'error' ? cell.cache : null;
+    return (cell.spillKind === 'formula' || cell.spillKind === 'pivot') && cell.cache?.kind === 'error' ? cell.cache : null;
   }
   if (cell.content.kind === 'python') {
     const block = cell.content.block;
@@ -172,12 +174,13 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     let parsed: ReturnType<typeof parseFormula>;
     try { parsed = parseFormula(cell.content.source); }
     catch (exception) {
-      nodes.set(cell.id, { ...base, ranges: [], containsSubtotal: false, volatile: false, hasSpillRef: false,
+      nodes.set(cell.id, { ...base, ranges: [], containsSubtotal: false, usesGetPivotData: false, volatile: false, hasSpillRef: false,
         diagnostic: cell.requiresExternalCalculation || exception instanceof UnsupportedFormulaReference ? 'unsupported' : 'malformed' });
       continue;
     }
 
     let containsSubtotal = false;
+    let usesGetPivotData = false;
     let volatile = false;
     let hasSpillRef = false;
     let unsupported = !!cell.requiresExternalCalculation;
@@ -277,6 +280,7 @@ export function prepareNativeGraph(document: WorkbookDocument) {
           if (!scope.has(expression.name)) {
             if (!supportedFunctions.has(expression.name)) unsupported = true;
             if (expression.name === 'SUBTOTAL') containsSubtotal = true;
+            if (expression.name === 'GETPIVOTDATA') usesGetPivotData = true;
             if (isVolatileFunction(expression.name)) volatile = true;
           }
           for (const arg of expression.args) analyze(arg, scope);
@@ -311,7 +315,25 @@ export function prepareNativeGraph(document: WorkbookDocument) {
         if (expanded) ranges.push(expanded);
       }
     }
-    nodes.set(cell.id, { ...base, expression: parsed.expression, ranges, containsSubtotal, volatile, hasSpillRef,
+    if (usesGetPivotData && document.pivots?.length) {
+      for (const pivot of document.pivots) {
+        const pivotBox = pivot.extent ?? { row: pivot.target.row, column: pivot.target.column, rows: 1, columns: 1 };
+        const hitsPivot = ranges.some(range =>
+          range.sheetId === pivot.target.sheetId &&
+          overlaps({ row: range.top, column: range.left, rows: range.bottom - range.top + 1, columns: range.right - range.left + 1 }, pivotBox),
+        );
+        if (hitsPivot) {
+          ranges.push({
+            sheetId: pivot.target.sheetId,
+            top: pivotBox.row,
+            left: pivotBox.column,
+            bottom: pivotBox.row + pivotBox.rows - 1,
+            right: pivotBox.column + pivotBox.columns - 1,
+          });
+        }
+      }
+    }
+    nodes.set(cell.id, { ...base, expression: parsed.expression, ranges, containsSubtotal, usesGetPivotData, volatile, hasSpillRef,
       ...(unsupported && { diagnostic: 'unsupported' as const }) });
   }
   const dependencies = new Map<string, readonly CellReference[]>();
@@ -350,7 +372,7 @@ export function prepareNativeGraph(document: WorkbookDocument) {
     for (const input of list) input.dependents.push(node);
     dependencies.set(id, list.map(input => input.target));
   }
-  return { nodes, resolvedReferences, dependencies, names: document.names, ...evaluationOrder(nodes.values()) };
+  return { nodes, resolvedReferences, dependencies, names: document.names, pivots: document.pivots ?? [], ...evaluationOrder(nodes.values()) };
 }
 
 function* walkCalls(expression: FormulaExpression): Iterable<FormulaExpression> {
@@ -394,18 +416,20 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
   const group = parts.find(part => part.type === 'group')?.value;
   const number = (value: Scalar) => numberValue(value, decimal, group);
   const text = (value: Exclude<Scalar, FormulaError>) => textValue(value, decimal);
-  const { nodes, resolvedReferences, order, cycles, dependencies, names } = graph;
+  const { nodes, resolvedReferences, order, cycles, dependencies, names, pivots } = graph;
   const sorted = new Map<string, CellDocument[]>();
   const evaluated = new Map<CellDocument, Scalar>();
   const diagnostics = new Map<string, string>();
   const filtered = new Map<SheetDocument, RowMask>();
   const manual = new Map<SheetDocument, ReadonlySet<number>>();
+  const pivotCache: PivotEvaluationCache = new Map();
   const docView = {
     id: '',
     formatVersion: 1 as const,
     dateSystem: '1900' as const,
     sheets: [...inputs.values()].map(entry => entry.sheet),
     names,
+    ...(pivots.length > 0 && { pivots }),
   } satisfies WorkbookDocument;
   const sheetsByName = new Map(docView.sheets.map(entry => [ordinalNameKey(entry.name), entry]));
 
@@ -942,6 +966,10 @@ export function evaluateNative(inputs: ReturnType<typeof indexNativeInputs>, gra
               evaluateInEnv: (expr, nextEnv, inc) => evaluateInEnv(expr, nextEnv, inc, depth),
               invokeLambda: (fn, argVals) => invokeLambda(fn, argVals, depth),
               arrayOf,
+              queryPivotData: (pivotCell, dataField, pairs) => {
+                const pivot = findPivotContainingCell(docView, pivotCell);
+                return pivot ? queryPivotData(docView, pivot, dataField, pairs, pivotCache) : error('#REF!');
+              },
             });
           }
         }
@@ -1119,6 +1147,7 @@ export function previewFormula(
     inputs: [],
     dependents: [],
     containsSubtotal: false,
+    usesGetPivotData: false,
     volatile: false,
     hasSpillRef: false,
   };
@@ -1127,6 +1156,7 @@ export function previewFormula(
     resolvedReferences,
     dependencies: new Map<string, readonly CellReference[]>(),
     names: document.names,
+    pivots: document.pivots ?? [],
     order: [node],
     cycles: new Set<FormulaNode>(),
   };

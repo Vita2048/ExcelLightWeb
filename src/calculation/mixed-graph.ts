@@ -208,6 +208,7 @@ export class MixedGraph {
         }
       }
     }
+    const pivotsChanged = !equalDto(before.pivots ?? [], after.pivots ?? []);
     const roots = new Set<string>();
     for (const node of this.nodes.values()) {
       const oldSheet = before.sheets.find(sheet => sheet.id === node.target.sheetId);
@@ -215,7 +216,9 @@ export class MixedGraph {
       const oldCell = oldSheet?.cells.find(cell => cell.id === node.id);
       const stablePython = samePythonSource(oldCell?.content, node.cell.content);
       if (!oldCell || !oldSheet || !newSheet || (!stablePython && !equalDto(oldCell.content, node.cell.content)) ||
-          resolvedCellStyle(oldSheet, node.target, oldCell)?.numberFormat !== resolvedCellStyle(newSheet, node.target, node.cell)?.numberFormat) {
+          resolvedCellStyle(oldSheet, node.target, oldCell)?.numberFormat !== resolvedCellStyle(newSheet, node.target, node.cell)?.numberFormat ||
+          (pivotsChanged && node.kind === 'formula' && node.cell.content.kind === 'formula' &&
+            /\bGETPIVOTDATA\s*\(/iu.test(node.cell.content.source))) {
         roots.add(node.id);
         continue;
       }

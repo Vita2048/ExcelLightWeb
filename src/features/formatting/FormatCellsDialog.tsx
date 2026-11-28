@@ -28,12 +28,13 @@ function available(item: typeof tabs[number]): item is FormatTab {
   return availableTabs.some(tab => tab === item);
 }
 
-export function FormatCellsDialog({ cell, style = cell?.style, locale, usedCodes, initialTab, borderEditor, mergeEnabled, merged, onSubmit, onCancel }: {
+export function FormatCellsDialog({ cell, style = cell?.style, locale, usedCodes, initialTab, allowedTabs, borderEditor, mergeEnabled, merged, onSubmit, onCancel }: {
   cell: CellDocument | undefined;
   style?: CellStyle | undefined;
   locale: string;
   usedCodes: readonly string[];
   initialTab: FormatTab;
+  allowedTabs?: readonly FormatTab[];
   borderEditor: BorderEditorState | undefined;
   mergeEnabled: boolean;
   merged: boolean | undefined;
@@ -42,16 +43,17 @@ export function FormatCellsDialog({ cell, style = cell?.style, locale, usedCodes
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const tabId = useId();
-  const [tab, setTab] = useState(initialTab);
+  const visibleTabs: readonly FormatTab[] = allowedTabs && allowedTabs.length > 0 ? allowedTabs : tabs;
+  const enabledTabs: readonly FormatTab[] = visibleTabs.filter(item => item !== 'Border' || Boolean(borderEditor));
+  const [tab, setTab] = useState<FormatTab>(() => (enabledTabs.includes(initialTab) ? initialTab : enabledTabs[0]!));
   const [borders, setBorders] = useState<BorderDraft>({});
   const [alignment, setAlignment] = useState<AlignmentPatch>({});
   const [merge, setMerge] = useState<boolean>();
-  const enabledTabs: readonly FormatTab[] = borderEditor ? availableTabs : availableTabs.filter(item => item !== 'Border');
   const [patch, setPatch] = useState<AppearancePatch>({});
   const [family, setFamily] = useState(style?.fontFamily ?? 'Segoe UI');
   const [size, setSize] = useState(String(style?.fontSize ?? 11));
   const appearance = updateAppearance(style, patch);
-  const validFont = isFontFamily(family) && parseFontSize(size) !== undefined;
+  const validFont = !visibleTabs.includes('Font') || (isFontFamily(family) && parseFontSize(size) !== undefined);
   function updatePatch(change: AppearancePatch) { setPatch(current => ({ ...current, ...change })); }
   const original = style?.numberFormat ?? 'General';
   const name = formatName(original);
@@ -116,7 +118,7 @@ export function FormatCellsDialog({ cell, style = cell?.style, locale, usedCodes
         <button type="button" className="format-dialog-close" aria-label="Close Format Cells" onClick={onCancel}>×</button>
       </DialogTitleBar>
       <div className="appearance-tabs" role="tablist" aria-label="Format Cells options">
-        {tabs.map(item => available(item) && enabledTabs.includes(item) ? <button type="button" key={item} role="tab" id={tabId + '-' + item}
+        {visibleTabs.map(item => available(item) && enabledTabs.includes(item) ? <button type="button" key={item} role="tab" id={tabId + '-' + item}
           aria-controls={tabId + '-panel-' + item} aria-selected={tab === item} tabIndex={tab === item ? 0 : -1}
           onClick={() => setTab(item)} onKeyDown={event => {
             const index = enabledTabs.indexOf(item);

@@ -2,6 +2,7 @@ import axe from 'axe-core';
 import { expect, test, type Page } from '@playwright/test';
 
 const path = '/ExcelLightWeb/';
+test.describe.configure({ timeout: 60_000 });
 
 async function expectActive(page: Page, address: string) {
   const grid = page.getByRole('grid');

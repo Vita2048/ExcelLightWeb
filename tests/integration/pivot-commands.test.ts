@@ -3,6 +3,7 @@ import {
   changePivotSource,
   clearPivotTable,
   createPivotTable,
+  deletePivotSelection,
   deletePivotTable,
   drillDownPivotCell,
   expandCollapsePivotField,
@@ -234,5 +235,58 @@ describe('pivot session commands and native persistence', () => {
     session.execute(clearPivotTable(session.capture(), pivot.id, 'all', makeId));
     expect(session.active.pivots![0]!.rows).toEqual([]);
     expect(session.active.pivots![0]!.values).toEqual([]);
+  });
+
+  it('deletes a PivotTable only when the full extent is selected, supports Undo, and round-trips axis numberFormat', async () => {
+    const { doc, makeId } = buildSalesWorkbook();
+    const sheetId = doc.sheets[0]!.id;
+    const session = new WorkbookSession(doc, { makeId });
+
+    session.execute(createPivotTable(session.capture(), {
+      source: { kind: 'range', area: { sheetId, row: 1, column: 1, rows: 4, columns: 3 } },
+      target: { sheetId, row: 1, column: 5 },
+      rows: [{ fieldName: 'Sales', numberFormat: '$#,##0.00' }],
+      values: [{ id: makeId(), fieldName: 'Sales', aggregation: 'sum' }],
+    }, makeId));
+
+    const pivot = session.active.pivots![0]!;
+    expect(pivot.extent).toBeDefined();
+
+    // Verify axis numberFormat round-trips cleanly through native package persistence.
+    const saved = await saveNativePackage(session.active);
+    const loaded = await loadNativePackage(saved);
+    expect(loaded.pivots![0]!.rows[0]!.numberFormat).toBe('$#,##0.00');
+
+    // Partial selection does not trigger deletePivotSelection.
+    const partial = deletePivotSelection(session.capture(), [{ sheetId, row: pivot.extent!.row, column: pivot.extent!.column, rows: 1, columns: 1 }]);
+    expect(partial).toBeUndefined();
+
+    // Selecting the full extent deletes the PivotTable and removes all pivot-owned cells; Undo restores both.
+    const fullCmd = deletePivotSelection(session.capture(), [{ sheetId, ...pivot.extent! }]);
+    expect(fullCmd).toBeDefined();
+    session.execute(fullCmd!);
+    expect(session.active.pivots ?? []).toHaveLength(0);
+    expect(session.active.sheets[0]!.cells.some(c => c.spillKind === 'pivot')).toBe(false);
+
+    session.undo();
+    expect(session.active.pivots).toHaveLength(1);
+    expect(session.active.sheets[0]!.cells.some(c => c.spillOwner === pivot.id)).toBe(true);
+
+    // Enclosing one PivotTable while partially overlapping a second throws without mutating.
+    session.execute(createPivotTable(session.capture(), {
+      source: { kind: 'range', area: { sheetId, row: 1, column: 1, rows: 4, columns: 3 } },
+      target: { sheetId, row: 10, column: 5 },
+      rows: [{ fieldName: 'Region' }],
+      values: [{ id: makeId(), fieldName: 'Sales', aggregation: 'sum' }],
+    }, makeId));
+    const second = session.active.pivots![1]!;
+    expect(() => deletePivotSelection(session.capture(), [{
+      sheetId,
+      row: pivot.extent!.row,
+      column: pivot.extent!.column,
+      rows: second.extent!.row - pivot.extent!.row + 1,
+      columns: pivot.extent!.columns,
+    }])).toThrow(/Cannot change part of a PivotTable/u);
+    expect(session.active.pivots).toHaveLength(2);
   });
 });

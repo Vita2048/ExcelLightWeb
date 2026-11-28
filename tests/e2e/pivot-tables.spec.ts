@@ -74,7 +74,7 @@ test('creates, configures, formats and places PivotTables via Ribbon, Dialog and
   await expect(page.getByRole('gridcell', { name: 'G2, Widget' })).toBeAttached();
   await expect(page.getByRole('gridcell', { name: 'H2, Grand Total' })).toBeAttached();
 
-  // Open Value Field Settings and verify aggregation + Show Values As + number format.
+  // Open Value Field Settings and verify aggregation + Show Values As + Number Format via single-tab Format Cells.
   await pane.getByRole('button', { name: 'Sum of Sales options' }).click();
   await pane.getByRole('menuitem', { name: 'Value Field Settings...' }).click();
   const settingsDialog = page.getByRole('dialog', { name: 'Value Field Settings' });
@@ -82,7 +82,14 @@ test('creates, configures, formats and places PivotTables via Ribbon, Dialog and
   await settingsDialog.getByRole('option', { name: 'Average' }).click();
   await settingsDialog.getByRole('tab', { name: 'Show Values As' }).click();
   await settingsDialog.getByLabel('Show values as').selectOption('percentOfColumnTotal');
-  await settingsDialog.getByLabel('Number Format:').fill('0.00%');
+  await settingsDialog.getByRole('button', { name: 'Number Format' }).click();
+  const formatDialog = page.getByRole('dialog', { name: 'Format Cells' });
+  await expect(formatDialog).toBeVisible();
+  await expect(formatDialog.getByRole('tab')).toHaveCount(1);
+  await expect(formatDialog.getByRole('tab', { name: 'Number' })).toBeVisible();
+  await formatDialog.getByLabel('Category').selectOption('Percentage');
+  await formatDialog.getByRole('button', { name: 'OK' }).click();
+  await expect(formatDialog).toBeHidden();
   await settingsDialog.getByRole('button', { name: 'OK' }).click();
 
   await expect(page.getByRole('gridcell', { name: 'H5, 100.00%' })).toBeAttached();
@@ -418,11 +425,22 @@ test('supports PivotTable Analyze and Design ribbon actions, options, change sou
   await pane.getByRole('button', { name: 'Product options' }).click();
   await pane.getByRole('menuitem', { name: 'Move to Row Labels' }).click();
 
-  // PivotTable Options dialog.
+  // PivotTable Options dialog: checkboxes sit inline left of label text and toggle reliably on repeated clicks.
   await page.getByRole('button', { name: 'Options', exact: true }).click();
   const optsDialog = page.getByRole('dialog', { name: 'PivotTable Options' });
+  const gtRowCheck = optsDialog.getByLabel('Show grand totals for rows');
+  const gtRowLabel = optsDialog.locator('label.pivot-options-check', { hasText: 'Show grand totals for rows' });
+  const inputBox = (await gtRowCheck.boundingBox())!;
+  const labelBox = (await gtRowLabel.boundingBox())!;
+  expect(inputBox.x + inputBox.width).toBeLessThan(labelBox.x + labelBox.width - 20);
+  expect(Math.abs((inputBox.y + inputBox.height / 2) - (labelBox.y + labelBox.height / 2))).toBeLessThanOrEqual(6);
+  await gtRowCheck.click();
+  await expect(gtRowCheck).not.toBeChecked();
+  await gtRowLabel.click();
+  await expect(gtRowCheck).toBeChecked();
+  await gtRowCheck.click();
+  await expect(gtRowCheck).not.toBeChecked();
   await optsDialog.getByLabel('For empty cells show:').fill('--');
-  await optsDialog.getByLabel('Show grand totals for rows').uncheck();
   await optsDialog.getByRole('button', { name: 'OK' }).click();
   await expect(page.getByRole('gridcell', { name: /Grand Total/ })).toHaveCount(0);
 
@@ -458,4 +476,110 @@ test('supports PivotTable Analyze and Design ribbon actions, options, change sou
   await page.getByRole('button', { name: 'Clear', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Clear All' }).click();
   await expect(page.getByRole('gridcell', { name: 'I1, SalesSummary' })).toBeAttached();
+});
+
+test('evaluates GETPIVOTDATA formulas against PivotTables and updates them on source edit + Refresh', async ({ page }) => {
+  await page.goto(path);
+  await seedSalesData(page);
+  await go(page, 'A1');
+
+  const createDialog = await openCreatePivotDialog(page);
+  await createDialog.getByRole('radio', { name: 'Existing Worksheet' }).check();
+  await createDialog.getByLabel('Location:').fill("='Sheet1'!$E$1");
+  await createDialog.getByRole('button', { name: 'OK' }).click();
+
+  const pane = page.getByRole('complementary', { name: 'PivotTable Fields' });
+  await pane.getByRole('checkbox', { name: 'Region' }).check();
+  await pane.getByRole('checkbox', { name: 'Sales' }).check();
+
+  // Verify initial GETPIVOTDATA evaluation for North (100 + 150 = 250) and missing item (#REF!).
+  await go(page, 'H2', '=GETPIVOTDATA("Sales",E1,"Region","North")');
+  await expect(page.getByRole('gridcell', { name: 'H2, 250' })).toBeAttached();
+  await go(page, 'H3', '=GETPIVOTDATA("Sales",E1,"Region","Missing")');
+  await expect(page.getByRole('gridcell', { name: 'H3, #REF!' })).toBeAttached();
+
+  // Edit source C2 (North Widget 100 -> 400) and trigger PivotTable Analyze -> Refresh.
+  await go(page, 'C2', '400');
+  await go(page, 'E2');
+  await page.getByRole('tab', { name: 'PivotTable Analyze', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Refresh', exact: true }).click();
+
+  await expect(page.getByRole('gridcell', { name: 'F2, 550' })).toBeAttached();
+  await expect(page.getByRole('gridcell', { name: 'H2, 550' })).toBeAttached();
+});
+
+test('supports Ribbon Field Settings single-tab Number Format and deleting whole PivotTable with Delete', async ({ page }) => {
+  await page.goto(path);
+  await seedSalesData(page);
+  await go(page, 'A1');
+
+  const createDialog = await openCreatePivotDialog(page);
+  await createDialog.getByRole('radio', { name: 'Existing Worksheet' }).check();
+  await createDialog.getByLabel('Location:').fill("='Sheet1'!$E$1");
+  await createDialog.getByRole('button', { name: 'OK' }).click();
+
+  const pane = page.getByRole('complementary', { name: 'PivotTable Fields' });
+  await pane.getByRole('checkbox', { name: 'Region' }).check();
+  await pane.getByRole('checkbox', { name: 'Sales' }).check();
+
+  // Ribbon Field Settings on a value cell opens Value Field Settings with a bottom-left Number Format button.
+  await go(page, 'F2');
+  await page.getByRole('tab', { name: 'PivotTable Analyze', exact: true }).click();
+  await page.getByRole('button', { name: 'Field Settings', exact: true }).click();
+  const valueSettings = page.getByRole('dialog', { name: 'Value Field Settings' });
+  await expect(valueSettings).toBeVisible();
+  const numBtn = valueSettings.getByRole('button', { name: 'Number Format' });
+  await expect(numBtn).toBeVisible();
+  const numBox = (await numBtn.boundingBox())!;
+  const okBox = (await valueSettings.getByRole('button', { name: 'OK' }).boundingBox())!;
+  expect(numBox.x).toBeLessThan(okBox.x);
+
+  await numBtn.click();
+  const formatDialog = page.getByRole('dialog', { name: 'Format Cells' });
+  await expect(formatDialog).toBeVisible();
+  await expect(formatDialog.getByRole('tab')).toHaveCount(1);
+  await expect(formatDialog.getByRole('tab', { name: 'Number' })).toBeVisible();
+  await formatDialog.getByLabel('Category').selectOption('Currency');
+  await formatDialog.getByRole('button', { name: 'OK' }).click();
+  await valueSettings.getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByRole('gridcell', { name: 'F2, $250.00' })).toBeAttached();
+
+  // Ribbon Field Settings on a text axis field (Region) omits Number Format; on a numeric axis field (Sales) shows it.
+  await go(page, 'E2');
+  await page.getByRole('button', { name: 'Field Settings', exact: true }).click();
+  const textAxisSettings = page.getByRole('dialog', { name: 'Field Settings' });
+  await expect(textAxisSettings).toBeVisible();
+  await expect(textAxisSettings.getByRole('button', { name: 'Number Format' })).toHaveCount(0);
+  await textAxisSettings.getByRole('button', { name: 'Cancel' }).click();
+
+  await pane.getByRole('checkbox', { name: 'Region' }).uncheck();
+  await pane.getByRole('button', { name: 'Sum of Sales options' }).click();
+  await pane.getByRole('menuitem', { name: 'Move to Row Labels' }).click();
+  await go(page, 'E2');
+  await page.getByRole('button', { name: 'Field Settings', exact: true }).click();
+  const numericAxisSettings = page.getByRole('dialog', { name: 'Field Settings' });
+  await expect(numericAxisSettings).toBeVisible();
+  await numericAxisSettings.getByRole('button', { name: 'Number Format' }).click();
+  await expect(formatDialog.getByRole('tab')).toHaveCount(1);
+  await formatDialog.getByLabel('Category').selectOption('Currency');
+  await formatDialog.getByRole('button', { name: 'OK' }).click();
+  await numericAxisSettings.getByRole('button', { name: 'OK' }).click();
+  await expect(page.getByRole('gridcell', { name: 'E2, $50.00' })).toBeAttached();
+
+  // Single-cell Delete inside PivotTable is blocked, while selecting the entire PivotTable + Delete deletes it (with Undo).
+  await page.getByRole('grid', { name: 'Sheet1' }).press('Delete');
+  await expect(page.getByRole('gridcell', { name: 'E2, $50.00' })).toBeAttached();
+
+  await page.getByRole('tab', { name: 'PivotTable Analyze', exact: true }).click();
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Entire PivotTable' }).click();
+  await page.getByRole('grid', { name: 'Sheet1' }).press('Delete');
+  await expect(page.getByRole('gridcell', { name: 'E2, $50.00' })).toHaveCount(0);
+  await expect(pane).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'PivotTable Analyze', exact: true })).toHaveCount(0);
+
+  await page.keyboard.press('Control+z');
+  await expect(page.getByRole('gridcell', { name: 'E2, $50.00' })).toBeAttached();
+  await expect(pane).toBeVisible();
 });

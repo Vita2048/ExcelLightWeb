@@ -48,6 +48,10 @@ export function inspectXlsxExport(document: WorkbookDocument): XlsxReport {
     report.add(exchangeCodes.tables,
       'Lightweight table names, explicit extents and header contracts are omitted from XLSX. Cell values remain; native .exlt retains definitions.');
   }
+  if ((document.pivots?.length ?? 0) > 0) {
+    report.add(exchangeCodes.pivots,
+      'PivotTable definitions (pivotTableDefinition/pivotCache) are omitted from XLSX; materialized header/value cells and number formats are exported. Native .exlt retains live PivotTables.');
+  }
   if (document.sheets.some(sheet => sheet.cells.some(cell => cell.requiresExternalCalculation))) {
     report.add(exchangeCodes.unsupportedFormulas,
       'Unsupported formula sources/caches are retained without evaluation. Array/spill semantics are not exported; formula text is written as a scalar formula. Native .exlt retains external-calculation metadata.');
@@ -142,6 +146,9 @@ function cellXml(cell: CellDocument, styleIndex: number, strings: SharedStrings,
   }
   switch (content.kind) {
     case 'blank':
+      if (cell.cache?.kind === 'error') {
+        return `<c r="${reference}"${style} t="e"><v>${escapeText(cell.cache.value)}</v></c>`;
+      }
       return `<c r="${reference}"${style}/>`;
     case 'number':
       return `<c r="${reference}"${style}><v>${String(content.value)}</v></c>`;

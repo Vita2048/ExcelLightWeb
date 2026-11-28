@@ -44,9 +44,9 @@ import {
   refersTo, renameTable, resizeTable, selectionHasHeaders, setTotalFunction,
 } from '../application/table-commands';
 import {
-  changePivotSource, clearPivotTable, createPivotTableWithSheet, drillDownPivotCell, expandCollapsePivotField,
-  findPivotAt, movePivotTableWithSheet, parsePivotRangeReference, parsePivotTargetCell, refreshAllPivotTables,
-  refreshPivotTable, renamePivotTable, togglePivotCollapse, updatePivotLayout,
+  changePivotSource, clearPivotTable, createPivotTableWithSheet, deletePivotSelection, drillDownPivotCell,
+  expandCollapsePivotField, findPivotAt, movePivotTableWithSheet, parsePivotRangeReference, parsePivotTargetCell,
+  refreshAllPivotTables, refreshPivotTable, renamePivotTable, togglePivotCollapse, updatePivotLayout,
 } from '../application/pivot-commands';
 import { computePivotOverlays, resolveActivePivotField } from '../calculation/pivot-engine';
 import { CreatePivotTableDialog, type PivotPlacement } from '../features/pivot/CreatePivotTableDialog';
@@ -418,6 +418,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (pythonTarget) setPythonOpen(true);
   }, [pythonTarget, pythonTargetKey, pythonHiddenFor, python.sync, python.context, python.wantsReference]);
   const focusGrid = () => worksheet.current?.focus();
+  const scheduleFocusGrid = () => {
+    const origin = document.activeElement;
+    requestAnimationFrame(() => {
+      const current = document.activeElement;
+      if (current && current !== origin && current !== document.body && current !== document.documentElement) return;
+      worksheet.current?.focus();
+    });
+  };
   const editing = useWorksheetEditing(session, (compound, history) => workbookChanged(compound, history), separator, locale, makeId, focusGrid, surface => {
     root.current?.querySelector<HTMLTextAreaElement>('[data-cell-editor="' + surface + '"]')?.focus({ preventScroll: true });
   });
@@ -1267,7 +1275,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (!painter?.locked) setBrush(undefined);
       requestedFocus.current = true;
       setActiveSheetId(active);
-    } else requestAnimationFrame(focusGrid);
+    } else scheduleFocusGrid();
   }
 
   function openCreateDialog(table: boolean) {
@@ -1376,7 +1384,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     try {
       area = parseNameExtent(session.capture().document, sheet.id, extentText);
     } catch {
-      requestAnimationFrame(focusGrid);
+      scheduleFocusGrid();
       return;
     }
     const next: GridSelection = {
@@ -1445,7 +1453,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     const { target } = functionArgsDialog;
     if (!editing.commitFormula(target, localizedFormula)) return;
     setFunctionArgsDialog(undefined);
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function openCreatePivotDialog() {
@@ -1723,7 +1731,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       ...singleSelection({ row: ext.row, column: ext.column }),
       end: { row: ext.row + ext.rows - 1, column: ext.column + ext.columns - 1 },
     }));
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function handleOpenChangePivotSource() {
@@ -1757,7 +1765,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       requireDocument(source, 'Enter a valid table name or worksheet cell range.');
       applyStructure(basis, changePivotSource(basis, changePivotSourceDraft.pivotId, source, makeId));
       setChangePivotSourceDraft(undefined);
-      requestAnimationFrame(focusGrid);
+      scheduleFocusGrid();
       return undefined;
     } catch (err: unknown) {
       return err instanceof Error ? err.message : String(err);
@@ -1810,7 +1818,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       applyStructure(basis, moved.command, moved.sheetId);
       setSelections(current => new Map(current).set(moved.sheetId, singleSelection(targetAnchor)));
       setMovePivotDraft(undefined);
-      requestAnimationFrame(focusGrid);
+      scheduleFocusGrid();
       return undefined;
     } catch (err: unknown) {
       return err instanceof Error ? err.message : String(err);
@@ -1867,7 +1875,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }
     editing.report('Sorted ' + rangeLabel(range) + ' by column ' + columnLetters(draft.column) + ', ' +
       (draft.ascending ? 'smallest to largest' : 'largest to smallest') + '. Records moved together.');
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function requestSort(ascending: boolean, dialog: boolean, choice?: 'expand' | 'current') {
@@ -1960,7 +1968,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         editing.clearCut();
         workbookChanged(true);
         editing.report('Filter removed. Manually hidden rows stay hidden.');
-        requestAnimationFrame(focusGrid);
+        scheduleFocusGrid();
         return;
       }
       const chosen = ranges();
@@ -1977,7 +1985,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       editing.clearCut();
       workbookChanged(true);
       editing.report('Filter applied to ' + rangeLabel(target) + '. Choose values from a header funnel.');
-      requestAnimationFrame(focusGrid);
+      scheduleFocusGrid();
     } catch (error) { editing.reject(error); }
   }
 
@@ -1992,7 +2000,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       editing.clearCut();
       workbookChanged(true);
       editing.report('Filter cleared. Manually hidden rows stay hidden.');
-      requestAnimationFrame(focusGrid);
+      scheduleFocusGrid();
     } catch (error) { editing.reject(error); }
   }
 
@@ -2001,7 +2009,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!sheet.filter) { editing.reject(new Error('There is no filter to reapply.')); return; }
     workbookChanged(true);
     editing.report('Filter reapplied. ' + (recordSummary(sheet) ?? 'All records are visible.'));
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function openFilter(row: number, column: number, x: number, y: number) {
@@ -2046,7 +2054,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!open) return;
     setFilterMenu(undefined);
     try {
-      requireDocument(session.isCurrent(open.basis), 'Workbook changed. Open the filter again to choose current values.');
+      requireDocument(session.isCurrentAuthored(open.basis), 'Workbook changed. Open the filter again to choose current values.');
       const latest = session.capture();
       const live = latest.document.sheets.find(item => item.id === sheet.id)?.filter;
       requireDocument(live, 'The filter was removed.');
@@ -2069,7 +2077,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const applied = session.active.sheets.find(item => item.id === sheet.id)!;
       editing.report('Filtered ' + open.header + '. ' + (recordSummary(applied) ?? ''));
     } catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function sortFilterColumn(ascending: boolean) {
@@ -2089,7 +2097,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }
       editing.report('Sorted the filtered records. Hidden rows were included and the filter still applies.');
     } catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function clearFilterColumn() {
@@ -2109,7 +2117,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }
       editing.report('Cleared the filter for this column. Manually hidden rows stay hidden.');
     } catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function errorText(error: unknown): string {
@@ -2229,7 +2237,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const fitted = worksheet.current?.zoomToSelection();
       if (fitted !== undefined) onView({ zoom: fitted });
     } else onView({ zoom });
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function runFreeze(mode: 'panes' | 'topRow' | 'firstColumn' | 'none') {
@@ -2241,7 +2249,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         mode === 'firstColumn' ? { rows: 0, columns: 1 } : { rows: 0, columns: 0 };
       if (sheet.frozenPanes.rows === panes.rows && sheet.frozenPanes.columns === panes.columns) {
         editing.report('Pane boundaries are unchanged.');
-        requestAnimationFrame(focusGrid);
+        scheduleFocusGrid();
         return;
       }
       const basis = session.capture();
@@ -2250,7 +2258,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         mode === 'topRow' ? 'Froze the top row.' :
         mode === 'firstColumn' ? 'Froze the first column.' : 'Froze panes.');
     } catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   const tableFilter = !!sheet.filter && tables.some(table => ownsTableFilter(sheet.filter, table));
@@ -2315,7 +2323,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       const targetSheet = basis.document.sheets.find(item => item.id === activeTarget.sheetId);
       const style = targetSheet ? resolvedCellStyle(targetSheet, activeTarget) : findReferencedCell(basis.document, activeTarget)?.style;
       applyStyleCommand(changeAlignment(basis, ranges(), action, style));
-      requestAnimationFrame(focusGrid);
+      scheduleFocusGrid();
     } catch (error) { editing.reject(error); }
   }
 
@@ -2325,7 +2333,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     setBrush(undefined);
     try { applyStyleCommand(applyNumberFormat(session.capture(), ranges(), change)); }
     catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function runAppearance(patch: AppearancePatch, focus = true) {
@@ -2336,7 +2344,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       try { applyStyleCommand(formatStyles(session.capture(), ranges(), patch)); }
       catch (error) { editing.reject(error); }
     }
-    if (focus) requestAnimationFrame(focusGrid);
+    if (focus) scheduleFocusGrid();
   }
 
   function armPainter(locked: boolean) {
@@ -2351,7 +2359,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }
       editing.clearStatus();
     } catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function paint(area: Area) {
@@ -2384,7 +2392,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }
       rememberBorder(action);
     } catch (error) { editing.reject(error); }
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function beginBorderStroke() {
@@ -2467,7 +2475,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       setBorderTool(undefined);
       if (tab === 'Border' && target.ranges.length !== 1) {
         editing.reject(new Error('Select one contiguous range for borders.'));
-        requestAnimationFrame(focusGrid);
+        scheduleFocusGrid();
         return;
       }
       const first = target.ranges[0]!;
@@ -2490,12 +2498,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!rename || !renaming.current) return;
     renaming.current = false;
     setRename(undefined);
-    if (value === undefined) { requestAnimationFrame(focusGrid); return; }
+    if (value === undefined) { scheduleFocusGrid(); return; }
     try {
       const basis = currentAuthoredBasis(rename.basis);
       const next = changeSheet(basis, rename.id, { kind: 'rename', name: value }, makeId);
       applyStructure(basis, next.command, next.active);
-    } catch (error) { editing.reject(error); requestAnimationFrame(focusGrid); }
+    } catch (error) { editing.reject(error); scheduleFocusGrid(); }
   }
 
   function openGridMenu(x: number, y: number, axis?: Axis, index?: number, point?: Coordinate) {
@@ -2773,7 +2781,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     setPythonHiddenFor(pythonTargetKey);
     setPythonOpen(false);
     setPythonPick(undefined);
-    requestAnimationFrame(focusGrid);
+    scheduleFocusGrid();
   }
 
   function togglePython() {
@@ -2886,13 +2894,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     } else if (event.altKey && key === '=') {
       handle = () => run({ kind: 'autosum', aggregate: 'SUM' });
     } else if (!control && key === 'delete') {
-      const basis = session.capture();
-      const deleteTableCmd = deleteTableSelection(basis, ranges());
-      if (deleteTableCmd) {
-        handle = () => applyStructure(basis, deleteTableCmd);
-      } else {
-        handle = () => run({ kind: 'clear', mode: 'contents' });
-      }
+      handle = () => {
+        if (!editing.commit()) return;
+        const basis = session.capture();
+        const selectionRanges = ranges();
+        try {
+          const deletePivotCmd = deletePivotSelection(basis, selectionRanges);
+          if (deletePivotCmd) {
+            applyStructure(basis, deletePivotCmd);
+            return;
+          }
+        } catch (err: unknown) {
+          editing.reject(err instanceof Error ? err : new Error(String(err)));
+          return;
+        }
+        const deleteTableCmd = deleteTableSelection(basis, selectionRanges);
+        if (deleteTableCmd) {
+          applyStructure(basis, deleteTableCmd);
+        } else {
+          run({ kind: 'clear', mode: 'contents' });
+        }
+      };
     } else if (!control && key === 'backspace') {
       handle = () => run({ kind: 'clear', mode: 'contents' });
     } else if (!control && key === 'f2') {
@@ -3022,7 +3044,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onBorderDialog: () => openStructure('format-cells', undefined, 'Border'),
     onNumberFormat: runNumberFormat,
     onAppearance: runAppearance,
-    onAppearanceError: (error, focus) => { editing.reject(new Error(error)); if (focus) requestAnimationFrame(focusGrid); },
+    onAppearanceError: (error, focus) => { editing.reject(new Error(error)); if (focus) scheduleFocusGrid(); },
     onFormatDialog: tab => openStructure('format-cells', undefined, tab),
     onPainter: armPainter,
     onView,
@@ -3361,7 +3383,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
               pivot={activePivot}
               makeId={makeId}
               onUpdateLayout={patch => handleUpdatePivotLayout(activePivot.id, patch)}
-              onClose={() => { setPivotFieldListOpen(false); requestAnimationFrame(focusGrid); }}
+              onClose={() => { setPivotFieldListOpen(false); scheduleFocusGrid(); }}
               onOpenSettings={request => setFieldSettingsModal({ pivotId: activePivot.id, request })}
             />
           </>}
@@ -3472,7 +3494,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       {editing.manualPaste && <PasteTextDialog mode={editing.manualPaste.mode} error={editing.status}
         onSubmit={editing.submitManualPaste} onClose={editing.closeManualPaste} />}
       {menu && <StructureMenu {...menu} onAction={action => openStructure(action, menu.target)}
-        onClose={() => { setMenu(undefined); requestAnimationFrame(focusGrid); }} />}
+        onClose={() => { setMenu(undefined); scheduleFocusGrid(); }} />}
       {formatDraft && (() => {
         const draftSheet = formatDraft.basis.document.sheets.find(item => item.id === formatDraft.cell.sheetId);
         const draftCell = findReferencedCell(snapshot.document, formatDraft.cell);
@@ -3481,7 +3503,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           usedCodes={usedNumberCodes} initialTab={formatDraft.tab} borderEditor={borderEditor}
           mergeEnabled={formatDraft.ranges.length === 1} merged={formatDraft.ranges.length === 1 ?
             mergeState(draftSheet!, formatDraft.ranges[0]!) : undefined}
-        onCancel={() => { setFormatDraft(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setFormatDraft(undefined); scheduleFocusGrid(); }}
         onSubmit={(patch, code, borders, alignment, merge) => {
           try {
             if (merge !== undefined) {
@@ -3493,13 +3515,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
               applyStyleCommand(formatStyles(basis, formatDraft.ranges, patch, code, borders, alignment));
             }
             setFormatDraft(undefined);
-            requestAnimationFrame(focusGrid);
+            scheduleFocusGrid();
           } catch (error) { return error instanceof Error ? error.message : 'The number format could not be applied.'; }
         }} />;
       })()}
       {mergeConfirmation && <MergeConfirmation onConfirm={mergeConfirmation.confirm} onCancel={() => {
         setMergeConfirmation(undefined);
-        if (!formatDraft) requestAnimationFrame(focusGrid);
+        if (!formatDraft) scheduleFocusGrid();
       }} />}
       {structure && <StructureDialog action={structure.action} sheets={structure.basis.document.sheets}
         target={structure.basis.document.sheets.find(item => item.id === structure.target.id)!}
@@ -3509,7 +3531,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           const index = structure.target.header ?? structure.target.ranges[0]?.[axis];
           return item[axis === 'row' ? 'rows' : 'columns'].find(dimension => dimension.index === index)?.size ?? gridMetrics[axis];
         })()}
-        onCancel={() => { setStructure(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setStructure(undefined); scheduleFocusGrid(); }}
         onSubmit={input => {
           try { performStructure(structure.action, structure.target, structure.basis, input); setStructure(undefined); }
           catch (error) { return error instanceof Error ? error.message : 'The structural edit failed.'; }
@@ -3518,7 +3540,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         suspended={rangePicker !== undefined}
         onPickRange={handlePickRangeFromDefinition}
         onSubmit={handleDefinitionSubmit}
-        onCancel={() => { setDefinitionDraft(undefined); requestAnimationFrame(focusGrid); }} />}
+        onCancel={() => { setDefinitionDraft(undefined); scheduleFocusGrid(); }} />}
       {nameManagerOpen && <NameManagerDialog document={snapshot.document}
         suspended={rangePicker !== undefined || definitionDraft !== undefined}
         pickedExtent={pickedManagerExtent}
@@ -3528,7 +3550,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onDelete={handleDeleteName}
         onPickRange={handlePickRangeFromManager}
         onApplyExtent={handleApplyManagerExtent}
-        onClose={() => { setNameManagerOpen(false); setPickedManagerExtent(undefined); requestAnimationFrame(focusGrid); }} />}
+        onClose={() => { setNameManagerOpen(false); setPickedManagerExtent(undefined); scheduleFocusGrid(); }} />}
       {createPivotDraft && <CreatePivotTableDialog
         sourceText={createPivotDraft.sourceText}
         placement={createPivotDraft.placement}
@@ -3540,24 +3562,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onPickSource={handlePickPivotSource}
         onPickLocation={handlePickPivotLocation}
         onSubmit={handleCreatePivotSubmit}
-        onCancel={() => { setCreatePivotDraft(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setCreatePivotDraft(undefined); scheduleFocusGrid(); }}
       />}
       {fieldSettingsModal && settingsPivot && <FieldSettingsDialog
+        key={`${fieldSettingsModal.pivotId}:${fieldSettingsModal.request.mode}:${fieldSettingsModal.request.mode === 'value' ? fieldSettingsModal.request.field.id : `${fieldSettingsModal.request.area}:${fieldSettingsModal.request.field.fieldName}`}`}
         document={snapshot.document}
         pivot={settingsPivot}
         request={fieldSettingsModal.request}
+        locale={locale}
+        usedCodes={usedNumberCodes}
         onSaveValueField={handleSaveValueFieldSettings}
         onSaveAxisField={handleSaveAxisFieldSettings}
-        onCancel={() => { setFieldSettingsModal(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setFieldSettingsModal(undefined); scheduleFocusGrid(); }}
       />}
       {optionsPivot && <PivotOptionsDialog
         pivot={optionsPivot}
         onSave={patch => {
           handleUpdatePivotLayout(optionsPivot.id, patch);
           setPivotOptionsOpen(false);
-          requestAnimationFrame(focusGrid);
+          scheduleFocusGrid();
         }}
-        onCancel={() => { setPivotOptionsOpen(false); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setPivotOptionsOpen(false); scheduleFocusGrid(); }}
       />}
       {changePivotSourceDraft && <ChangePivotSourceDialog
         sourceText={changePivotSourceDraft.sourceText}
@@ -3565,7 +3590,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onChangeSource={sourceText => setChangePivotSourceDraft(current => current ? { ...current, sourceText } : undefined)}
         onPickSource={handlePickChangePivotSource}
         onSubmit={handleChangePivotSourceSubmit}
-        onCancel={() => { setChangePivotSourceDraft(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setChangePivotSourceDraft(undefined); scheduleFocusGrid(); }}
       />}
       {movePivotDraft && <MovePivotTableDialog
         placement={movePivotDraft.placement}
@@ -3575,14 +3600,14 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onChangeLocation={locationText => setMovePivotDraft(current => current ? { ...current, locationText } : undefined)}
         onPickLocation={handlePickMovePivotLocation}
         onSubmit={handleMovePivotSubmit}
-        onCancel={() => { setMovePivotDraft(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setMovePivotDraft(undefined); scheduleFocusGrid(); }}
       />}
       {rangePicker && <RangePickerWidget initialRange={rangePicker.initial}
         onConfirm={range => rangePicker.onDone(range)}
         onCancel={() => rangePicker.onDone(null)} />}
       {sortDialog && <SortDialog sheet={sortDialog.basis.document.sheets.find(item => item.id === sheet.id)!}
         range={sortDialog.range} draft={sortDialog.draft} onSubmit={submitSort} onOptions={openSortOptions}
-        onCancel={() => { setSortDialog(undefined); requestAnimationFrame(focusGrid); }} />}
+        onCancel={() => { setSortDialog(undefined); scheduleFocusGrid(); }} />}
       {sortOptions && <SortOptionsDialog caseSensitive={sortOptions.draft.caseSensitive}
         onSubmit={finishSortOptions} onCancel={cancelSortOptions} />}
       {sortWarning && <SortWarningDialog selection={sortWarning.selection} region={sortWarning.region}
@@ -3590,9 +3615,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       {searchDialog && <FindReplaceDialog replace={searchDialog.replace} history={searchHistory}
         initialLookIn={searchLook} onLookIn={setSearchLook}
         onFindAll={runFindAll} onFindNext={runFindNext} onReplace={runReplace} onSelect={showSearchMatch}
-        onClose={() => { setSearchDialog(undefined); requestAnimationFrame(focusGrid); }} />}
+        onClose={() => { setSearchDialog(undefined); scheduleFocusGrid(); }} />}
       {zoomDialog && <ZoomDialog current={view.zoom} onApply={applyZoom}
-        onCancel={() => { setZoomDialog(false); requestAnimationFrame(focusGrid); }} />}
+        onCancel={() => { setZoomDialog(false); scheduleFocusGrid(); }} />}
       {insertFunctionDialog && <InsertFunctionDialog
         initialCategory={insertFunctionDialog.category}
         recentFunctions={recentFunctions}
@@ -3601,7 +3626,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
           setInsertFunctionDialog(undefined);
           ribbonHandlers.onInsertFunction(name);
         }}
-        onCancel={() => { setInsertFunctionDialog(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setInsertFunctionDialog(undefined); scheduleFocusGrid(); }}
       />}
       {functionArgsDialog && <FunctionArgumentsDialog
         functionName={functionArgsDialog.name}
@@ -3616,13 +3641,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onChangeActiveIndex={index => setFunctionArgsDialog(current => current ? { ...current, activeIndex: index } : undefined)}
         onPickRange={handlePickRangeFromFunctionArgs}
         onConfirm={handleConfirmFunctionArgs}
-        onCancel={() => { setFunctionArgsDialog(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setFunctionArgsDialog(undefined); scheduleFocusGrid(); }}
       />}
       {filterMenu && <FilterDropdown anchor={filterMenu.anchor} header={filterMenu.header}
         textColumn={filterMenu.textColumn} values={filterMenu.values} selected={filterMenu.selected}
         hasColumnFilter={filterMenu.hasColumnFilter} onApply={applyFilter} onClearColumn={clearFilterColumn}
         onSort={sortFilterColumn}
-        onCancel={() => { setFilterMenu(undefined); requestAnimationFrame(focusGrid); }} />}
+        onCancel={() => { setFilterMenu(undefined); scheduleFocusGrid(); }} />}
       {pivotFilterMenu && menuPivot && <PivotFilterDropdown
         key={`${pivotFilterMenu.pivotId}-${pivotFilterMenu.kind}-${pivotFilterMenu.fieldNames.join('\u0000')}`}
         anchor={pivotFilterMenu.anchor}
@@ -3641,7 +3666,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             handlePivotMoreSortOptions(menuPivot.id, pivotFilterMenu.kind, fieldName);
           }
         }}
-        onCancel={() => { setPivotFilterMenu(undefined); requestAnimationFrame(focusGrid); }}
+        onCancel={() => { setPivotFilterMenu(undefined); scheduleFocusGrid(); }}
       />}
     </div>
   );

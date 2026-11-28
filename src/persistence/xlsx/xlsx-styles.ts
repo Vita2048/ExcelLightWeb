@@ -229,11 +229,13 @@ interface XfRecord {
 export interface ReadStyles {
   cellStyle(index: number | undefined): CellStyle | undefined;
   isDateFormatted(index: number | undefined): boolean;
+  numberFormatForId(numFmtId: number | undefined): string | undefined;
 }
 
 const emptyStyles: ReadStyles = Object.freeze({
   cellStyle: () => undefined,
   isDateFormatted: () => false,
+  numberFormatForId: () => undefined,
 });
 
 export function readStyles(bytes: Uint8Array | undefined, report: XlsxReport): ReadStyles {
@@ -257,17 +259,22 @@ export function readStyles(bytes: Uint8Array | undefined, report: XlsxReport): R
   }));
 
   const cached = new Map<number, CellStyle | undefined>();
-  const formatFor = (index: number | undefined): string | undefined => {
-    const xf = index === undefined ? undefined : xfs[index];
-    if (!xf || xf.numFmtId === 0) return undefined;
-    const explicit = numFmts.get(xf.numFmtId);
+  const numberFormatForId = (numFmtId: number | undefined, warn = false): string | undefined => {
+    if (numFmtId === undefined || numFmtId === 0) return undefined;
+    const explicit = numFmts.get(numFmtId);
     if (explicit !== undefined) return explicit === 'General' ? undefined : explicit;
-    const builtIn = builtInFormats[xf.numFmtId];
+    const builtIn = builtInFormats[numFmtId];
     if (builtIn === undefined) {
-      report.add(exchangeCodes.numberFormat, 'An unsupported localized built-in number format was omitted; raw numeric values are retained.');
+      if (warn) {
+        report.add(exchangeCodes.numberFormat, 'An unsupported localized built-in number format was omitted; raw numeric values are retained.');
+      }
       return undefined;
     }
     return builtIn === 'General' ? undefined : builtIn;
+  };
+  const formatFor = (index: number | undefined): string | undefined => {
+    const xf = index === undefined ? undefined : xfs[index];
+    return xf ? numberFormatForId(xf.numFmtId, true) : undefined;
   };
 
   function cellStyle(index: number | undefined): CellStyle | undefined {
@@ -332,7 +339,7 @@ export function readStyles(bytes: Uint8Array | undefined, report: XlsxReport): R
     return stripped.includes('y') || stripped.includes('d');
   }
 
-  return { cellStyle, isDateFormatted };
+  return { cellStyle, isDateFormatted, numberFormatForId: (id: number | undefined) => numberFormatForId(id, false) };
 }
 
 function borderDetails(border: BorderRecord): NonNullable<CellStyle['borderDetails']> {

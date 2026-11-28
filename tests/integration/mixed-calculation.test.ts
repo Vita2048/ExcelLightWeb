@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WorkbookSession, type CellEdit } from '../../src/application/workbook-session';
+import { createPivotTable, refreshPivotTable } from '../../src/application/pivot-commands';
 import { emptySheet, findCell, type PythonBlock, type WorkbookDocument } from '../../src/core/workbook';
 import { evaluateNative, indexNativeInputs, prepareNativeGraph } from '../../src/calculation/native-calculator';
 import { calculateMixedGeneration, type MixedGenerationServices } from '../../src/calculation/mixed-generation';
@@ -195,6 +196,67 @@ describe('S22 mixed recalculation', () => {
     expect(calls).toHaveLength(1);
     expect(findCell(generation.document.sheets[0]!, at(1, 2))?.content).toMatchObject({
       kind: 'python', block: { status: 'timedOut', error: 'Python timed out after 30 seconds.' },
+    });
+  });
+
+  it('propagates source edits + PivotTable refresh into GETPIVOTDATA and downstream Python xl() in one generation', async () => {
+    const { session, at, makeId, block } = fixture();
+    addCells(session, [
+      { target: at(1, 1), content: { kind: 'text', value: 'Region' } },
+      { target: at(1, 2), content: { kind: 'text', value: 'Sales' } },
+      { target: at(2, 1), content: { kind: 'text', value: 'East' } },
+      { target: at(2, 2), content: { kind: 'number', value: 100 } },
+      { target: at(3, 1), content: { kind: 'text', value: 'West' } },
+      { target: at(3, 2), content: { kind: 'number', value: 250 } },
+    ]);
+    session.execute(createPivotTable(session.capture(), {
+      source: { kind: 'range', area: { sheetId: 'sheet', row: 1, column: 1, rows: 3, columns: 2 } },
+      target: at(1, 5),
+      rows: [{ fieldName: 'Region' }],
+      values: [{ id: makeId(), fieldName: 'Sales', aggregation: 'sum' }],
+    }, makeId));
+    const pivotId = session.active.pivots![0]!.id;
+    const pyBlock = block('xl("H1") + xl("I1")');
+    addCells(session, [
+      { target: at(1, 8), content: { kind: 'formula', source: '=GETPIVOTDATA("Sales",E1,"Region","East")' } },
+      { target: at(1, 9), content: { kind: 'formula', source: '=SUM(F2:F3)' } },
+      { target: at(1, 10), content: { kind: 'python', blockId: pyBlock.id, source: pyBlock.source, block: pyBlock } },
+    ]);
+
+    const calls: string[] = [];
+    const pyId = findCell(session.active.sheets[0]!, at(1, 10))!.id;
+    const initial = await calculateMixedGeneration({
+      basis: session.capture(),
+      requestedPythonIds: new Set([pyId]),
+      forcedPythonIds: new Set([pyId]),
+      signal: new AbortController().signal,
+    }, services((_source, input) => scalarOutput(Number(input.values.__xl_0?.scalar ?? input.values.__xl_0?.rows[0]?.[0]) +
+      Number(input.values.__xl_1?.scalar ?? input.values.__xl_1?.rows[0]?.[0])), calls));
+    expect(session.tryExecute(session.capture(), { kind: 'structure', document: initial.document, label: 'Initial Pivot Mixed' })).toBe(true);
+    expect(findCell(session.active.sheets[0]!, at(1, 8))?.cache).toEqual({ kind: 'number', value: 100 });
+    expect(findCell(session.active.sheets[0]!, at(1, 9))?.cache).toEqual({ kind: 'number', value: 350 });
+    expect(findCell(session.active.sheets[0]!, at(1, 10))?.content).toMatchObject({
+      kind: 'python', block: { lastValue: { kind: 'number', value: 450 }, status: 'succeeded' },
+    });
+
+    const beforeRefresh = session.active;
+    addCells(session, [{ target: at(2, 2), content: { kind: 'number', value: 400 } }]);
+    session.execute(refreshPivotTable(session.capture(), pivotId, makeId));
+    const affected = new MixedGraph(session.active).affectedPython(beforeRefresh, session.active);
+    expect(affected).toEqual(new Set([pyId]));
+
+    const nextBasis = session.capture();
+    const updated = await calculateMixedGeneration({
+      basis: nextBasis,
+      requestedPythonIds: affected,
+      forcedPythonIds: new Set(),
+      signal: new AbortController().signal,
+    }, services((_source, input) => scalarOutput(Number(input.values.__xl_0?.scalar ?? input.values.__xl_0?.rows[0]?.[0]) +
+      Number(input.values.__xl_1?.scalar ?? input.values.__xl_1?.rows[0]?.[0])), calls));
+    expect(findCell(updated.document.sheets[0]!, at(1, 8))?.cache).toEqual({ kind: 'number', value: 400 });
+    expect(findCell(updated.document.sheets[0]!, at(1, 9))?.cache).toEqual({ kind: 'number', value: 650 });
+    expect(findCell(updated.document.sheets[0]!, at(1, 10))?.content).toMatchObject({
+      kind: 'python', block: { lastValue: { kind: 'number', value: 1050 }, status: 'succeeded' },
     });
   });
 });

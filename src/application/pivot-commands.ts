@@ -22,7 +22,7 @@ import {
   type WorkbookDocument,
 } from '../core/workbook';
 import { ordinalNameKey, overlaps, requireDocument } from '../core/workbook-validation';
-import { createTable, nextTableName, parseNameExtent } from './table-commands';
+import { createTable, deleteTableSelection, nextTableName, parseNameExtent } from './table-commands';
 import type { WorkbookSnapshot } from './workbook-protocol';
 import type { StructureCommand } from './workbook-session';
 
@@ -320,6 +320,95 @@ export function deletePivotTable(
     kind: 'structure',
     label: 'Delete PivotTable',
     document: revertPivotCellsOnSheet(basis.document, pivotId),
+  };
+}
+
+export function deletePivotSelection(
+  basis: WorkbookSnapshot,
+  selections: readonly { readonly sheetId: DocumentId; readonly row: number; readonly column: number; readonly rows: number; readonly columns: number }[],
+): StructureCommand | undefined {
+  const pivots = basis.document.pivots ?? [];
+  if (!pivots.length || !selections.length) return undefined;
+
+  const encloses = (
+    sel: { readonly sheetId: DocumentId; readonly row: number; readonly column: number; readonly rows: number; readonly columns: number },
+    sheetId: DocumentId,
+    ext: CellExtent,
+  ) =>
+    sel.sheetId === sheetId &&
+    sel.row <= ext.row &&
+    sel.row + sel.rows - 1 >= ext.row + ext.rows - 1 &&
+    sel.column <= ext.column &&
+    sel.column + sel.columns - 1 >= ext.column + ext.columns - 1;
+
+  const pivotsToRemove: PivotTableDocument[] = [];
+  const pivotExtent = (pivot: PivotTableDocument): CellExtent =>
+    pivot.extent ?? { row: pivot.target.row, column: pivot.target.column, rows: 1, columns: 1 };
+
+  for (const pivot of pivots) {
+    const ext = pivotExtent(pivot);
+    if (selections.some(sel => encloses(sel, pivot.target.sheetId, ext))) {
+      pivotsToRemove.push(pivot);
+    }
+  }
+  if (!pivotsToRemove.length) return undefined;
+
+  const removedIds = new Set(pivotsToRemove.map(p => p.id));
+  for (const other of pivots) {
+    if (removedIds.has(other.id)) continue;
+    const ext = pivotExtent(other);
+    requireDocument(
+      !selections.some(sel => sel.sheetId === other.target.sheetId && overlaps(ext, sel)),
+      'Cannot change part of a PivotTable. Select the entire PivotTable to delete it.',
+    );
+  }
+
+  let doc = basis.document;
+  for (const pivot of pivotsToRemove) {
+    doc = revertPivotCellsOnSheet(doc, pivot.id);
+  }
+
+  for (const sheet of doc.sheets) {
+    const sheetSelections = selections.filter(s => s.sheetId === sheet.id);
+    if (!sheetSelections.length) continue;
+    for (const cell of sheet.cells) {
+      const inSel = sheetSelections.some(sel =>
+        cell.row >= sel.row && cell.row <= sel.row + sel.rows - 1 &&
+        cell.column >= sel.column && cell.column <= sel.column + sel.columns - 1,
+      );
+      if (!inSel) continue;
+      requireDocument(
+        !cell.spillOwner && !(cell.content.kind === 'python' && cell.content.block?.spillActive),
+        'Cannot clear part of a spill range.',
+      );
+    }
+  }
+
+  const tableCmd = deleteTableSelection({ ...basis, document: doc }, selections);
+  if (tableCmd) {
+    doc = tableCmd.document;
+  } else {
+    const sheets = doc.sheets.map(sheet => {
+      const sheetSelections = selections.filter(s => s.sheetId === sheet.id);
+      if (!sheetSelections.length) return sheet;
+      const cells = sheet.cells.map(cell => {
+        const inSel = sheetSelections.some(sel =>
+          cell.row >= sel.row && cell.row <= sel.row + sel.rows - 1 &&
+          cell.column >= sel.column && cell.column <= sel.column + sel.columns - 1,
+        );
+        if (!inSel) return cell;
+        const { cache: _c, ...restCell } = cell;
+        return { ...restCell, content: { kind: 'blank' as const }, requiresExternalCalculation: false };
+      }).filter(cell => cell.content.kind !== 'blank' || cell.style !== undefined);
+      return { ...sheet, cells };
+    });
+    doc = { ...doc, sheets };
+  }
+
+  return {
+    kind: 'structure',
+    label: pivotsToRemove.length === 1 ? 'Delete PivotTable' : 'Delete PivotTables',
+    document: doc,
   };
 }
 

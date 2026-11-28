@@ -1,5 +1,5 @@
 import type { FormulaExpression } from '../../core/formula-references';
-import type { CellDocument } from '../../core/workbook';
+import type { CellDocument, CellReference } from '../../core/workbook';
 import type { FormulaArray, FormulaLambda, FormulaValue, Range, Scalar } from '../formula-values';
 
 export interface FunctionContext {
@@ -21,6 +21,7 @@ export interface FunctionContext {
   readonly evaluateInEnv: (expression: FormulaExpression, env: ReadonlyMap<string, FormulaValue>, includeRanges?: boolean) => FormulaValue;
   readonly invokeLambda: (lambda: FormulaLambda, argValues: readonly FormulaValue[]) => FormulaValue;
   readonly arrayOf: (value: FormulaValue) => FormulaArray | undefined;
+  readonly queryPivotData: (pivotCell: CellReference, dataField: string, pairs: readonly (readonly [string, Scalar])[]) => Scalar;
 }
 
 type FormulaErrorLike = Extract<Scalar, { kind: 'error' }>;

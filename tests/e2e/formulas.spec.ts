@@ -77,7 +77,7 @@ test.describe('localized formula commands', () => {
     await expect(dialog).toBeVisible();
     await dialog.getByLabel('Or select a category:').selectOption('All');
     const list = dialog.getByRole('listbox');
-    await expect(list.getByRole('option')).toHaveCount(225);
+    await expect(list.getByRole('option')).toHaveCount(226);
     await dialog.getByLabel('Or select a category:').selectOption('Logical');
     await list.getByRole('option', { name: /IF\s+Logical/u }).click();
     await expect(dialog).toContainText('IF(logical_test; [value_if_true]; [value_if_false])');

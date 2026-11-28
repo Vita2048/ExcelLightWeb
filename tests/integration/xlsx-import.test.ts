@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, it } from 'vitest';
+import { runNativeGeneration } from '../../src/calculation/native-generation';
 import { findCell, type SheetDocument } from '../../src/core/workbook';
 import { loadNativePackage, saveNativePackage } from '../../src/persistence/native';
 import { writeProbeParts } from '../../src/persistence/bounded-zip';
@@ -279,4 +280,126 @@ it('rejects encrypted, macro-enabled, out-of-bounds and malformed packages befor
     '<mergeCells count="1"><mergeCell ref="A1:B1048577"/></mergeCells></worksheet>');
   await expect(importXlsx(await simplePackage(mergedOutside)))
     .rejects.toThrow(/merged range outside supported workbook bounds/);
+});
+
+it('imports Excel Tables and worksheet/table-backed PivotTables cleanly and calculates structured references natively', async () => {
+  const pkg = await packageOf({
+    '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '<Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+      '</Types>',
+    'xl/styles.xml': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+      '<numFmts count="1"><numFmt numFmtId="164" formatCode="$#,##0"/></numFmts>' +
+      '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>' +
+      '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>' +
+      '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>' +
+      '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+      '<cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +
+      '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>' +
+      '</styleSheet>',
+    'xl/workbook.xml': workbookXml(
+      '<sheet name="Dashboard" sheetId="1" r:id="rId1"/>' +
+      '<sheet name="Orders" sheetId="2" r:id="rId2"/>' +
+      '<sheet name="Pivot" sheetId="3" r:id="rId3"/>',
+    ),
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+      '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>' +
+      '<Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>' +
+      '</Relationships>',
+    'xl/worksheets/sheet1.xml': worksheetXml(
+      '<row r="9"><c r="A9" t="inlineStr"><is><t>North</t></is></c><c r="B9"><f>SUMIFS(Orders[Revenue],Orders[Region],A9)</f><v>100</v></c></row>' +
+      '<row r="10"><c r="A10" t="inlineStr"><is><t>South</t></is></c><c r="B10"><f>SUMIFS(Orders[Revenue],Orders[Region],A10)</f><v>200</v></c></row>' +
+      '<row r="13"><c r="A13" t="inlineStr"><is><t>Total</t></is></c><c r="B13"><f>SUM(B9:B10)</f><v>300</v></c></row>',
+    ),
+    'xl/worksheets/sheet2.xml': worksheetXml(
+      '<row r="1"><c r="A1" t="inlineStr"><is><t>Region</t></is></c><c r="B1" t="inlineStr"><is><t>Category</t></is></c><c r="C1" t="inlineStr"><is><t>Units</t></is></c><c r="D1" t="inlineStr"><is><t>Unit Price</t></is></c><c r="E1" t="inlineStr"><is><t>Revenue</t></is></c></row>' +
+      '<row r="2"><c r="A2" t="inlineStr"><is><t>North</t></is></c><c r="B2" t="inlineStr"><is><t>Furniture</t></is></c><c r="C2"><v>2</v></c><c r="D2"><v>50</v></c><c r="E2"><f>Orders[[#This Row],[Units]]*Orders[[#This Row],[Unit Price]]</f><v>100</v></c></row>' +
+      '<row r="3"><c r="A3" t="inlineStr"><is><t>South</t></is></c><c r="B3" t="inlineStr"><is><t>Accessories</t></is></c><c r="C3"><v>4</v></c><c r="D3"><v>50</v></c><c r="E3"><f>Orders[[#This Row],[Units]]*Orders[[#This Row],[Unit Price]]</f><v>200</v></c></row>',
+    ).replace('</worksheet>', '<tableParts count="1"><tablePart xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:id="rId1"/></tableParts></worksheet>'),
+    'xl/worksheets/_rels/sheet2.xml.rels': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/table" Target="../tables/table1.xml"/>' +
+      '</Relationships>',
+    'xl/tables/table1.xml': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<table xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" id="1" name="Orders" displayName="Orders" ref="A1:E3" headerRowCount="1" totalsRowShown="0">' +
+      '<autoFilter ref="A1:E3"/>' +
+      '<tableColumns count="5"><tableColumn id="1" name="Region"/><tableColumn id="2" name="Category"/><tableColumn id="3" name="Units"/><tableColumn id="4" name="Unit Price"/><tableColumn id="5" name="Revenue"/></tableColumns>' +
+      '<tableStyleInfo name="TableStyleMedium2" showFirstColumn="0" showLastColumn="0" showRowStripes="1" showColumnStripes="0"/>' +
+      '</table>',
+    'xl/worksheets/sheet3.xml': worksheetXml(
+      '<row r="1"><c r="A1" t="inlineStr"><is><t>Pivot Report</t></is></c></row>' +
+      '<row r="4"><c r="A4" t="inlineStr"><is><t>Old Static Header</t></is></c></row>',
+    ),
+    'xl/worksheets/_rels/sheet3.xml.rels': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotTable" Target="../pivotTables/pivotTable1.xml"/>' +
+      '</Relationships>',
+    'xl/pivotTables/pivotTable1.xml': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<pivotTableDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="PivotTable1" cacheId="1" outline="1" outlineData="1">' +
+      '<location ref="A4:D8" firstHeaderRow="1" firstDataRow="2" firstDataCol="1"/>' +
+      '<pivotFields count="5"><pivotField axis="axisCol" showAll="0"/><pivotField axis="axisRow" showAll="0"/><pivotField showAll="0"/><pivotField showAll="0"/><pivotField dataField="1" showAll="0"/></pivotFields>' +
+      '<rowFields count="1"><field x="1"/></rowFields>' +
+      '<colFields count="1"><field x="0"/></colFields>' +
+      '<dataFields count="1"><dataField name="Sum of Revenue" fld="4" numFmtId="164"/></dataFields>' +
+      '<pivotTableStyleInfo name="PivotStyleLight16" showRowHeaders="1" showColHeaders="1" showRowStripes="0" showColStripes="0"/>' +
+      '</pivotTableDefinition>',
+    'xl/pivotTables/_rels/pivotTable1.xml.rels': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/pivotCacheDefinition" Target="../pivotCache/pivotCacheDefinition1.xml"/>' +
+      '</Relationships>',
+    'xl/pivotCache/pivotCacheDefinition1.xml': '<?xml version="1.0" encoding="UTF-8"?>' +
+      '<pivotCacheDefinition xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" recordCount="2">' +
+      '<cacheSource type="worksheet"><worksheetSource name="Orders"/></cacheSource>' +
+      '<cacheFields count="5">' +
+      '<cacheField name="Region" numFmtId="0"><sharedItems count="2"><s v="North"/><s v="South"/></sharedItems></cacheField>' +
+      '<cacheField name="Category" numFmtId="0"><sharedItems count="2"><s v="Accessories"/><s v="Furniture"/></sharedItems></cacheField>' +
+      '<cacheField name="Units" numFmtId="0"><sharedItems/></cacheField>' +
+      '<cacheField name="Unit Price" numFmtId="0"><sharedItems/></cacheField>' +
+      '<cacheField name="Revenue" numFmtId="0"><sharedItems/></cacheField>' +
+      '</cacheFields></pivotCacheDefinition>',
+  });
+
+  const { document, report } = await importXlsx(pkg);
+  expect(report.has('tables')).toBe(false);
+  expect(report.has('pivots')).toBe(false);
+
+  // Orders table was imported with design and no external-calculation block on structured references.
+  const ordersTable = document.names.find(n => n.name === 'Orders');
+  expect(ordersTable?.isTable).toBe(true);
+  expect(ordersTable?.area).toEqual({ sheetId: document.sheets[1]!.id, row: 1, column: 1, rows: 3, columns: 5 });
+  expect(cell(document.sheets[0]!, 9, 2)?.requiresExternalCalculation).toBeUndefined();
+  expect(cell(document.sheets[1]!, 2, 5)?.requiresExternalCalculation).toBeUndefined();
+
+  // Native workbook recalculation computes structured refs & row 13 total without #NAME?.
+  const recalc = runNativeGeneration(document, 'workbook');
+  const dashId = document.sheets[0]!.id;
+  expect(recalc.updates.find(u => u.target.sheetId === dashId && u.target.row === 9 && u.target.column === 2)?.cache)
+    .toEqual({ kind: 'number', value: 100 });
+  expect(recalc.updates.find(u => u.target.sheetId === dashId && u.target.row === 10 && u.target.column === 2)?.cache)
+    .toEqual({ kind: 'number', value: 200 });
+  expect(recalc.updates.find(u => u.target.sheetId === dashId && u.target.row === 13 && u.target.column === 2)?.cache)
+    .toEqual({ kind: 'number', value: 300 });
+
+  // Live PivotTable was materialized on Pivot sheet while preserving title cell A1.
+  expect(document.pivots).toHaveLength(1);
+  const pivot = document.pivots![0]!;
+  expect(pivot.name).toBe('PivotTable1');
+  expect(pivot.source).toEqual({ kind: 'table', tableId: ordersTable!.id });
+  expect(pivot.reportLayout).toBe('compact');
+  expect(pivot.values[0]?.numberFormat).toBe('$#,##0');
+  const pivotSheet = document.sheets[2]!;
+  expect(cell(pivotSheet, 1, 1)?.content).toEqual({ kind: 'text', value: 'Pivot Report' });
+  expect(pivotSheet.cells.some(c => c.spillKind === 'pivot' && c.spillOwner === pivot.id)).toBe(true);
+
+  const saved = await saveNativePackage(document);
+  expect(await loadNativePackage(saved)).toEqual(document);
 });

@@ -9,9 +9,10 @@ import {
   type PivotTableDocument,
   type PivotValueField,
 } from '../../core/pivot';
-import type { WorkbookDocument } from '../../core/workbook';
+import type { CellDocument, WorkbookDocument } from '../../core/workbook';
 import { DialogActions } from '../dialogs/DialogActions';
 import { DialogTitleBar } from '../dialogs/DialogTitleBar';
+import { FormatCellsDialog } from '../formatting/FormatCellsDialog';
 
 const aggregationChoices: readonly { readonly id: PivotAggregation; readonly label: string }[] = [
   { id: 'sum', label: 'Sum' },
@@ -42,8 +43,6 @@ const showValuesAsChoices: readonly { readonly id: PivotShowValuesAs; readonly l
   { id: 'index', label: 'Index' },
 ];
 
-const numberFormatPresets = ['General', '#,##0.00', '$#,##0.00', '0.00%', '#,##0'] as const;
-
 export type FieldSettingsRequest =
   | { readonly mode: 'value'; readonly field: PivotValueField }
   | { readonly mode: 'axis'; readonly area: 'rows' | 'columns'; readonly field: PivotAxisField };
@@ -52,6 +51,8 @@ export function FieldSettingsDialog({
   document,
   pivot,
   request,
+  locale,
+  usedCodes,
   onSaveValueField,
   onSaveAxisField,
   onCancel,
@@ -59,14 +60,15 @@ export function FieldSettingsDialog({
   readonly document: WorkbookDocument;
   readonly pivot: PivotTableDocument;
   readonly request: FieldSettingsRequest;
+  readonly locale: string;
+  readonly usedCodes: readonly string[];
   readonly onSaveValueField: (updated: PivotValueField) => void;
   readonly onSaveAxisField: (area: 'rows' | 'columns', updated: PivotAxisField) => void;
   readonly onCancel: () => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const numberBtnRef = useRef<HTMLButtonElement>(null);
   const customNameId = useId();
-  const formatId = useId();
-  const formatListId = useId();
   const showAsId = useId();
   const baseFieldId = useId();
   const baseItemId = useId();
@@ -84,16 +86,62 @@ export function FieldSettingsDialog({
   const [showValuesAs, setShowValuesAs] = useState<PivotShowValuesAs>(initialValue?.showValuesAs ?? 'none');
   const [baseField, setBaseField] = useState<string>(initialValue?.baseField ?? pivot.rows[0]?.fieldName ?? pivot.columns[0]?.fieldName ?? '');
   const [baseItem, setBaseItem] = useState<string>(initialValue?.baseItem ?? '(previous)');
-  const [numberFormat, setNumberFormat] = useState<string>(initialValue?.numberFormat ?? 'General');
+  const [numberFormat, setNumberFormat] = useState<string | undefined>(
+    initialValue ? initialValue.numberFormat : initialAxis?.numberFormat,
+  );
+  const [numberFormatOpen, setNumberFormatOpen] = useState(false);
 
   const [subtotal, setSubtotal] = useState<'automatic' | 'none'>(initialAxis?.subtotal ?? 'automatic');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(initialAxis?.sort?.direction ?? 'asc');
   const [sortByValueId, setSortByValueId] = useState<string>(initialAxis?.sort?.byValueFieldId ?? '');
 
-  const { fields, records } = useMemo(
+  const { fields, records, fieldFormats } = useMemo(
     () => extractPivotRecords(document, pivot.source),
     [document, pivot.source],
   );
+
+  const hasNumericValues = useMemo(
+    () => records.some(r => typeof r[request.field.fieldName] === 'number'),
+    [records, request.field.fieldName],
+  );
+
+  const showNumberFormatButton = request.mode === 'value' || hasNumericValues || initialAxis?.numberFormat !== undefined;
+
+  const sampleCell = useMemo<CellDocument>(() => {
+    let sampleValue = 1234.56;
+    if (request.mode === 'value') {
+      const sheet = document.sheets.find(s => s.id === pivot.target.sheetId);
+      const materializedNumeric = sheet?.cells.find(
+        c => c.spillKind === 'pivot' && c.spillOwner === pivot.id && c.content.kind === 'number',
+      );
+      if (materializedNumeric && materializedNumeric.content.kind === 'number') {
+        sampleValue = materializedNumeric.content.value;
+      } else {
+        const fromRecord = records.find(r => typeof r[request.field.fieldName] === 'number')?.[request.field.fieldName];
+        if (typeof fromRecord === 'number') sampleValue = fromRecord;
+      }
+    } else {
+      const fromRecord = records.find(r => typeof r[request.field.fieldName] === 'number')?.[request.field.fieldName];
+      if (typeof fromRecord === 'number') sampleValue = fromRecord;
+    }
+    return {
+      id: 'pivot-number-sample',
+      row: 1,
+      column: 1,
+      content: { kind: 'number', value: sampleValue },
+    };
+  }, [document.sheets, pivot.id, pivot.target.sheetId, records, request.field.fieldName, request.mode]);
+
+  const effectiveInitialFormat = useMemo(() => {
+    if (numberFormat !== undefined) return numberFormat;
+    if (request.mode === 'value') {
+      const countOrRank = showValuesAs === 'rankAscending' || showValuesAs === 'rankDescending' ||
+        showValuesAs === 'index' || aggregation === 'count' || aggregation === 'countNumbers';
+      if (showValuesAs.startsWith('percent')) return '0.00%';
+      if (countOrRank) return 'General';
+    }
+    return fieldFormats[request.field.fieldName] ?? 'General';
+  }, [aggregation, fieldFormats, numberFormat, request.field.fieldName, request.mode, showValuesAs]);
 
   const baseFieldChoices = useMemo(() => {
     const axis = [...pivot.rows.map(r => r.fieldName), ...pivot.columns.map(c => c.fieldName)];
@@ -123,7 +171,7 @@ export function FieldSettingsDialog({
       const f = request.field;
       const defaultName = defaultPivotValueLabel(f.fieldName, aggregation);
       const trimmedName = customName.trim();
-      const trimmedFmt = numberFormat.trim();
+      const trimmedFmt = numberFormat?.trim();
       onSaveValueField({
         id: f.id,
         fieldName: f.fieldName,
@@ -132,245 +180,271 @@ export function FieldSettingsDialog({
         ...(showValuesAs !== 'none' && { showValuesAs }),
         ...(needsBaseField && baseField && { baseField }),
         ...(needsBaseItem && baseItem && { baseItem }),
-        ...(trimmedFmt && trimmedFmt !== 'General' && { numberFormat: trimmedFmt }),
+        ...(trimmedFmt && { numberFormat: trimmedFmt }),
       });
     } else {
       const sort: PivotSortRule = {
         direction: sortDir,
         ...(sortByValueId && { byValueFieldId: sortByValueId }),
       };
+      const trimmedFmt = numberFormat?.trim();
+      const { numberFormat: _prevFmt, ...restAxis } = request.field;
       onSaveAxisField(request.area, {
-        ...request.field,
+        ...restAxis,
         subtotal,
         sort,
+        ...(trimmedFmt && { numberFormat: trimmedFmt }),
       });
     }
   }
 
   return (
-    <dialog
-      ref={dialogRef}
-      className="paste-dialog field-settings-dialog"
-      aria-label={title}
-      onCancel={event => {
-        event.preventDefault();
-        onCancel();
-      }}
-    >
-      <form
-        onSubmit={event => {
+    <>
+      <dialog
+        ref={dialogRef}
+        className="paste-dialog field-settings-dialog"
+        aria-label={title}
+        onCancel={event => {
           event.preventDefault();
-          handleConfirm();
+          onCancel();
         }}
       >
-        <DialogTitleBar>
-          <h2>{title}</h2>
-          <button
-            type="button"
-            className="format-dialog-close"
-            aria-label={`Close ${title}`}
-            onClick={onCancel}
-          >
-            ×
-          </button>
-        </DialogTitleBar>
+        <form
+          onSubmit={event => {
+            event.preventDefault();
+            handleConfirm();
+          }}
+        >
+          <DialogTitleBar>
+            <h2>{title}</h2>
+            <button
+              type="button"
+              className="format-dialog-close"
+              aria-label={`Close ${title}`}
+              onClick={onCancel}
+            >
+              ×
+            </button>
+          </DialogTitleBar>
 
-        <div className="field-settings-meta">
-          <span>Source Name:</span>
-          <strong>{request.field.fieldName}</strong>
-        </div>
+          <div className="field-settings-meta">
+            <span>Source Name:</span>
+            <strong>{request.field.fieldName}</strong>
+          </div>
 
-        {request.mode === 'value' ? (
-          <>
-            <div className="field-settings-row">
-              <label htmlFor={customNameId}>Custom Name:</label>
-              <input
-                id={customNameId}
-                type="text"
-                value={customName}
-                onChange={event => {
-                  setCustomEdited(true);
-                  setCustomName(event.currentTarget.value);
-                }}
-              />
-            </div>
+          {request.mode === 'value' ? (
+            <>
+              <div className="field-settings-row">
+                <label htmlFor={customNameId}>Custom Name:</label>
+                <input
+                  id={customNameId}
+                  type="text"
+                  value={customName}
+                  onChange={event => {
+                    setCustomEdited(true);
+                    setCustomName(event.currentTarget.value);
+                  }}
+                />
+              </div>
 
-            <div className="find-tabs" role="tablist" aria-label="Value Field Options">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'summarize'}
-                onClick={() => setTab('summarize')}
-              >
-                Summarize Values By
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={tab === 'showAs'}
-                onClick={() => setTab('showAs')}
-              >
-                Show Values As
-              </button>
-            </div>
+              <div className="find-tabs" role="tablist" aria-label="Value Field Options">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === 'summarize'}
+                  onClick={() => setTab('summarize')}
+                >
+                  Summarize Values By
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === 'showAs'}
+                  onClick={() => setTab('showAs')}
+                >
+                  Show Values As
+                </button>
+              </div>
 
-            {tab === 'summarize' ? (
-              <div className="field-settings-panel">
-                <span className="field-settings-label">Summarize value field by:</span>
-                <div role="listbox" aria-label="Summarize value field by" className="field-settings-listbox">
-                  {aggregationChoices.map(choice => {
-                    const selected = aggregation === choice.id;
-                    return (
-                      <div
-                        key={choice.id}
-                        role="option"
-                        aria-selected={selected}
-                        tabIndex={0}
-                        className={'insert-function-option' + (selected ? ' selected' : '')}
-                        onClick={() => {
-                          setAggregation(choice.id);
-                          if (!customEdited) setCustomName(defaultPivotValueLabel(request.field.fieldName, choice.id));
-                        }}
-                        onKeyDown={event => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
+              {tab === 'summarize' ? (
+                <div className="field-settings-panel">
+                  <span className="field-settings-label">Summarize value field by:</span>
+                  <div role="listbox" aria-label="Summarize value field by" className="field-settings-listbox">
+                    {aggregationChoices.map(choice => {
+                      const selected = aggregation === choice.id;
+                      return (
+                        <div
+                          key={choice.id}
+                          role="option"
+                          aria-selected={selected}
+                          tabIndex={0}
+                          className={'insert-function-option' + (selected ? ' selected' : '')}
+                          onClick={() => {
                             setAggregation(choice.id);
                             if (!customEdited) setCustomName(defaultPivotValueLabel(request.field.fieldName, choice.id));
-                          }
-                        }}
-                      >
-                        {choice.label}
-                      </div>
-                    );
-                  })}
+                          }}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setAggregation(choice.id);
+                              if (!customEdited) setCustomName(defaultPivotValueLabel(request.field.fieldName, choice.id));
+                            }
+                          }}
+                        >
+                          {choice.label}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="field-settings-panel">
+              ) : (
+                <div className="field-settings-panel">
+                  <div className="field-settings-row">
+                    <label htmlFor={showAsId}>Show values as:</label>
+                    <select
+                      id={showAsId}
+                      value={showValuesAs}
+                      onChange={event => setShowValuesAs(event.currentTarget.value as PivotShowValuesAs)}
+                    >
+                      {showValuesAsChoices.map(choice => (
+                        <option key={choice.id} value={choice.id}>{choice.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {needsBaseField && (
+                    <div className="field-settings-row">
+                      <label htmlFor={baseFieldId}>Base field:</label>
+                      <select
+                        id={baseFieldId}
+                        value={baseField}
+                        onChange={event => setBaseField(event.currentTarget.value)}
+                      >
+                        {baseFieldChoices.map(name => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {needsBaseItem && (
+                    <div className="field-settings-row">
+                      <label htmlFor={baseItemId}>Base item:</label>
+                      <select
+                        id={baseItemId}
+                        value={baseItem}
+                        onChange={event => setBaseItem(event.currentTarget.value)}
+                      >
+                        {baseItemChoices.map(item => (
+                          <option key={item} value={item}>{item}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="field-settings-panel">
+              <fieldset className="pivot-dialog-group">
+                <legend>Subtotals</legend>
+                <label className="pivot-inline-radio">
+                  <input
+                    type="radio"
+                    name="axis-subtotal"
+                    checked={subtotal === 'automatic'}
+                    onChange={() => setSubtotal('automatic')}
+                  />
+                  Automatic
+                </label>
+                <label className="pivot-inline-radio">
+                  <input
+                    type="radio"
+                    name="axis-subtotal"
+                    checked={subtotal === 'none'}
+                    onChange={() => setSubtotal('none')}
+                  />
+                  None
+                </label>
+              </fieldset>
+
+              <fieldset className="pivot-dialog-group">
+                <legend>Sort</legend>
+                <label className="pivot-inline-radio">
+                  <input
+                    type="radio"
+                    name="axis-sort"
+                    checked={sortDir === 'asc'}
+                    onChange={() => setSortDir('asc')}
+                  />
+                  Ascending (A to Z)
+                </label>
+                <label className="pivot-inline-radio">
+                  <input
+                    type="radio"
+                    name="axis-sort"
+                    checked={sortDir === 'desc'}
+                    onChange={() => setSortDir('desc')}
+                  />
+                  Descending (Z to A)
+                </label>
                 <div className="field-settings-row">
-                  <label htmlFor={showAsId}>Show values as:</label>
+                  <label htmlFor={sortById}>Sort by:</label>
                   <select
-                    id={showAsId}
-                    value={showValuesAs}
-                    onChange={event => setShowValuesAs(event.currentTarget.value as PivotShowValuesAs)}
+                    id={sortById}
+                    value={sortByValueId}
+                    onChange={event => setSortByValueId(event.currentTarget.value)}
                   >
-                    {showValuesAsChoices.map(choice => (
-                      <option key={choice.id} value={choice.id}>{choice.label}</option>
+                    <option value="">{request.field.fieldName} (label)</option>
+                    {pivot.values.map(vf => (
+                      <option key={vf.id} value={vf.id}>
+                        {vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation)}
+                      </option>
                     ))}
                   </select>
                 </div>
-                {needsBaseField && (
-                  <div className="field-settings-row">
-                    <label htmlFor={baseFieldId}>Base field:</label>
-                    <select
-                      id={baseFieldId}
-                      value={baseField}
-                      onChange={event => setBaseField(event.currentTarget.value)}
-                    >
-                      {baseFieldChoices.map(name => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-                {needsBaseItem && (
-                  <div className="field-settings-row">
-                    <label htmlFor={baseItemId}>Base item:</label>
-                    <select
-                      id={baseItemId}
-                      value={baseItem}
-                      onChange={event => setBaseItem(event.currentTarget.value)}
-                    >
-                      {baseItemChoices.map(item => (
-                        <option key={item} value={item}>{item}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className="field-settings-row">
-              <label htmlFor={formatId}>Number Format:</label>
-              <input
-                id={formatId}
-                type="text"
-                list={formatListId}
-                value={numberFormat}
-                onChange={event => setNumberFormat(event.currentTarget.value)}
-              />
-              <datalist id={formatListId}>
-                {numberFormatPresets.map(code => (
-                  <option key={code} value={code} />
-                ))}
-              </datalist>
+              </fieldset>
             </div>
-          </>
-        ) : (
-          <div className="field-settings-panel">
-            <fieldset className="pivot-dialog-group">
-              <legend>Subtotals</legend>
-              <label className="pivot-inline-radio">
-                <input
-                  type="radio"
-                  name="axis-subtotal"
-                  checked={subtotal === 'automatic'}
-                  onChange={() => setSubtotal('automatic')}
-                />
-                Automatic
-              </label>
-              <label className="pivot-inline-radio">
-                <input
-                  type="radio"
-                  name="axis-subtotal"
-                  checked={subtotal === 'none'}
-                  onChange={() => setSubtotal('none')}
-                />
-                None
-              </label>
-            </fieldset>
+          )}
 
-            <fieldset className="pivot-dialog-group">
-              <legend>Sort</legend>
-              <label className="pivot-inline-radio">
-                <input
-                  type="radio"
-                  name="axis-sort"
-                  checked={sortDir === 'asc'}
-                  onChange={() => setSortDir('asc')}
-                />
-                Ascending (A to Z)
-              </label>
-              <label className="pivot-inline-radio">
-                <input
-                  type="radio"
-                  name="axis-sort"
-                  checked={sortDir === 'desc'}
-                  onChange={() => setSortDir('desc')}
-                />
-                Descending (Z to A)
-              </label>
-              <div className="field-settings-row">
-                <label htmlFor={sortById}>Sort by:</label>
-                <select
-                  id={sortById}
-                  value={sortByValueId}
-                  onChange={event => setSortByValueId(event.currentTarget.value)}
-                >
-                  <option value="">{request.field.fieldName} (label)</option>
-                  {pivot.values.map(vf => (
-                    <option key={vf.id} value={vf.id}>
-                      {vf.customName ?? defaultPivotValueLabel(vf.fieldName, vf.aggregation)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </fieldset>
+          <div className="field-settings-footer">
+            {showNumberFormatButton ? (
+              <button
+                ref={numberBtnRef}
+                type="button"
+                className="field-settings-number-btn"
+                onClick={() => setNumberFormatOpen(true)}
+              >
+                Number Format
+              </button>
+            ) : (
+              <span />
+            )}
+            <DialogActions confirmLabel="OK" onCancel={onCancel} />
           </div>
-        )}
-
-        <DialogActions confirmLabel="OK" onCancel={onCancel} />
-      </form>
-    </dialog>
+        </form>
+      </dialog>
+      {numberFormatOpen && (
+        <FormatCellsDialog
+          cell={sampleCell}
+          style={{ numberFormat: effectiveInitialFormat }}
+          locale={locale}
+          usedCodes={usedCodes}
+          initialTab="Number"
+          allowedTabs={['Number']}
+          borderEditor={undefined}
+          mergeEnabled={false}
+          merged={undefined}
+          onSubmit={(_patch, code) => {
+            if (code !== undefined) setNumberFormat(code);
+            setNumberFormatOpen(false);
+            requestAnimationFrame(() => numberBtnRef.current?.focus());
+            return undefined;
+          }}
+          onCancel={() => {
+            setNumberFormatOpen(false);
+            requestAnimationFrame(() => numberBtnRef.current?.focus());
+          }}
+        />
+      )}
+    </>
   );
 }

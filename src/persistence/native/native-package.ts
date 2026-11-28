@@ -393,7 +393,7 @@ function readPivotStringList(raw: unknown, prop: string): readonly string[] {
 
 function readPivotAxisField(raw: unknown): PivotAxisField {
   const obj = requireObject(raw, 'axisField');
-  rejectUnknown(obj, 'fieldName', 'subtotal', 'sort', 'hiddenItems');
+  rejectUnknown(obj, 'fieldName', 'subtotal', 'sort', 'hiddenItems', 'numberFormat');
   const fieldName = requireString(requireProperty(obj, 'fieldName'), 'fieldName');
   let subtotal: PivotAxisField['subtotal'];
   if (Object.hasOwn(obj, 'subtotal')) {
@@ -417,6 +417,7 @@ function readPivotAxisField(raw: unknown): PivotAxisField {
     ...(subtotal !== undefined ? { subtotal } : {}),
     ...(sort !== undefined ? { sort } : {}),
     ...(Object.hasOwn(obj, 'hiddenItems') ? { hiddenItems: readPivotStringList(obj.hiddenItems, 'hiddenItems') } : {}),
+    ...(Object.hasOwn(obj, 'numberFormat') ? { numberFormat: requireString(obj.numberFormat, 'numberFormat') } : {}),
   };
 }
 
@@ -462,7 +463,7 @@ function readPivotTable(raw: unknown): PivotTableDocument {
     obj,
     'id', 'name', 'source', 'target', 'extent', 'filters', 'columns', 'rows', 'values',
     'valuesInRows', 'reportLayout', 'subtotals', 'grandTotals', 'repeatLabels', 'blankRows',
-    'showButtons', 'showFieldHeaders', 'style', 'styleOptions', 'collapsedKeys',
+    'showButtons', 'showFieldHeaders', 'emptyCellText', 'autoFitColumns', 'style', 'styleOptions', 'collapsedKeys',
   );
   const srcObj = requireObject(requireProperty(obj, 'source'), 'source');
   const srcKind = requireString(requireProperty(srcObj, 'kind'), 'source.kind');
@@ -529,6 +530,8 @@ function readPivotTable(raw: unknown): PivotTableDocument {
     ...(Object.hasOwn(obj, 'blankRows') ? { blankRows: requireBool(obj.blankRows, 'blankRows') } : {}),
     ...(Object.hasOwn(obj, 'showButtons') ? { showButtons: requireBool(obj.showButtons, 'showButtons') } : {}),
     ...(Object.hasOwn(obj, 'showFieldHeaders') ? { showFieldHeaders: requireBool(obj.showFieldHeaders, 'showFieldHeaders') } : {}),
+    ...(Object.hasOwn(obj, 'emptyCellText') ? { emptyCellText: requireString(obj.emptyCellText, 'emptyCellText') } : {}),
+    ...(Object.hasOwn(obj, 'autoFitColumns') ? { autoFitColumns: requireBool(obj.autoFitColumns, 'autoFitColumns') } : {}),
     style: requireString(requireProperty(obj, 'style'), 'style') as PivotStyleId,
     styleOptions: {
       rowHeaders: requireBool(requireProperty(soObj, 'rowHeaders'), 'styleOptions.rowHeaders'),

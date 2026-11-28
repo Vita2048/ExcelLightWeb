@@ -1,5 +1,5 @@
 import { columnLetters, type FormulaExpression } from '../../core/formula-references';
-import { documentLimits } from '../../core/workbook';
+import { documentLimits, type CellReference } from '../../core/workbook';
 import {
   arrayFromMatrix, compare, error, isArray, isError, isOmitted, isRange,
   type FormulaError, type FormulaValue, type Range, type Scalar,
@@ -804,6 +804,37 @@ export const lookupFunctions: readonly FunctionSpec[] = [
       if (isOmitted(friendly)) return link === null ? '' : link;
       const label = ctx.scalar(friendly);
       return isError(label) ? label : label === null ? '' : label;
+    },
+  },
+  {
+    name: 'GETPIVOTDATA',
+    category: 'lookup',
+    minArgs: 2,
+    maxArgs: 254,
+    signature: [['data_field', 'pivot_table', '[field1]', '[item1]'], true],
+    evaluate(args, ctx): Scalar {
+      if (args.length < 2 || args.length % 2 !== 0) return error('#REF!');
+      const dataFieldVal = ctx.scalar(ctx.evaluate(args[0]!));
+      if (isError(dataFieldVal)) return dataFieldVal;
+      const dataField = dataFieldVal === null ? '' : ctx.text(dataFieldVal);
+      if (!dataField.trim()) return error('#REF!');
+
+      const pivotRef = ctx.evaluate(args[1]!, true);
+      if (isError(pivotRef)) return pivotRef;
+      if (!isRange(pivotRef) || pivotRef.length === 0) return error('#REF!');
+      const area = pivotRef[0]!;
+      const targetCell: CellReference = { sheetId: area.sheetId, row: area.top, column: area.left };
+
+      const pairs: [string, Scalar][] = [];
+      for (let i = 2; i < args.length; i += 2) {
+        const fieldVal = ctx.scalar(ctx.evaluate(args[i]!));
+        if (isError(fieldVal)) return fieldVal;
+        const fieldName = fieldVal === null ? '' : ctx.text(fieldVal);
+        const itemVal = ctx.scalar(ctx.evaluate(args[i + 1]!));
+        if (isError(itemVal)) return itemVal;
+        pairs.push([fieldName, itemVal]);
+      }
+      return ctx.queryPivotData(targetCell, dataField, pairs);
     },
   },
 ];
