@@ -15,7 +15,9 @@ import type { Axis } from '../core/axis-edit';
 import { RowMask } from '../core/row-mask';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
-import type { ChartPlacement } from '../core/chart';
+import type { ChartDocument, ChartPlacement } from '../core/chart';
+import type { ChartReorderAction, ChartUpdatePatch } from '../application/chart-commands';
+import type { ChartSelectedElement } from '../features/charts/chart-chrome';
 import type { FigurePlacement, PythonFigure } from '../core/workbook';
 import {
   ChartOverlay,
@@ -93,10 +95,19 @@ interface WorksheetProps {
   readonly onFigureCancel?: () => void;
   readonly charts?: readonly WorksheetChartItem[];
   readonly selectedChartId?: DocumentId;
+  readonly selectedChartElement?: ChartSelectedElement;
   readonly chartRangeHandle?: ChartRangeHandleConfig;
   readonly onSelectChart?: (chartId: DocumentId | undefined) => void;
+  readonly onSelectChartElement?: (el: ChartSelectedElement) => void;
   readonly onChartPlacement?: (chartId: DocumentId, placement: Partial<ChartPlacement>) => void;
+  readonly onUpdateChart?: (chartId: DocumentId, patch: ChartUpdatePatch) => void;
+  readonly onReorderChart?: (chartId: DocumentId, action: ChartReorderAction) => void;
   readonly onChartDelete?: (chartId: DocumentId) => void;
+  readonly onResetChartToStyle?: (chartId: DocumentId) => void;
+  readonly onOpenSelectData?: (chartId: DocumentId) => void;
+  readonly onOpenChangeChartType?: (chartId: DocumentId) => void;
+  readonly onOpenMoveChart?: (chartId: DocumentId) => void;
+  readonly onOpenFormatChartPane?: (chartId: DocumentId, el?: ChartSelectedElement) => void;
   readonly ref: Ref<WorksheetHandle>;
 }
 
@@ -1151,6 +1162,7 @@ export function Worksheet(props: WorksheetProps) {
         <ChartOverlay
           charts={props.charts ?? []}
           selectedChartId={props.selectedChartId}
+          selectedElement={props.selectedChartElement}
           rangePicking={!!props.rangePicking}
           rows={rows}
           columns={columns}
@@ -1165,8 +1177,16 @@ export function Worksheet(props: WorksheetProps) {
           pointAt={(x, y) => pointAt(x, y, 'cells')}
           chartRangeHandle={props.chartRangeHandle}
           onSelectChart={props.onSelectChart}
+          onSelectElement={props.onSelectChartElement}
           onChartPlacement={props.onChartPlacement}
+          onUpdateChart={props.onUpdateChart}
+          onReorderChart={props.onReorderChart}
           onChartDelete={props.onChartDelete}
+          onResetToStyle={props.onResetChartToStyle}
+          onOpenSelectData={props.onOpenSelectData}
+          onOpenChangeChartType={props.onOpenChangeChartType}
+          onOpenMoveChart={props.onOpenMoveChart}
+          onOpenFormatPane={props.onOpenFormatChartPane}
           onFocusGrid={focus}
         />
       )}

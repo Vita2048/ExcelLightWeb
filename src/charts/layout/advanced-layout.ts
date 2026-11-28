@@ -10,6 +10,7 @@ import {
 import type { ResolvedChartData, ResolvedChartSeries } from '../chart-data';
 import { getSeriesColor } from '../palettes';
 import {
+  axisTitlePadding,
   arcSectorPath,
   computeCore2DChartLayout,
   computeLegendItems,
@@ -293,10 +294,11 @@ function computeComboLayout(
     })),
   );
   const hasSecondary = activeSeries.some(s => s.series.secondaryAxis);
-  const leftPad = 52 + legendLayout.padLeft;
+  const comboTitlePad = axisTitlePadding(chart, false);
+  const leftPad = 52 + legendLayout.padLeft + comboTitlePad.left;
   const rightPad = (hasSecondary ? 52 : 18) + legendLayout.padRight;
   const topPad = titleOffset + legendLayout.padTop + 6;
-  const bottomPad = 32 + legendLayout.padBottom;
+  const bottomPad = 32 + legendLayout.padBottom + comboTitlePad.bottom;
   const plotArea: ChartRect = {
     x: leftPad,
     y: topPad,
@@ -529,10 +531,11 @@ export function computeChartLayout(
       { label: 'Total', color: '#8c95a3', seriesIndex: 2 },
     ];
     const { title, titleOffset, showLegend, legendLayout } = buildHeaderAndLegend(data, chart, safeW, safeH, legendInputs);
-    const leftPad = 52 + legendLayout.padLeft;
+    const wfTitlePad = axisTitlePadding(chart, false);
+    const leftPad = 52 + legendLayout.padLeft + wfTitlePad.left;
     const rightPad = 18 + legendLayout.padRight;
     const topPad = titleOffset + legendLayout.padTop + 6;
-    const bottomPad = 32 + legendLayout.padBottom;
+    const bottomPad = 32 + legendLayout.padBottom + wfTitlePad.bottom;
     const plotArea: ChartRect = {
       x: leftPad, y: topPad,
       width: Math.max(48, safeW - leftPad - rightPad),
@@ -708,10 +711,11 @@ export function computeChartLayout(
       ]
       : [];
     const { title, titleOffset, showLegend, legendLayout } = buildHeaderAndLegend(data, chart, safeW, safeH, legendInputs);
-    const leftPad = 48 + legendLayout.padLeft;
+    const histTitlePad = axisTitlePadding(chart, false);
+    const leftPad = 48 + legendLayout.padLeft + histTitlePad.left;
     const rightPad = (isPareto ? 48 : 18) + legendLayout.padRight;
     const topPad = titleOffset + legendLayout.padTop + 6;
-    const bottomPad = 32 + legendLayout.padBottom;
+    const bottomPad = 32 + legendLayout.padBottom + histTitlePad.bottom;
     const plotArea: ChartRect = {
       x: leftPad, y: topPad,
       width: Math.max(48, safeW - leftPad - rightPad),

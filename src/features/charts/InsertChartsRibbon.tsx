@@ -1,7 +1,7 @@
 import { useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChartType } from '../../core/chart';
-import { positionRibbonPopup } from '../shell/RibbonFlyout';
+import { positionRibbonPopup, RibbonGlyph } from '../shell/RibbonFlyout';
 import {
   ChartTypeGlyph,
   RecommendedChartsGlyph,
@@ -274,12 +274,12 @@ export function InsertChartsRibbon({
       </div>
       <button
         type="button"
-        className="ribbon-dialog-launcher"
+        className="ribbon-launcher"
         aria-label="See All Charts"
         title="See All Charts"
         onClick={() => onAllCharts('Column')}
       >
-        ↘
+        <RibbonGlyph name="launcher" size={12} />
       </button>
     </fieldset>
   );

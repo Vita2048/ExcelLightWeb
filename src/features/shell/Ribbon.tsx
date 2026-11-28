@@ -19,7 +19,9 @@ import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 import type { ChartType } from '../../core/chart';
 import { InsertChartsRibbon } from '../charts/InsertChartsRibbon';
-import type { CoreChartCategoryTab, ComboPresetId } from '../charts/chart-catalog';
+import { ChartDesignRibbon, type ChartDesignRibbonProps } from '../charts/ChartDesignRibbon';
+import { ChartFormatRibbon, type ChartFormatRibbonProps } from '../charts/ChartFormatRibbon';
+import type { ChartDialogCategory, ComboPresetId } from '../charts/chart-catalog';
 import { TableDesignRibbon } from '../tables/TableDesignRibbon';
 import { PivotAnalyzeRibbon, type PivotAnalyzeRibbonProps } from '../pivot/PivotAnalyzeRibbon';
 import { PivotDesignRibbon } from '../pivot/PivotDesignRibbon';
@@ -77,7 +79,8 @@ interface RibbonProps {
   readonly onPivotTableClick?: () => void;
   readonly onInsertChart?: (chartType: ChartType, comboPreset?: ComboPresetId) => void;
   readonly onRecommendedCharts?: () => void;
-  readonly onAllCharts?: (category?: CoreChartCategoryTab) => void;
+  readonly onAllCharts?: (category?: ChartDialogCategory) => void;
+  readonly chartRibbon?: Omit<ChartDesignRibbonProps, never> & Omit<ChartFormatRibbonProps, never>;
   readonly pivotRibbon?: PivotAnalyzeRibbonProps & {
     readonly onUpdateLayout: (patch: Partial<Omit<PivotTableDocument, 'id' | 'extent'>>) => void;
   };
@@ -117,16 +120,19 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, pythonOpen, onPython, recentFunctions, onInsertFunction, onOpenInsertFunctionDialog, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
-  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onInsertChart, onRecommendedCharts, onAllCharts, pivotRibbon, onNameManagerClick, onDefineNameClick,
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onInsertChart, onRecommendedCharts, onAllCharts, chartRibbon, pivotRibbon, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
   const [knownTables, setKnownTables] = useState<ReadonlySet<string>>(() => new Set());
   const [trackedPivotId, setTrackedPivotId] = useState<string | undefined>(undefined);
   const [knownPivots, setKnownPivots] = useState<ReadonlySet<string>>(() => new Set());
+  const [trackedChartId, setTrackedChartId] = useState<string | undefined>(undefined);
+  const [knownCharts, setKnownCharts] = useState<ReadonlySet<string>>(() => new Set());
   const lastNonContextualTab = useRef<string>('Home');
   const tableTabWasActive = useRef<Map<string, boolean>>(new Map());
   const pivotTabWasActive = useRef<Map<string, 'PivotTable Analyze' | 'Design' | undefined>>(new Map());
+  const chartTabWasActive = useRef<Map<string, 'Chart Design' | 'Format' | undefined>>(new Map());
   const id = useId();
   const tabs = useRef(new Map<string, HTMLButtonElement>());
   const onFontDialog = useCallback(() => onFormatDialog('Font'), [onFormatDialog]);
@@ -134,6 +140,7 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
   const borderRibbonNode = useMemo(() => <BorderRibbon {...borders} />, [borders]);
   const currentId = activeTable?.id;
   const currentPivotId = pivotRibbon?.pivot.id;
+  const currentChartId = chartRibbon?.chart.id;
   // Switch contextual tabs during render so the panel never paints one frame hidden and shifts the grid.
   let nextActive = active;
   if (currentId !== trackedTableId) {
@@ -175,12 +182,36 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
     }
     setTrackedPivotId(currentPivotId);
   }
+  if (currentChartId !== trackedChartId) {
+    const priorChartId = trackedChartId;
+    if (priorChartId !== undefined) {
+      chartTabWasActive.current.set(
+        priorChartId,
+        active === 'Chart Design' || active === 'Format' ? active : undefined,
+      );
+    }
+    if (currentChartId !== undefined) {
+      const isNew = !knownCharts.has(currentChartId);
+      if (isNew) {
+        const nextKnown = new Set(knownCharts);
+        nextKnown.add(currentChartId);
+        setKnownCharts(nextKnown);
+      }
+      const remembered = chartTabWasActive.current.get(currentChartId);
+      if (isNew) nextActive = 'Chart Design';
+      else if (remembered) nextActive = remembered;
+    } else if (active === 'Chart Design' || active === 'Format') {
+      nextActive = lastNonContextualTab.current;
+    }
+    setTrackedChartId(currentChartId);
+  }
   if (nextActive !== active) setActive(nextActive);
 
   const tabList: readonly string[] = [
     ...families,
     ...(activeTable ? ['Table Design'] : []),
     ...(pivotRibbon ? ['PivotTable Analyze', 'Design'] : []),
+    ...(chartRibbon ? ['Chart Design', 'Format'] : []),
   ];
 
   useEffect(() => {
@@ -193,7 +224,13 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
       onFileBackstage();
       return;
     }
-    if (name !== 'Table Design' && name !== 'PivotTable Analyze' && name !== 'Design') {
+    if (
+      name !== 'Table Design' &&
+      name !== 'PivotTable Analyze' &&
+      name !== 'Design' &&
+      name !== 'Chart Design' &&
+      name !== 'Format'
+    ) {
       lastNonContextualTab.current = name;
     }
     if (activeTable) {
@@ -203,6 +240,12 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
       pivotTabWasActive.current.set(
         pivotRibbon.pivot.id,
         name === 'PivotTable Analyze' || name === 'Design' ? name : undefined,
+      );
+    }
+    if (chartRibbon) {
+      chartTabWasActive.current.set(
+        chartRibbon.chart.id,
+        name === 'Chart Design' || name === 'Format' ? name : undefined,
       );
     }
     setActive(name);
@@ -229,7 +272,15 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
           const slug = name.replace(/[^A-Za-z0-9_-]/g, '-');
           return (
             <button type="button" key={name} role="tab" id={id + '-tab-' + slug}
-              className={name === 'Table Design' || name === 'PivotTable Analyze' || name === 'Design' ? 'ribbon-tab-contextual' : undefined}
+              className={
+                name === 'Table Design' ||
+                name === 'PivotTable Analyze' ||
+                name === 'Design' ||
+                name === 'Chart Design' ||
+                name === 'Format'
+                  ? 'ribbon-tab-contextual'
+                  : undefined
+              }
               aria-selected={active === name} aria-controls={id + '-panel-' + slug} tabIndex={active === name ? 0 : -1}
               ref={node => { if (node) tabs.current.set(name, node); else tabs.current.delete(name); }}
               onClick={() => selectTab(name)} onKeyDown={event => keyDown(event, index)}>{name}</button>
@@ -272,6 +323,29 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
             <PivotDesignRibbon
               pivot={pivotRibbon.pivot}
               onUpdateLayout={pivotRibbon.onUpdateLayout}
+            />
+          ) : name === 'Chart Design' && chartRibbon ? (
+            <ChartDesignRibbon
+              chart={chartRibbon.chart}
+              data={chartRibbon.data}
+              onUpdateChart={chartRibbon.onUpdateChart}
+              onSwitchRowColumn={chartRibbon.onSwitchRowColumn}
+              onOpenSelectData={chartRibbon.onOpenSelectData}
+              onOpenChangeChartType={chartRibbon.onOpenChangeChartType}
+              onOpenMoveChart={chartRibbon.onOpenMoveChart}
+              onOpenFormatPane={chartRibbon.onOpenFormatPane}
+            />
+          ) : name === 'Format' && chartRibbon ? (
+            <ChartFormatRibbon
+              chart={chartRibbon.chart}
+              data={chartRibbon.data}
+              selectedElement={chartRibbon.selectedElement}
+              onSelectElement={chartRibbon.onSelectElement}
+              onUpdateChart={chartRibbon.onUpdateChart}
+              onMoveResizeChart={chartRibbon.onMoveResizeChart}
+              onReorderChart={chartRibbon.onReorderChart}
+              onOpenFormatPane={chartRibbon.onOpenFormatPane}
+              onResetToStyle={chartRibbon.onResetToStyle}
             />
           ) : name === 'Insert' ? (
             <>

@@ -62,6 +62,7 @@ export function useRibbonPopover(anchor: RefObject<HTMLElement | null>, panel: R
 export interface RibbonItem {
   readonly label: string;
   readonly icon?: string;
+  readonly iconNode?: ReactNode;
   readonly detail?: string;
   readonly group?: string;
   readonly divider?: boolean;
@@ -71,8 +72,8 @@ export interface RibbonItem {
   readonly children?: readonly RibbonItem[];
 }
 
-export function RibbonFlyout({ label, caption, icon, items, large = false }: {
-  label: string; caption?: ReactNode; icon?: string; items: readonly RibbonItem[]; large?: boolean;
+export function RibbonFlyout({ label, caption, icon, iconNode, items, large = false }: {
+  label: string; caption?: ReactNode; icon?: string; iconNode?: ReactNode; items: readonly RibbonItem[]; large?: boolean;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -173,7 +174,7 @@ export function RibbonFlyout({ label, caption, icon, items, large = false }: {
           role={checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={checked} disabled={item.disabled}
           aria-haspopup={item.children ? 'menu' : undefined} aria-expanded={item.children ? submenu?.item === item : undefined}
           onClick={event => enter(item, event.currentTarget)}>
-          <span className="ribbon-flyout-glyph" aria-hidden="true">{glyph ? <RibbonGlyph name={glyph} size={detail !== undefined ? 32 : 22} /> :
+          <span className="ribbon-flyout-glyph" aria-hidden="true">{item.iconNode ? item.iconNode : glyph ? <RibbonGlyph name={glyph} size={detail !== undefined ? 32 : 22} /> :
             checked && <span className="ribbon-flyout-check">✓</span>}</span>
           <span className="ribbon-flyout-label">{text}{detail && <small>{detail}</small>}</span>
           {item.children && <span className="ribbon-submenu-chevron" aria-hidden="true" />}
@@ -192,7 +193,7 @@ export function RibbonFlyout({ label, caption, icon, items, large = false }: {
         if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); }
         if (event.key === 'Escape' && open) { event.preventDefault(); close(); }
       }}>
-      {icon && <RibbonGlyph name={icon} size={large ? 30 : 18} />}
+      {iconNode ? iconNode : icon && <RibbonGlyph name={icon} size={large ? 30 : 18} />}
       {caption ?? label}<span className="ribbon-chevron" aria-hidden="true" />
     </button>
     {open && createPortal(<>

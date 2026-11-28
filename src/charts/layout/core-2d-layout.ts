@@ -318,8 +318,9 @@ export function computeLegendItems(
     return { items: [], padTop: 0, padBottom: 0, padRight: 0, padLeft: 0 };
   }
   if (position === 'right' || position === 'overlayRight' || position === 'left') {
-    const colWidth = 108;
-    const x = position === 'left' ? 12 : Math.max(12, chartWidth - colWidth - 8);
+    const maxLabelChars = Math.max(1, ...seriesList.map(s => Math.min(16, s.label.length)));
+    const colWidth = Math.min(108, Math.max(46, Math.ceil(maxLabelChars * 6.5) + 20));
+    const x = position === 'left' ? 10 : Math.max(10, chartWidth - colWidth - 4);
     const startY = Math.max(38, chartHeight / 2 - (seriesList.length * 18) / 2);
     const items = seriesList.map((entry, idx) => ({
       ...entry,
@@ -331,8 +332,8 @@ export function computeLegendItems(
       items,
       padTop: 0,
       padBottom: 0,
-      padLeft: position === 'left' ? colWidth + 10 : 0,
-      padRight: position === 'right' ? colWidth + 10 : 0,
+      padLeft: position === 'left' ? colWidth + 6 : 0,
+      padRight: position === 'right' ? colWidth + 6 : 0,
     };
   }
 
@@ -354,6 +355,18 @@ export function computeLegendItems(
     padBottom: position === 'bottom' ? 26 : 0,
     padLeft: 0,
     padRight: 0,
+  };
+}
+
+export function axisTitlePadding(
+  chart: ChartDocument,
+  isBar = false,
+): { readonly left: number; readonly bottom: number } {
+  const yTitle = isBar ? chart.elements.axes?.category?.title : chart.elements.axes?.value?.title;
+  const xTitle = isBar ? chart.elements.axes?.value?.title : chart.elements.axes?.category?.title;
+  return {
+    left: yTitle?.show && yTitle.text ? 20 : 0,
+    bottom: xTitle?.show && xTitle.text ? 16 : 0,
   };
 }
 
@@ -624,10 +637,11 @@ export function computeCore2DChartLayout(
 
   // Cartesian plots (Column, Bar, Line, Area, Scatter, Bubble)
   const isBar = category === 'bar';
-  const leftPad = (isBar ? 74 : 52) + legendLayout.padLeft;
+  const titlePad = axisTitlePadding(chart, isBar);
+  const leftPad = (isBar ? 74 : 52) + legendLayout.padLeft + titlePad.left;
   const rightPad = 18 + legendLayout.padRight;
   const topPad = titleOffset + legendLayout.padTop + 6;
-  const bottomPad = 32 + legendLayout.padBottom;
+  const bottomPad = 32 + legendLayout.padBottom + titlePad.bottom;
   const plotArea: ChartRect = {
     x: leftPad,
     y: topPad,

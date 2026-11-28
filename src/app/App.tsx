@@ -55,11 +55,23 @@ import { ChangePivotSourceDialog, MovePivotTableDialog, PivotOptionsDialog } fro
 import { PivotFilterDropdown } from '../features/pivot/PivotFilterDropdown';
 import { PivotTableFieldsPane } from '../features/pivot/PivotTableFieldsPane';
 import type { PivotAxisField, PivotTableDocument, PivotValueField } from '../core/pivot';
-import type { ChartPlacement, ChartType } from '../core/chart';
-import { createChart, deleteChart, moveResizeChart, updateChart } from '../application/chart-commands';
+import type { ChartDocument, ChartPlacement, ChartType } from '../core/chart';
+import {
+  createChart,
+  deleteChart,
+  moveChartToSheet,
+  moveResizeChart,
+  reorderChart,
+  updateChart,
+  type ChartReorderAction,
+  type ChartUpdatePatch,
+} from '../application/chart-commands';
 import { formatAbsoluteAreaRef, inferChartSeriesFromSource, resolveChartData, resolveFormulaExtent } from '../charts/chart-data';
 import { chartRangeHighlights } from '../charts/chart-highlights';
 import { buildComboPresetOverrides, InsertChartDialog, type ComboSeriesOverride } from '../features/charts/InsertChartDialog';
+import { MoveChartDialog, SelectDataDialog } from '../features/charts/ChartDialogs';
+import { FormatChartPane } from '../features/charts/FormatChartPane';
+import { resetChartToStyle, type ChartSelectedElement } from '../features/charts/chart-chrome';
 import type { ComboPresetId, CoreChartCategoryTab } from '../features/charts/chart-catalog';
 import { extentContains, lastColumn, lastRow, ownsTableFilter, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
@@ -267,6 +279,16 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [fileMessage, setFileMessage] = useState<{ title: string; message: string }>();
   const [xlsxReport, setXlsxReport] = useState<{ title: string; issues: readonly ExchangeIssue[] }>();
   const [selectedChartId, setSelectedChartId] = useState<DocumentId | undefined>(undefined);
+  const [selectedChartElement, setSelectedChartElement] = useState<ChartSelectedElement>({ kind: 'chartArea' });
+  const [formatChartPaneOpen, setFormatChartPaneOpen] = useState(false);
+  const [formatChartPaneWidth, setFormatChartPaneWidth] = useState(300);
+  const formatChartResize = useRef<{ readonly id: number; readonly startX: number; readonly startWidth: number } | undefined>(undefined);
+  const [selectDataModal, setSelectDataModal] = useState<{
+    readonly chartId: DocumentId;
+    readonly pickedRange?: string;
+  } | undefined>(undefined);
+  const [changeTypeChartId, setChangeTypeChartId] = useState<DocumentId | undefined>(undefined);
+  const [moveChartId, setMoveChartId] = useState<DocumentId | undefined>(undefined);
   const [insertChartDraft, setInsertChartDraft] = useState<{
     readonly tab: 'recommended' | 'all';
     readonly category?: CoreChartCategoryTab;
@@ -1263,7 +1285,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
 
   function goTo(value: string) {
     const point = parseAddress(value);
-    return !!point && !!worksheet.current?.goTo(point);
+    if (!point || !worksheet.current?.goTo(point)) return false;
+    setSelectedChartId(undefined);
+    return true;
   }
 
   function ranges(): EditRange[] {
@@ -1272,7 +1296,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     }));
   }
 
-  function applyStructure(basis: WorkbookSnapshot, command: StructureCommand, active?: string) {
+  function applyStructure(basis: WorkbookSnapshot, command: StructureCommand, active?: string, preserveFocus = false) {
     requireDocument(session.isCurrent(basis), 'The workbook changed. Open the command again.');
     const revision = session.revision;
     requireDocument(session.tryExecute(basis, command), 'The workbook changed. Open the command again.');
@@ -1287,7 +1311,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       if (!painter?.locked) setBrush(undefined);
       requestedFocus.current = true;
       setActiveSheetId(active);
-    } else scheduleFocusGrid();
+    } else if (!preserveFocus) {
+      scheduleFocusGrid();
+    }
   }
 
   function openCreateDialog(table: boolean) {
@@ -1548,14 +1574,109 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   function handleChartPlacement(chartId: DocumentId, placement: Partial<ChartPlacement>) {
     if (!editing.commit()) return;
     const basis = session.capture();
-    applyStructure(basis, moveResizeChart(basis, chartId, placement));
+    applyStructure(basis, moveResizeChart(basis, chartId, placement), undefined, true);
   }
 
   function handleChartDelete(chartId: DocumentId) {
     if (!editing.commit()) return;
     const basis = session.capture();
     applyStructure(basis, deleteChart(basis, chartId));
-    if (selectedChartId === chartId) setSelectedChartId(undefined);
+    if (selectedChartId === chartId) {
+      setSelectedChartId(undefined);
+      setFormatChartPaneOpen(false);
+    }
+  }
+
+  function handleUpdateChart(chartId: DocumentId, patch: ChartUpdatePatch) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    applyStructure(basis, updateChart(basis, chartId, patch), undefined, true);
+  }
+
+  function handleReorderChart(chartId: DocumentId, action: ChartReorderAction) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    applyStructure(basis, reorderChart(basis, chartId, action));
+  }
+
+  function handleResetChartToStyle(chartId: DocumentId) {
+    const target = snapshot.document.charts?.find(c => c.id === chartId);
+    if (!target) return;
+    handleUpdateChart(chartId, resetChartToStyle(target));
+  }
+
+  function handleSwitchChartRowColumn(chartId: DocumentId) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    const target = basis.document.charts?.find(c => c.id === chartId);
+    if (!target || target.source.kind !== 'range') return;
+    const nextOrientation = target.seriesBy === 'columns' ? 'rows' : 'columns';
+    const inferred = inferChartSeriesFromSource(
+      basis.document,
+      target.source,
+      target.placement.sheetId,
+      target.chartType,
+      nextOrientation,
+    );
+    const nextSeries = inferred.series.map((s, idx) => ({
+      id: target.series[idx]?.id ?? makeId(),
+      ...s,
+    }));
+    applyStructure(basis, updateChart(basis, chartId, {
+      seriesBy: inferred.seriesBy,
+      series: nextSeries,
+    }));
+  }
+
+  function handlePickSelectDataRange(currentRange: string) {
+    const trimmed = currentRange.trim();
+    setRangePicker({
+      initial: trimmed ? (trimmed.startsWith('=') ? trimmed : `=${trimmed}`) : '',
+      onDone: picked => {
+        setRangePicker(undefined);
+        if (picked) {
+          setSelectDataModal(current => current ? { ...current, pickedRange: picked } : undefined);
+        }
+      },
+    });
+  }
+
+  function handleChangeChartTypeSubmit(
+    chartId: DocumentId,
+    chartType: ChartType,
+    seriesBy?: 'columns' | 'rows',
+    comboOverrides?: readonly ComboSeriesOverride[],
+  ) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    const target = basis.document.charts?.find(c => c.id === chartId);
+    if (!target) return;
+    let nextSeries = target.series;
+    if (chartType === 'combo' && comboOverrides) {
+      nextSeries = target.series.map((s, idx) => {
+        const ov = comboOverrides[idx];
+        return ov ? { ...s, chartType: ov.chartType, secondaryAxis: ov.secondaryAxis } : s;
+      });
+    } else if (chartType !== 'combo') {
+      nextSeries = target.series.map(s => {
+        const { chartType: _ct, secondaryAxis: _sa, ...rest } = s;
+        return rest;
+      });
+    }
+    applyStructure(basis, updateChart(basis, chartId, {
+      chartType,
+      ...(seriesBy && { seriesBy }),
+      series: nextSeries,
+    }));
+    setChangeTypeChartId(undefined);
+  }
+
+  function handleMoveChartSubmit(chartId: DocumentId, targetSheetId: DocumentId) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    applyStructure(basis, moveChartToSheet(basis, chartId, targetSheetId), targetSheetId);
+    setSelectedChartId(chartId);
+    setMoveChartId(undefined);
   }
 
   function openCreatePivotDialog() {
@@ -2948,6 +3069,33 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     event.preventDefault();
   }
 
+  function beginFormatChartResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    formatChartResize.current = { id: event.pointerId, startX: event.clientX, startWidth: formatChartPaneWidth };
+  }
+
+  function moveFormatChartResize(event: ReactPointerEvent<HTMLDivElement>) {
+    const active = formatChartResize.current;
+    if (!active || active.id !== event.pointerId) return;
+    setFormatChartPaneWidth(clamp(active.startWidth - (event.clientX - active.startX), 260, 520));
+  }
+
+  function endFormatChartResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (formatChartResize.current?.id === event.pointerId) formatChartResize.current = undefined;
+  }
+
+  function resizeFormatChartKeys(event: KeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 48 : 16;
+    if (event.key === 'ArrowLeft') setFormatChartPaneWidth(width => clamp(width + step, 260, 520));
+    else if (event.key === 'ArrowRight') setFormatChartPaneWidth(width => clamp(width - step, 260, 520));
+    else if (event.key === 'Home') setFormatChartPaneWidth(260);
+    else if (event.key === 'End') setFormatChartPaneWidth(520);
+    else return;
+    event.preventDefault();
+  }
+
   function clipboardEvent(event: ClipboardEvent<HTMLDivElement>, kind: 'copy' | 'cut' | 'paste') {
     event.preventDefault();
     run(kind === 'paste' ? { kind, mode: 'all' } : { kind }, event.clipboardData);
@@ -3041,6 +3189,20 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     () => (selectedChartId ? snapshot.document.charts?.find(c => c.id === selectedChartId && c.placement.sheetId === sheet.id) : undefined),
     [snapshot.document.charts, selectedChartId, sheet.id],
   );
+  useEffect(() => {
+    setSelectedChartElement({ kind: 'chartArea' });
+    if (!selectedChartId) setFormatChartPaneOpen(false);
+  }, [selectedChartId]);
+
+  const selectDataChart = selectDataModal
+    ? snapshot.document.charts?.find(c => c.id === selectDataModal.chartId)
+    : undefined;
+  const changeTypeChart = changeTypeChartId
+    ? snapshot.document.charts?.find(c => c.id === changeTypeChartId)
+    : undefined;
+  const moveChart = moveChartId
+    ? snapshot.document.charts?.find(c => c.id === moveChartId)
+    : undefined;
   const chartHighlights = useMemo(
     () => (selectedChart && !editing.draft ? chartRangeHighlights(snapshot.document, selectedChart) : []),
     [selectedChart, editing.draft, snapshot.document],
@@ -3382,6 +3544,58 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       }
       : undefined
   ), [activePivot, activePivotField, pivotFieldListOpen, pivotCallbacks]);
+  const selectedChartData = selectedChart
+    ? sheetCharts.find(c => c.chart.id === selectedChart.id)?.data
+    : undefined;
+  const chartLatest = useRef({
+    onSelectElement: (_el: ChartSelectedElement) => {},
+    onUpdateChart: (_patch: ChartUpdatePatch) => {},
+    onMoveResizeChart: (_placement: Partial<ChartPlacement>) => {},
+    onReorderChart: (_action: ChartReorderAction) => {},
+    onSwitchRowColumn: () => {},
+    onOpenSelectData: () => {},
+    onOpenChangeChartType: () => {},
+    onOpenMoveChart: () => {},
+    onOpenFormatPane: (_el?: ChartSelectedElement) => {},
+    onResetToStyle: () => {},
+  });
+  chartLatest.current = {
+    onSelectElement: el => setSelectedChartElement(el),
+    onUpdateChart: patch => { if (selectedChart) handleUpdateChart(selectedChart.id, patch); },
+    onMoveResizeChart: placement => { if (selectedChart) handleChartPlacement(selectedChart.id, placement); },
+    onReorderChart: action => { if (selectedChart) handleReorderChart(selectedChart.id, action); },
+    onSwitchRowColumn: () => { if (selectedChart) handleSwitchChartRowColumn(selectedChart.id); },
+    onOpenSelectData: () => { if (selectedChart) setSelectDataModal({ chartId: selectedChart.id }); },
+    onOpenChangeChartType: () => { if (selectedChart) setChangeTypeChartId(selectedChart.id); },
+    onOpenMoveChart: () => { if (selectedChart) setMoveChartId(selectedChart.id); },
+    onOpenFormatPane: el => {
+      if (el) setSelectedChartElement(el);
+      setFormatChartPaneOpen(true);
+    },
+    onResetToStyle: () => { if (selectedChart) handleResetChartToStyle(selectedChart.id); },
+  };
+  const chartRibbonCallbacks = useMemo(() => ({
+    onSelectElement: (el: ChartSelectedElement) => chartLatest.current.onSelectElement(el),
+    onUpdateChart: (patch: ChartUpdatePatch) => chartLatest.current.onUpdateChart(patch),
+    onMoveResizeChart: (placement: Partial<ChartPlacement>) => chartLatest.current.onMoveResizeChart(placement),
+    onReorderChart: (action: ChartReorderAction) => chartLatest.current.onReorderChart(action),
+    onSwitchRowColumn: () => chartLatest.current.onSwitchRowColumn(),
+    onOpenSelectData: () => chartLatest.current.onOpenSelectData(),
+    onOpenChangeChartType: () => chartLatest.current.onOpenChangeChartType(),
+    onOpenMoveChart: () => chartLatest.current.onOpenMoveChart(),
+    onOpenFormatPane: (el?: ChartSelectedElement) => chartLatest.current.onOpenFormatPane(el),
+    onResetToStyle: () => chartLatest.current.onResetToStyle(),
+  }), []);
+  const chartRibbonProps = useMemo(() => (
+    selectedChart && selectedChartData
+      ? {
+        chart: selectedChart,
+        data: selectedChartData,
+        selectedElement: selectedChartElement,
+        ...chartRibbonCallbacks,
+      }
+      : undefined
+  ), [selectedChart, selectedChartData, selectedChartElement, chartRibbonCallbacks]);
   const activeCell = findCell(sheet, selection.anchor);
   const activeStyle = resolvedCellStyle(sheet, selection.anchor, activeCell);
   const activeMerged = !!mergeAt(sheet, selection.anchor.row, selection.anchor.column);
@@ -3446,6 +3660,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onInsertChart={ribbonHandlers.onInsertChart}
         onRecommendedCharts={ribbonHandlers.onRecommendedCharts}
         onAllCharts={ribbonHandlers.onAllCharts}
+        {...(chartRibbonProps && { chartRibbon: chartRibbonProps })}
         {...(pivotRibbonProps && { pivotRibbon: pivotRibbonProps })}
         onFind={ribbonHandlers.onFind} onReplace={ribbonHandlers.onReplace}
         onNameManagerClick={ribbonHandlers.onNameManagerClick} onDefineNameClick={ribbonHandlers.onDefineNameClick}
@@ -3505,10 +3720,23 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             onFigureCancel={() => setPendingFigureOwner(undefined)}
             charts={sheetCharts}
             {...(selectedChartId !== undefined && { selectedChartId })}
+            selectedChartElement={selectedChartElement}
             {...(chartRangeHandle !== undefined && { chartRangeHandle })}
             onSelectChart={setSelectedChartId}
+            onSelectChartElement={setSelectedChartElement}
             onChartPlacement={handleChartPlacement}
+            onUpdateChart={handleUpdateChart}
+            onReorderChart={handleReorderChart}
             onChartDelete={handleChartDelete}
+            onResetChartToStyle={handleResetChartToStyle}
+            onOpenSelectData={id => setSelectDataModal({ chartId: id })}
+            onOpenChangeChartType={id => setChangeTypeChartId(id)}
+            onOpenMoveChart={id => setMoveChartId(id)}
+            onOpenFormatChartPane={(id, el) => {
+              setSelectedChartId(id);
+              if (el) setSelectedChartElement(el);
+              setFormatChartPaneOpen(true);
+            }}
             onHeaderFit={(axis, index) => openStructure(`fit-${axis}`, targetHeader(axis, index))}
             onHeaderResize={(axis, index) => {
               if (!python.barrier() || !editing.commit()) return;
@@ -3571,6 +3799,22 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
               onUpdateLayout={patch => handleUpdatePivotLayout(activePivot.id, patch)}
               onClose={() => { setPivotFieldListOpen(false); scheduleFocusGrid(); }}
               onOpenSettings={request => setFieldSettingsModal({ pivotId: activePivot.id, request })}
+            />
+          </>}
+          {formatChartPaneOpen && selectedChart && selectedChartData && !pivotOpen && <>
+            <div className="python-divider pivot-divider" role="separator" aria-label="Resize Format Chart pane"
+              aria-orientation="vertical" aria-valuemin={260} aria-valuemax={520} aria-valuenow={formatChartPaneWidth}
+              tabIndex={0} onPointerDown={beginFormatChartResize} onPointerMove={moveFormatChartResize}
+              onPointerUp={endFormatChartResize} onPointerCancel={endFormatChartResize} onKeyDown={resizeFormatChartKeys} />
+            <FormatChartPane
+              width={formatChartPaneWidth}
+              chart={selectedChart}
+              data={selectedChartData}
+              selectedElement={selectedChartElement}
+              onSelectElement={setSelectedChartElement}
+              onUpdateChart={patch => handleUpdateChart(selectedChart.id, patch)}
+              onMoveResizeChart={placement => handleChartPlacement(selectedChart.id, placement)}
+              onClose={() => { setFormatChartPaneOpen(false); scheduleFocusGrid(); }}
             />
           </>}
         </div>
@@ -3745,6 +3989,38 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         {...(insertChartDraft.category && { initialCategory: insertChartDraft.category })}
         onSubmit={(chartType, seriesBy, comboOverrides) => insertChartWithType(chartType, insertChartDraft.sourceFormula, seriesBy, undefined, comboOverrides)}
         onCancel={() => { setInsertChartDraft(undefined); scheduleFocusGrid(); }}
+      />}
+      {changeTypeChart && <InsertChartDialog
+        document={snapshot.document}
+        sheetId={changeTypeChart.placement.sheetId}
+        sourceFormula={changeTypeChart.source.kind === 'range'
+          ? changeTypeChart.source.formula
+          : resolveChartSourceFormula(snapshot.document)}
+        initialTab="all"
+        mode="change"
+        initialChart={changeTypeChart}
+        onSubmit={(chartType, seriesBy, comboOverrides) => handleChangeChartTypeSubmit(changeTypeChart.id, chartType, seriesBy, comboOverrides)}
+        onCancel={() => { setChangeTypeChartId(undefined); }}
+      />}
+      {selectDataModal && selectDataChart && <SelectDataDialog
+        document={snapshot.document}
+        chart={selectDataChart}
+        makeId={makeId}
+        suspended={rangePicker !== undefined}
+        pickedRange={selectDataModal.pickedRange}
+        onConsumePickedRange={() => setSelectDataModal(cur => cur ? { chartId: cur.chartId } : undefined)}
+        onPickRange={handlePickSelectDataRange}
+        onSubmit={patch => {
+          handleUpdateChart(selectDataChart.id, patch);
+          setSelectDataModal(undefined);
+        }}
+        onCancel={() => setSelectDataModal(undefined)}
+      />}
+      {moveChart && <MoveChartDialog
+        sheets={sheets}
+        chart={moveChart}
+        onSubmit={targetSheetId => handleMoveChartSubmit(moveChart.id, targetSheetId)}
+        onCancel={() => setMoveChartId(undefined)}
       />}
       {createPivotDraft && <CreatePivotTableDialog
         sourceText={createPivotDraft.sourceText}

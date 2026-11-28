@@ -170,4 +170,35 @@ describe('2D chart layout engine and range highlights', () => {
     expect(highlights.map(h => h.kind)).toEqual(['categories', 'name', 'values']);
     expect(highlights.find(h => h.kind === 'values')?.area).toEqual({ top: 2, left: 2, bottom: 3, right: 2 });
   });
+
+  it('sizes left/right legend padding tightly and reserves non-overlapping space for Y-axis title', () => {
+    const { doc, makeId, sheetId } = buildWorkbook([
+      ['Region', 'Revenue'],
+      ['North', 40000],
+      ['South', 26000],
+    ]);
+    const leftLegendChart = makeChart(makeId, sheetId, 'clusteredColumn', {
+      series: [{ id: makeId(), nameRef: '=Sheet1!$B$1', categoriesRef: '=Sheet1!$A$2:$A$3', valuesRef: '=Sheet1!$B$2:$B$3' }],
+      elements: {
+        ...defaultChartElements('clusteredColumn'),
+        legend: { show: true, position: 'left' },
+      },
+    });
+    const noTitleLayout = computeCore2DChartLayout(resolveChartData(doc, leftLegendChart), leftLegendChart, 480, 300);
+    // "Revenue" is short so left padding shouldn't consume > 140px
+    expect(noTitleLayout.plotArea.x).toBeLessThan(140);
+
+    const withAxisTitleChart: ChartDocument = {
+      ...leftLegendChart,
+      elements: {
+        ...leftLegendChart.elements,
+        axes: {
+          ...leftLegendChart.elements.axes,
+          value: { show: true, title: { show: true, text: 'Axis Title' } },
+        },
+      },
+    };
+    const withTitleLayout = computeCore2DChartLayout(resolveChartData(doc, withAxisTitleChart), withAxisTitleChart, 480, 300);
+    expect(withTitleLayout.plotArea.x).toBeGreaterThan(noTitleLayout.plotArea.x);
+  });
 });

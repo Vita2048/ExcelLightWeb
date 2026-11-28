@@ -5,7 +5,7 @@ import { RibbonGlyph, useRibbonPopover } from '../shell/RibbonFlyout';
 import { parseColor } from '../../core/formats/appearance';
 
 const theme = ['FFFFFF', '000000', 'E7E6E6', '1F4E79', '5B9BD5', 'C0504D', '9BBB59', '8064A2', '4BACC6', 'F79646'];
-const standards = ['C00000', 'FF0000', 'FFC000', 'FFFF00', '92D050', '00B050', '00B0F0', '0070C0', '002060', '7030A0'];
+export const standards = ['C00000', 'FF0000', 'FFC000', 'FFFF00', '92D050', '00B050', '00B0F0', '0070C0', '002060', '7030A0'];
 const ribbonTheme = ['FFFFFF', '000000', 'E7E6E6', '0E2841', '156082', 'E97132', '196B24', '0F9ED5', 'A02B93', '4EA72E'];
 const tints = [0, .68, .46, .24, .02, -.2];
 function tintColor(rgb: string, tint: number) {
@@ -16,7 +16,7 @@ function tintColor(rgb: string, tint: number) {
   }).join('');
 }
 const themeColors = tints.flatMap(tint => theme.map(rgb => tintColor(rgb, tint)));
-const ribbonColors = ribbonTheme.concat(Array.from({ length: 5 }, (_, row) => ribbonTheme.map((rgb, column) =>
+export const ribbonColors = ribbonTheme.concat(Array.from({ length: 5 }, (_, row) => ribbonTheme.map((rgb, column) =>
   tintColor(rgb, (column === 0 ? [-.05, -.15, -.25, -.35, -.5] : column === 1 ? [.5, .35, .25, .15, .05] :
     [.8, .6, .4, -.25, -.5])[row]!))).flat());
 
@@ -77,14 +77,14 @@ export function ColorControl({ label, value, automatic, ribbon = false, display 
         </fieldset>)}
       <button type="button" className="ribbon-palette-action" onClick={() => { popup.current?.hidePopover(); setOpen(true); }}>More Colors…</button>
     </div>}
-    {open && <ColorPicker customOnly={asFlyout} ribbon={ribbon} label={label} value={value} recentColors={recentColors ?? []} automatic={automatic === true} onClose={() => {
+    {open && <ColorPickerDialog customOnly={asFlyout} ribbon={ribbon} label={label} value={value} recentColors={recentColors ?? []} automatic={automatic === true} onClose={() => {
       setOpen(false);
       button.current?.focus();
     }} onChange={onChange} />}
   </>;
 }
 
-function ColorPicker({ label, value, automatic, ribbon, recentColors, customOnly, onChange, onClose }: {
+export function ColorPickerDialog({ label, value, automatic, ribbon, recentColors, customOnly, onChange, onClose }: {
   label: string;
   value: string | undefined;
   automatic: boolean;

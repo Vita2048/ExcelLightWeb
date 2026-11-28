@@ -37,6 +37,13 @@ const categoryOrder: readonly ChartDialogCategory[] = [
   'Combo',
 ];
 
+export function dialogCategoryOfChartType(type: ChartType): ChartDialogCategory {
+  for (const cat of categoryOrder) {
+    if (coreDialogCategories[cat].some(opt => opt.type === type)) return cat;
+  }
+  return 'Column';
+}
+
 const recommendedCandidates: readonly { readonly type: ChartType; readonly label: string; readonly reason: string }[] = [
   { type: 'clusteredColumn', label: 'Clustered Column', reason: 'Compare values across categories' },
   { type: 'clusteredBar', label: 'Clustered Bar', reason: 'Compare category labels horizontally' },
@@ -100,6 +107,8 @@ export function InsertChartDialog({
   sourceFormula,
   initialTab,
   initialCategory,
+  mode = 'insert',
+  initialChart,
   onSubmit,
   onCancel,
 }: {
@@ -108,6 +117,8 @@ export function InsertChartDialog({
   readonly sourceFormula: string;
   readonly initialTab: 'recommended' | 'all';
   readonly initialCategory?: ChartDialogCategory;
+  readonly mode?: 'insert' | 'change';
+  readonly initialChart?: ChartDocument;
   readonly onSubmit: (
     chartType: ChartType,
     seriesBy?: 'columns' | 'rows',
@@ -115,22 +126,37 @@ export function InsertChartDialog({
   ) => void;
   readonly onCancel: () => void;
 }) {
+  const isChangeMode = mode === 'change' && initialChart !== undefined;
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const [tab, setTab] = useState<'recommended' | 'all'>(initialTab);
-  const [category, setCategory] = useState<ChartDialogCategory>(initialCategory ?? 'Column');
+  const startCategory = initialChart
+    ? dialogCategoryOfChartType(initialChart.chartType)
+    : (initialCategory ?? 'Column');
+  const [tab, setTab] = useState<'recommended' | 'all'>(isChangeMode ? 'all' : initialTab);
+  const [category, setCategory] = useState<ChartDialogCategory>(startCategory);
   const [selectedType, setSelectedType] = useState<ChartType>(
-    initialTab === 'recommended'
-      ? 'clusteredColumn'
-      : coreDialogCategories[initialCategory ?? 'Column'][0]!.type,
+    initialChart
+      ? initialChart.chartType
+      : initialTab === 'recommended'
+        ? 'clusteredColumn'
+        : coreDialogCategories[startCategory][0]!.type,
   );
   const [comboPreset, setComboPreset] = useState<ComboPresetId>('colLine');
-  const [comboOverrides, setComboOverrides] = useState<readonly ComboSeriesOverride[] | undefined>(undefined);
+  const [comboOverrides, setComboOverrides] = useState<readonly ComboSeriesOverride[] | undefined>(() =>
+    initialChart?.chartType === 'combo'
+      ? initialChart.series.map((s, idx) => ({
+        chartType: s.chartType ?? (idx < Math.ceil(initialChart.series.length / 2) ? 'clusteredColumn' : 'line'),
+        secondaryAxis: !!s.secondaryAxis,
+      }))
+      : undefined,
+  );
 
   const inferredBase = useMemo(
     () => inferChartSeriesFromSource(document, { kind: 'range', formula: sourceFormula }, sheetId, selectedType),
     [document, sheetId, sourceFormula, selectedType],
   );
-  const [seriesByOverride, setSeriesByOverride] = useState<'columns' | 'rows' | undefined>(undefined);
+  const [seriesByOverride, setSeriesByOverride] = useState<'columns' | 'rows' | undefined>(
+    initialChart?.seriesBy,
+  );
   const activeSeriesBy = seriesByOverride ?? inferredBase.seriesBy;
 
   const activeComboOverrides = useMemo(
@@ -164,22 +190,22 @@ export function InsertChartDialog({
       source,
       seriesBy: inferred.seriesBy,
       series,
-      elements: defaultChartElements(selectedType),
-      hiddenEmptyMode: 'gaps',
-      showHiddenCells: false,
-      styleId: 1,
-      paletteId: 'colorful-1',
+      elements: initialChart?.elements ?? defaultChartElements(selectedType),
+      hiddenEmptyMode: initialChart?.hiddenEmptyMode ?? 'gaps',
+      showHiddenCells: initialChart?.showHiddenCells ?? false,
+      styleId: initialChart?.styleId ?? 1,
+      paletteId: initialChart?.paletteId ?? 'colorful-1',
     };
     return { chart, data: resolveChartData(document, chart) };
   }
 
   const colPreview = useMemo(
     () => buildPreview('columns'),
-    [document, sheetId, sourceFormula, selectedType, activeComboOverrides],
+    [document, sheetId, sourceFormula, selectedType, activeComboOverrides, initialChart],
   );
   const rowPreview = useMemo(
     () => buildPreview('rows'),
-    [document, sheetId, sourceFormula, selectedType, activeComboOverrides],
+    [document, sheetId, sourceFormula, selectedType, activeComboOverrides, initialChart],
   );
   const singlePreview = activeSeriesBy === 'columns' ? colPreview : rowPreview;
 
@@ -189,18 +215,20 @@ export function InsertChartDialog({
     : (recommendedCandidates.find(c => c.type === selectedType)?.label ??
       categoryOptions.find(c => c.type === selectedType)?.label ??
       selectedType);
-  const dualMode = tab === 'all' && supportsDualOrientation(category);
+  const dualMode = tab === 'all' && supportsDualOrientation(category) && !isChangeMode;
 
   const requiredStockSeries = selectedType === 'stockVohlc' ? 5
     : selectedType === 'stockOhlc' || selectedType === 'stockVhlc' ? 4
     : selectedType === 'stockHlc' ? 3 : 0;
   const stockTooFewSeries = selectedType.startsWith('stock') && singlePreview.data.series.length < requiredStockSeries;
 
+  const dialogTitle = isChangeMode ? 'Change Chart Type' : 'Insert Chart';
+
   return (
     <dialog
       ref={dialogRef}
       className="paste-dialog insert-chart-dialog"
-      aria-label="Insert Chart"
+      aria-label={dialogTitle}
       onCancel={event => {
         event.preventDefault();
         onCancel();
@@ -217,18 +245,18 @@ export function InsertChartDialog({
         }}
       >
         <DialogTitleBar>
-          <h2>Insert Chart</h2>
+          <h2>{dialogTitle}</h2>
           <button
             type="button"
             className="format-dialog-close"
-            aria-label="Close Insert Chart"
+            aria-label={`Close ${dialogTitle}`}
             onClick={onCancel}
           >
             ×
           </button>
         </DialogTitleBar>
 
-        <div className="insert-chart-tabs" role="tablist" aria-label="Insert Chart Mode">
+        <div className="insert-chart-tabs" role="tablist" aria-label={`${dialogTitle} Mode`}>
           <button
             type="button"
             role="tab"
@@ -293,7 +321,7 @@ export function InsertChartDialog({
                     setSelectedType(first.type);
                     if (first.comboPreset) setComboPreset(first.comboPreset);
                     setComboOverrides(undefined);
-                    setSeriesByOverride(undefined);
+                    if (!isChangeMode) setSeriesByOverride(undefined);
                   }}
                 >
                   <ChartCategoryListGlyph category={cat} size={18} />
@@ -324,7 +352,7 @@ export function InsertChartDialog({
                           setComboPreset(opt.comboPreset);
                           if (opt.comboPreset !== 'custom') setComboOverrides(undefined);
                         }
-                        setSeriesByOverride(undefined);
+                        if (!isChangeMode) setSeriesByOverride(undefined);
                       }}
                       onDoubleClick={() => onSubmit(
                         opt.type,

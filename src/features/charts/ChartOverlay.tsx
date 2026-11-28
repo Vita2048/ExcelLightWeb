@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import type { ChartDocument, ChartPlacement } from '../../core/chart';
 import type { DocumentId } from '../../core/workbook';
+import type { ChartReorderAction, ChartUpdatePatch } from '../../application/chart-commands';
 import type { ResolvedChartData } from '../../charts/chart-data';
 import {
   chartLogicalRect,
@@ -12,6 +14,8 @@ import {
 import { clamp, type GridAxis } from '../../grid/grid-geometry';
 import type { Area } from '../../grid/grid-selection';
 import { ChartCanvas, downloadChartPng, downloadChartSvg } from './ChartCanvas';
+import { ChartQuickButtons } from './ChartQuickButtons';
+import { formatElementTitle, type ChartSelectedElement } from './chart-chrome';
 
 export interface WorksheetChartItem {
   readonly chart: ChartDocument;
@@ -47,6 +51,7 @@ interface RangeDragState {
 export function ChartOverlay({
   charts,
   selectedChartId,
+  selectedElement,
   rangePicking = false,
   rows,
   columns,
@@ -61,12 +66,21 @@ export function ChartOverlay({
   pointAt,
   chartRangeHandle,
   onSelectChart,
+  onSelectElement,
   onChartPlacement,
+  onUpdateChart,
+  onReorderChart,
   onChartDelete,
+  onResetToStyle,
+  onOpenSelectData,
+  onOpenChangeChartType,
+  onOpenMoveChart,
+  onOpenFormatPane,
   onFocusGrid,
 }: {
   readonly charts: readonly WorksheetChartItem[];
   readonly selectedChartId?: DocumentId | undefined;
+  readonly selectedElement?: ChartSelectedElement | undefined;
   readonly rangePicking?: boolean;
   readonly rows: GridAxis;
   readonly columns: GridAxis;
@@ -81,18 +95,28 @@ export function ChartOverlay({
   readonly pointAt: (x: number, y: number) => { readonly row: number; readonly column: number } | undefined;
   readonly chartRangeHandle?: ChartRangeHandleConfig | undefined;
   readonly onSelectChart?: ((chartId: DocumentId | undefined) => void) | undefined;
+  readonly onSelectElement?: ((el: ChartSelectedElement) => void) | undefined;
   readonly onChartPlacement?: ((chartId: DocumentId, placement: Partial<ChartPlacement>) => void) | undefined;
+  readonly onUpdateChart?: ((chartId: DocumentId, patch: ChartUpdatePatch) => void) | undefined;
+  readonly onReorderChart?: ((chartId: DocumentId, action: ChartReorderAction) => void) | undefined;
   readonly onChartDelete?: ((chartId: DocumentId) => void) | undefined;
+  readonly onResetToStyle?: ((chartId: DocumentId) => void) | undefined;
+  readonly onOpenSelectData?: ((chartId: DocumentId) => void) | undefined;
+  readonly onOpenChangeChartType?: ((chartId: DocumentId) => void) | undefined;
+  readonly onOpenMoveChart?: ((chartId: DocumentId) => void) | undefined;
+  readonly onOpenFormatPane?: ((chartId: DocumentId, el?: ChartSelectedElement) => void) | undefined;
   readonly onFocusGrid: () => void;
 }) {
   const dragRef = useRef<ChartDragState | null>(null);
   const rangeDragRef = useRef<RangeDragState | null>(null);
   const svgRefs = useRef(new Map<DocumentId, SVGSVGElement | null>());
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<{ readonly chartId: DocumentId; readonly box: FigureRect } | undefined>(undefined);
   const [rangePreview, setRangePreview] = useState<Area | undefined>(undefined);
+  const [editingTitleChartId, setEditingTitleChartId] = useState<DocumentId | undefined>(undefined);
+  const [titleDraft, setTitleDraft] = useState('');
   const [contextMenu, setContextMenu] = useState<{
-    readonly chartId: DocumentId;
-    readonly chartName: string;
+    readonly chart: ChartDocument;
     readonly width: number;
     readonly height: number;
     readonly x: number;
@@ -101,14 +125,28 @@ export function ChartOverlay({
 
   useEffect(() => {
     if (!contextMenu) return;
-    const dismiss = () => setContextMenu(undefined);
-    window.addEventListener('pointerdown', dismiss);
+    const dismiss = (event: Event) => {
+      if (event.type === 'pointerdown' && contextMenuRef.current?.contains(event.target as Node)) return;
+      setContextMenu(undefined);
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') setContextMenu(undefined);
+    };
+    window.addEventListener('pointerdown', dismiss, true);
     window.addEventListener('blur', dismiss);
+    window.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('pointerdown', dismiss);
+      window.removeEventListener('pointerdown', dismiss, true);
       window.removeEventListener('blur', dismiss);
+      window.removeEventListener('keydown', onKey);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (editingTitleChartId && selectedChartId !== editingTitleChartId) {
+      setEditingTitleChartId(undefined);
+    }
+  }, [editingTitleChartId, selectedChartId]);
 
   function logicalFromPointer(clientX: number, clientY: number) {
     const node = scrollContainer();
@@ -152,6 +190,7 @@ export function ChartOverlay({
     edge?: ChartEdge,
   ) {
     if (event.button !== 0 || !event.isPrimary || rangePicking) return;
+    if (editingTitleChartId === chart.id) return;
     event.preventDefault();
     event.stopPropagation();
     setContextMenu(undefined);
@@ -204,6 +243,7 @@ export function ChartOverlay({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>, chart: ChartDocument) {
+    if (editingTitleChartId === chart.id) return;
     if (event.key === 'Delete' || event.key === 'Backspace') {
       event.preventDefault();
       event.stopPropagation();
@@ -244,6 +284,26 @@ export function ChartOverlay({
     }
   }
 
+  function commitTitleEdit(chart: ChartDocument) {
+    if (editingTitleChartId !== chart.id) return;
+    const raw = titleDraft.trim();
+    setEditingTitleChartId(undefined);
+    if (!onUpdateChart) return;
+    if (!raw) {
+      onUpdateChart(chart.id, { elements: { ...chart.elements, title: { show: false } } });
+      return;
+    }
+    if (raw.startsWith('=')) {
+      onUpdateChart(chart.id, {
+        elements: { ...chart.elements, title: { show: true, formulaRef: raw } },
+      });
+    } else {
+      onUpdateChart(chart.id, {
+        elements: { ...chart.elements, title: { show: true, text: raw } },
+      });
+    }
+  }
+
   const sortedCharts = [...charts].sort(
     (a, b) => (a.chart.placement.zIndex ?? 0) - (b.chart.placement.zIndex ?? 0),
   );
@@ -256,6 +316,8 @@ export function ChartOverlay({
       return br && tl ? { br, tl, area } : undefined;
     })()
     : undefined;
+
+  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1280;
 
   return (
     <div className="worksheet-chart-layer" role="group" aria-label="Worksheet charts">
@@ -276,6 +338,9 @@ export function ChartOverlay({
         );
         if (!bounds) return null;
         const selected = selectedChartId === chart.id;
+        const flipLeft = bounds.x + bounds.width + 260 > viewportW;
+        const isEditingTitle = editingTitleChartId === chart.id;
+
         return (
           <div
             key={chart.id}
@@ -291,7 +356,9 @@ export function ChartOverlay({
             }}
             onPointerDown={event => {
               if (rangePicking) return;
-              const edge = (event.target as HTMLElement).closest<HTMLElement>('[data-chart-edge]')?.dataset.chartEdge as ChartEdge | undefined;
+              const target = event.target as HTMLElement;
+              if (target.closest('.chart-quick-buttons, .chart-title-inline-input, .chart-title-text')) return;
+              const edge = target.closest<HTMLElement>('[data-chart-edge]')?.dataset.chartEdge as ChartEdge | undefined;
               beginDrag(event, chart, edge ? 'resize' : 'move', edge);
             }}
             onPointerMove={updateDrag}
@@ -305,8 +372,7 @@ export function ChartOverlay({
               event.stopPropagation();
               onSelectChart?.(chart.id);
               setContextMenu({
-                chartId: chart.id,
-                chartName: chart.name,
+                chart,
                 width: Math.round(chart.placement.width),
                 height: Math.round(chart.placement.height),
                 x: event.clientX,
@@ -324,7 +390,44 @@ export function ChartOverlay({
                 else svgRefs.current.delete(chart.id);
               }}
               interactive={!isDraft && !rangePicking}
+              selectedElement={selected ? selectedElement : undefined}
+              editingTitle={isEditingTitle}
+              onSelectElement={el => {
+                onSelectChart?.(chart.id);
+                onSelectElement?.(el);
+              }}
+              onStartTitleEdit={() => {
+                onSelectChart?.(chart.id);
+                onSelectElement?.({ kind: 'title' });
+                setTitleDraft(chart.elements.title?.formulaRef ?? chart.elements.title?.text ?? data.title ?? 'Chart Title');
+                setEditingTitleChartId(chart.id);
+              }}
             />
+
+            {isEditingTitle && (
+              <input
+                type="text"
+                className="chart-title-inline-input"
+                aria-label="Edit chart title"
+                value={titleDraft}
+                autoFocus
+                onFocus={event => event.currentTarget.select()}
+                onPointerDown={event => event.stopPropagation()}
+                onChange={event => setTitleDraft(event.currentTarget.value)}
+                onBlur={() => commitTitleEdit(chart)}
+                onKeyDown={event => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    commitTitleEdit(chart);
+                  } else if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setEditingTitleChartId(undefined);
+                  }
+                  event.stopPropagation();
+                }}
+              />
+            )}
+
             {selected && !rangePicking && chartEdges.map(edge => (
               <button
                 key={edge}
@@ -335,6 +438,17 @@ export function ChartOverlay({
                 title={`Resize ${edge.replace('-', ' ')}`}
               />
             ))}
+
+            {selected && !rangePicking && !isDraft && onUpdateChart && (
+              <ChartQuickButtons
+                chart={chart}
+                data={data}
+                flipLeft={flipLeft}
+                onUpdateChart={onUpdateChart}
+                onOpenSelectData={id => onOpenSelectData?.(id)}
+                onOpenFormatPane={(id, el) => onOpenFormatPane?.(id, el)}
+              />
+            )}
           </div>
         );
       })}
@@ -411,49 +525,130 @@ export function ChartOverlay({
         </>
       )}
 
-      {contextMenu && (
+      {contextMenu && createPortal(
         <div
+          ref={contextMenuRef}
           className="ribbon-flyout chart-context-menu"
           role="menu"
           aria-label="Chart context menu"
-          style={{ left: contextMenu.x, top: contextMenu.y }}
+          style={{
+            left: Math.max(8, Math.min(contextMenu.x, (typeof window !== 'undefined' ? window.innerWidth : 1280) - 220)),
+            top: Math.max(8, Math.min(contextMenu.y, (typeof window !== 'undefined' ? window.innerHeight : 800) - 310)),
+          }}
           onPointerDown={event => event.stopPropagation()}
         >
           <button
             type="button"
             role="menuitem"
             onClick={() => {
-              const svg = svgRefs.current.get(contextMenu.chartId);
-              if (svg) downloadChartPng(svg, contextMenu.width, contextMenu.height, contextMenu.chartName);
+              onResetToStyle?.(contextMenu.chart.id);
               setContextMenu(undefined);
             }}
           >
-            Save as Picture (PNG)...
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const svg = svgRefs.current.get(contextMenu.chartId);
-              if (svg) downloadChartSvg(svg, contextMenu.chartName);
-              setContextMenu(undefined);
-            }}
-          >
-            Save as Picture (SVG)...
+            Reset to Match Style
           </button>
           <div className="ribbon-flyout-divider" role="none">
             <button
               type="button"
               role="menuitem"
               onClick={() => {
-                onChartDelete?.(contextMenu.chartId);
+                onOpenChangeChartType?.(contextMenu.chart.id);
+                setContextMenu(undefined);
+              }}
+            >
+              Change Chart Type...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onOpenSelectData?.(contextMenu.chart.id);
+                setContextMenu(undefined);
+              }}
+            >
+              Select Data...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onOpenMoveChart?.(contextMenu.chart.id);
+                setContextMenu(undefined);
+              }}
+            >
+              Move Chart...
+            </button>
+          </div>
+          <div className="ribbon-flyout-divider" role="none">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onReorderChart?.(contextMenu.chart.id, 'bringToFront');
+                setContextMenu(undefined);
+              }}
+            >
+              Bring to Front
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onReorderChart?.(contextMenu.chart.id, 'sendToBack');
+                setContextMenu(undefined);
+              }}
+            >
+              Send to Back
+            </button>
+          </div>
+          <div className="ribbon-flyout-divider" role="none">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const svg = svgRefs.current.get(contextMenu.chart.id);
+                if (svg) downloadChartPng(svg, contextMenu.width, contextMenu.height, contextMenu.chart.name);
+                setContextMenu(undefined);
+              }}
+            >
+              Save as Picture (PNG)...
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const svg = svgRefs.current.get(contextMenu.chart.id);
+                if (svg) downloadChartSvg(svg, contextMenu.chart.name);
+                setContextMenu(undefined);
+              }}
+            >
+              Save as Picture (SVG)...
+            </button>
+          </div>
+          <div className="ribbon-flyout-divider" role="none">
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onOpenFormatPane?.(contextMenu.chart.id, selectedElement ?? { kind: 'chartArea' });
+                setContextMenu(undefined);
+              }}
+            >
+              {`${formatElementTitle(selectedElement ?? { kind: 'chartArea' }, contextMenu.chart)}...`}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                onChartDelete?.(contextMenu.chart.id);
                 setContextMenu(undefined);
               }}
             >
               Delete Chart
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

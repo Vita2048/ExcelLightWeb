@@ -44,6 +44,11 @@ export interface CreateChartInput {
 }
 
 export type ChartReorderAction = 'bringForward' | 'bringToFront' | 'sendBackward' | 'sendToBack';
+export type ChartUpdatePatch = Partial<Omit<ChartDocument, 'id' | 'hiddenCategories' | 'chartAreaStyle' | 'plotAreaStyle'>> & {
+  readonly hiddenCategories?: readonly number[] | undefined;
+  readonly chartAreaStyle?: ChartShapeStyle | undefined;
+  readonly plotAreaStyle?: ChartShapeStyle | undefined;
+};
 
 function replaceCharts(document: WorkbookDocument, charts: readonly ChartDocument[]): WorkbookDocument {
   const { charts: _prev, ...rest } = document;
@@ -144,7 +149,7 @@ export function createChart(
 export function updateChart(
   basis: WorkbookSnapshot,
   chartId: DocumentId,
-  patch: Partial<Omit<ChartDocument, 'id'>>,
+  patch: ChartUpdatePatch,
 ): StructureCommand {
   const existing = basis.document.charts ?? [];
   const current = existing.find(item => item.id === chartId);
@@ -159,7 +164,11 @@ export function updateChart(
       'A chart with this name already exists.',
     );
   }
-  const updated: ChartDocument = { ...current, ...patch, id: current.id, name: nextName };
+  const merged = { ...current, ...patch, id: current.id, name: nextName } as Record<string, unknown>;
+  for (const key of Object.keys(merged)) {
+    if (merged[key] === undefined) delete merged[key];
+  }
+  const updated = merged as unknown as ChartDocument;
   return {
     kind: 'structure',
     label: 'Update Chart',

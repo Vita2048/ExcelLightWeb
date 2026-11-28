@@ -82,10 +82,21 @@ export type ChartSource =
 
 export type ChartHiddenEmptyMode = 'gaps' | 'zero' | 'connect';
 
+export type ChartLineDash =
+  | 'solid'
+  | 'roundDot'
+  | 'squareDot'
+  | 'dash'
+  | 'dashDot'
+  | 'longDash'
+  | 'longDashDot'
+  | 'longDashDotDot';
+
 export interface ChartShapeStyle {
   readonly fillRgb?: string;
   readonly borderRgb?: string;
   readonly borderWidth?: number;
+  readonly borderDash?: ChartLineDash;
 }
 
 export interface ChartPointOverride {
@@ -136,6 +147,7 @@ export type ChartDataLabelPosition =
   | 'insideBase'
   | 'outsideEnd'
   | 'bestFit'
+  | 'callout'
   | 'left'
   | 'right'
   | 'above'
@@ -156,6 +168,7 @@ export interface ChartTitleConfig {
   readonly show: boolean;
   readonly text?: string;
   readonly formulaRef?: string;
+  readonly overlay?: boolean;
 }
 
 export type ChartLegendPosition = 'top' | 'bottom' | 'left' | 'right' | 'overlayRight';
@@ -233,6 +246,7 @@ export interface ChartSeries {
   readonly fillRgb?: string;
   readonly borderRgb?: string;
   readonly lineWidth?: number;
+  readonly lineDash?: ChartLineDash;
   readonly smooth?: boolean;
   readonly markers?: boolean;
   readonly gapWidth?: number;
