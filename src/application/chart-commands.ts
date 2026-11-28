@@ -37,6 +37,7 @@ export interface CreateChartInput {
   readonly elements?: ChartElements;
   readonly hiddenEmptyMode?: ChartHiddenEmptyMode;
   readonly showHiddenCells?: boolean;
+  readonly showFieldButtons?: boolean;
   readonly styleId?: number;
   readonly paletteId?: string;
   readonly chartAreaStyle?: ChartShapeStyle;
@@ -133,6 +134,7 @@ export function createChart(
     elements: input.elements ?? defaultChartElements(chartType),
     hiddenEmptyMode: input.hiddenEmptyMode ?? 'gaps',
     showHiddenCells: input.showHiddenCells ?? false,
+    ...(input.showFieldButtons !== undefined && { showFieldButtons: input.showFieldButtons }),
     styleId: input.styleId ?? 1,
     paletteId: input.paletteId ?? 'colorful-1',
     ...(input.chartAreaStyle && { chartAreaStyle: input.chartAreaStyle }),

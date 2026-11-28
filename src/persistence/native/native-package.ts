@@ -798,7 +798,7 @@ function readChartDocument(raw: unknown): ChartDocument {
   rejectUnknown(
     obj,
     'id', 'name', 'chartType', 'placement', 'source', 'seriesBy', 'series',
-    'elements', 'hiddenEmptyMode', 'showHiddenCells', 'hiddenCategories',
+    'elements', 'hiddenEmptyMode', 'showHiddenCells', 'hiddenCategories', 'showFieldButtons',
     'styleId', 'paletteId', 'chartAreaStyle', 'plotAreaStyle',
   );
   const pObj = requireObject(requireProperty(obj, 'placement'), 'placement');
@@ -856,6 +856,7 @@ function readChartDocument(raw: unknown): ChartDocument {
     hiddenEmptyMode: requireString(requireProperty(obj, 'hiddenEmptyMode'), 'hiddenEmptyMode') as ChartHiddenEmptyMode,
     showHiddenCells: requireBool(requireProperty(obj, 'showHiddenCells'), 'showHiddenCells'),
     ...(hiddenCategories !== undefined ? { hiddenCategories } : {}),
+    ...(Object.hasOwn(obj, 'showFieldButtons') ? { showFieldButtons: requireBool(obj.showFieldButtons, 'showFieldButtons') } : {}),
     styleId: requireInt(requireProperty(obj, 'styleId'), 'styleId'),
     paletteId: requireString(requireProperty(obj, 'paletteId'), 'paletteId'),
     ...(Object.hasOwn(obj, 'chartAreaStyle') ? { chartAreaStyle: readChartShapeStyle(obj.chartAreaStyle, 'chartAreaStyle') } : {}),

@@ -624,6 +624,28 @@ export function ChartDesignRibbon({
           Move<br />Chart
         </button>
       </fieldset>
+
+      {chart.source.kind === 'pivot' && (
+        <fieldset>
+          <legend>Show/Hide</legend>
+          <button
+            type="button"
+            className="ribbon-command ribbon-large pivot-ribbon-toggle"
+            aria-label="Field Buttons"
+            aria-pressed={chart.showFieldButtons !== false}
+            onClick={() => onUpdateChart({ showFieldButtons: chart.showFieldButtons === false })}
+          >
+            <svg className="ribbon-glyph" width={28} height={28} viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="6" rx="1" fill="#2a313d" stroke="#8aa8cc" />
+              <path d="M15 7 H19 L17 9 Z" fill="#d8dee9" />
+              <rect x="4" y="13" width="4" height="7" fill="#4ea1ff" />
+              <rect x="10" y="11" width="4" height="9" fill="#f38c4e" />
+              <rect x="16" y="14" width="4" height="6" fill="#a5aab4" />
+            </svg>
+            Field<br />Buttons
+          </button>
+        </fieldset>
+      )}
     </>
   );
 }

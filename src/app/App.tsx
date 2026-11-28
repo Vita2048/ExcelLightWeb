@@ -477,6 +477,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     readonly sourceText: string;
     readonly placement: PivotPlacement;
     readonly locationText: string;
+    readonly createPivotChartAfter?: boolean;
   }>();
   const [pivotFieldListOpen, setPivotFieldListOpen] = useState(true);
   const [pivotPaneWidth, setPivotPaneWidth] = useState(310);
@@ -1679,7 +1680,43 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     setMoveChartId(undefined);
   }
 
-  function openCreatePivotDialog() {
+  function handleInsertPivotChart(explicitPivotId?: DocumentId) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    const pivots = basis.document.pivots ?? [];
+    const targetPivot = explicitPivotId
+      ? pivots.find(p => p.id === explicitPivotId)
+      : activePivot ?? pivots.find(p => p.target.sheetId === sheet.id);
+    if (!targetPivot) {
+      openCreatePivotDialog(true);
+      return;
+    }
+    const anchorRow = Math.max(1, targetPivot.extent?.row ?? targetPivot.target.row);
+    const anchorCol = Math.min(
+      documentLimits.columns,
+      (targetPivot.extent ? targetPivot.extent.column + targetPivot.extent.columns : targetPivot.target.column + 3) + 1,
+    );
+    const prevCount = basis.document.charts?.length ?? 0;
+    const cmd = createChart(basis, {
+      chartType: 'clusteredColumn',
+      source: { kind: 'pivot', pivotId: targetPivot.id },
+      showFieldButtons: true,
+      placement: {
+        sheetId: targetPivot.target.sheetId,
+        row: anchorRow,
+        column: anchorCol,
+        offsetX: 12,
+        offsetY: 8,
+        width: 480,
+        height: 300,
+      },
+    }, makeId);
+    applyStructure(basis, cmd, targetPivot.target.sheetId, true);
+    const inserted = cmd.document.charts?.[prevCount];
+    if (inserted) setSelectedChartId(inserted.id);
+  }
+
+  function openCreatePivotDialog(withPivotChart = false) {
     if (!editing.commit()) return;
     const basis = session.capture();
     const selArea = selectionAreas(selection)[0];
@@ -1711,7 +1748,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       rows: 1,
       columns: 1,
     }).replace(/^=/u, '');
-    setCreatePivotDraft({ sourceText, placement: 'new', locationText });
+    setCreatePivotDraft({
+      sourceText,
+      placement: 'new',
+      locationText,
+      ...(withPivotChart && { createPivotChartAfter: true }),
+    });
   }
 
   function handlePickPivotSource() {
@@ -1759,10 +1801,33 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         created = createPivotTableWithSheet(basis, { source, target }, makeId);
         targetCell = { row: target.row, column: target.column };
       }
+      const wantChart = Boolean(createPivotDraft.createPivotChartAfter);
+      const newPivot = created.command.document.pivots?.[(created.command.document.pivots?.length ?? 1) - 1];
       applyStructure(basis, created.command, created.sheetId);
       setSelections(current => new Map(current).set(created.sheetId, singleSelection(targetCell)));
       setPivotFieldListOpen(true);
       setCreatePivotDraft(undefined);
+      if (wantChart && newPivot) {
+        const nextBasis = session.capture();
+        const prevCount = nextBasis.document.charts?.length ?? 0;
+        const chartCmd = createChart(nextBasis, {
+          chartType: 'clusteredColumn',
+          source: { kind: 'pivot', pivotId: newPivot.id },
+          showFieldButtons: true,
+          placement: {
+            sheetId: created.sheetId,
+            row: targetCell.row,
+            column: Math.min(documentLimits.columns, (newPivot.extent ? newPivot.extent.column + newPivot.extent.columns : targetCell.column + 3) + 1),
+            offsetX: 12,
+            offsetY: 8,
+            width: 480,
+            height: 300,
+          },
+        }, makeId);
+        applyStructure(nextBasis, chartCmd, created.sheetId, true);
+        const inserted = chartCmd.document.charts?.[prevCount];
+        if (inserted) setSelectedChartId(inserted.id);
+      }
       return undefined;
     } catch (err: unknown) {
       return err instanceof Error ? err.message : String(err);
@@ -3355,6 +3420,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: handleTableChangeDesign,
     onTableClick: () => {},
     onPivotTableClick: () => {},
+    onInsertPivotChart: () => {},
     onInsertChart: (_chartType: ChartType, _comboPreset?: ComboPresetId) => {},
     onRecommendedCharts: () => {},
     onAllCharts: (_category?: CoreChartCategoryTab) => {},
@@ -3420,7 +3486,8 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableResize: () => { if (activeTable) openEditDialog(activeTable); },
     onTableChangeDesign: handleTableChangeDesign,
     onTableClick: () => openCreateDialog(true),
-    onPivotTableClick: openCreatePivotDialog,
+    onPivotTableClick: () => openCreatePivotDialog(false),
+    onInsertPivotChart: () => handleInsertPivotChart(),
     onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => insertChartWithType(chartType, undefined, undefined, comboPreset),
     onRecommendedCharts: () => openInsertChartDialog('recommended'),
     onAllCharts: (category?: CoreChartCategoryTab) => openInsertChartDialog('all', category),
@@ -3462,6 +3529,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: (patch: Partial<TableDesign>) => ribbonLatest.current.onTableChangeDesign(patch),
     onTableClick: () => ribbonLatest.current.onTableClick(),
     onPivotTableClick: () => ribbonLatest.current.onPivotTableClick(),
+    onInsertPivotChart: () => ribbonLatest.current.onInsertPivotChart(),
     onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => ribbonLatest.current.onInsertChart(chartType, comboPreset),
     onRecommendedCharts: () => ribbonLatest.current.onRecommendedCharts(),
     onAllCharts: (category?: CoreChartCategoryTab) => ribbonLatest.current.onAllCharts(category),
@@ -3491,6 +3559,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onClear: handlePivotClear,
     onSelectEntire: handlePivotSelectEntire,
     onOpenMove: handleOpenMovePivot,
+    onInsertPivotChart: () => { if (activePivot) handleInsertPivotChart(activePivot.id); },
     onToggleFieldList: () => setPivotFieldListOpen(open => !open),
     onToggleButtons: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showButtons: activePivot.showButtons === false }); },
     onToggleFieldHeaders: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showFieldHeaders: activePivot.showFieldHeaders === false }); },
@@ -3510,6 +3579,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onClear: handlePivotClear,
     onSelectEntire: handlePivotSelectEntire,
     onOpenMove: handleOpenMovePivot,
+    onInsertPivotChart: () => { if (activePivot) handleInsertPivotChart(activePivot.id); },
     onToggleFieldList: () => setPivotFieldListOpen(open => !open),
     onToggleButtons: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showButtons: activePivot.showButtons === false }); },
     onToggleFieldHeaders: () => { if (activePivot) handleUpdatePivotLayout(activePivot.id, { showFieldHeaders: activePivot.showFieldHeaders === false }); },
@@ -3529,6 +3599,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onClear: (mode: 'all' | 'filters') => pivotLatest.current.onClear(mode),
     onSelectEntire: () => pivotLatest.current.onSelectEntire(),
     onOpenMove: () => pivotLatest.current.onOpenMove(),
+    onInsertPivotChart: () => pivotLatest.current.onInsertPivotChart(),
     onToggleFieldList: () => pivotLatest.current.onToggleFieldList(),
     onToggleButtons: () => pivotLatest.current.onToggleButtons(),
     onToggleFieldHeaders: () => pivotLatest.current.onToggleFieldHeaders(),
@@ -3657,6 +3728,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onTableRename={ribbonHandlers.onTableRename} onTableResize={ribbonHandlers.onTableResize}
         onTableChangeDesign={ribbonHandlers.onTableChangeDesign} onTableClick={ribbonHandlers.onTableClick}
         onPivotTableClick={ribbonHandlers.onPivotTableClick}
+        onInsertPivotChart={ribbonHandlers.onInsertPivotChart}
         onInsertChart={ribbonHandlers.onInsertChart}
         onRecommendedCharts={ribbonHandlers.onRecommendedCharts}
         onAllCharts={ribbonHandlers.onAllCharts}
@@ -3718,6 +3790,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             onFigurePlacement={(ownerId, placement, original) => { void saveFigurePlacement(ownerId, placement, original); }}
             onFigureDelete={deleteFigurePlacement}
             onFigureCancel={() => setPendingFigureOwner(undefined)}
+            document={snapshot.document}
             charts={sheetCharts}
             {...(selectedChartId !== undefined && { selectedChartId })}
             selectedChartElement={selectedChartElement}

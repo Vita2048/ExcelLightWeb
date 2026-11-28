@@ -719,6 +719,9 @@ function validateCharts(document: WorkbookDocument, addId: (id: DocumentId) => v
     requireDocument(chart.hiddenEmptyMode === 'gaps' || chart.hiddenEmptyMode === 'zero' || chart.hiddenEmptyMode === 'connect',
       'Invalid chart hidden/empty cell mode.');
     requireDocument(typeof chart.showHiddenCells === 'boolean', 'Invalid chart showHiddenCells flag.');
+    if (chart.showFieldButtons !== undefined) {
+      requireDocument(typeof chart.showFieldButtons === 'boolean', 'Invalid chart showFieldButtons flag.');
+    }
     requireDocument(inRange(chart.styleId, 1, 48), 'Invalid chart style id.');
     requireDocument(typeof chart.paletteId === 'string' && chart.paletteId.length > 0 && validText(chart.paletteId, 64),
       'Invalid chart palette id.');

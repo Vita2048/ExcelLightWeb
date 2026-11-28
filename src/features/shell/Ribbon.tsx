@@ -77,6 +77,7 @@ interface RibbonProps {
   readonly onTableChangeDesign?: (patch: Partial<TableDesign>) => void;
   readonly onTableClick?: () => void;
   readonly onPivotTableClick?: () => void;
+  readonly onInsertPivotChart?: () => void;
   readonly onInsertChart?: (chartType: ChartType, comboPreset?: ComboPresetId) => void;
   readonly onRecommendedCharts?: () => void;
   readonly onAllCharts?: (category?: ChartDialogCategory) => void;
@@ -120,7 +121,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, pythonOpen, onPython, recentFunctions, onInsertFunction, onOpenInsertFunctionDialog, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
-  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onInsertChart, onRecommendedCharts, onAllCharts, chartRibbon, pivotRibbon, onNameManagerClick, onDefineNameClick,
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onInsertPivotChart, onInsertChart, onRecommendedCharts, onAllCharts, chartRibbon, pivotRibbon, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
@@ -315,6 +316,7 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
               onClear={pivotRibbon.onClear}
               onSelectEntire={pivotRibbon.onSelectEntire}
               onOpenMove={pivotRibbon.onOpenMove}
+              onInsertPivotChart={pivotRibbon.onInsertPivotChart}
               onToggleFieldList={pivotRibbon.onToggleFieldList}
               onToggleButtons={pivotRibbon.onToggleButtons}
               onToggleFieldHeaders={pivotRibbon.onToggleFieldHeaders}
@@ -365,6 +367,7 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
                 onRecommendedCharts={onRecommendedCharts ?? (() => {})}
                 onAllCharts={onAllCharts ?? (() => {})}
                 onInsertChart={onInsertChart ?? (() => {})}
+                onInsertPivotChart={onInsertPivotChart ?? (() => {})}
               />
             </>
           ) : name === 'View' ? <>

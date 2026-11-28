@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import type { ChartDocument, ChartPlacement } from '../../core/chart';
-import type { DocumentId } from '../../core/workbook';
+import type { DocumentId, WorkbookDocument } from '../../core/workbook';
 import type { ChartReorderAction, ChartUpdatePatch } from '../../application/chart-commands';
 import type { ResolvedChartData } from '../../charts/chart-data';
 import {
@@ -15,6 +15,7 @@ import { clamp, type GridAxis } from '../../grid/grid-geometry';
 import type { Area } from '../../grid/grid-selection';
 import { ChartCanvas, downloadChartPng, downloadChartSvg } from './ChartCanvas';
 import { ChartQuickButtons } from './ChartQuickButtons';
+import { PivotChartFieldButtons } from './PivotChartFieldButtons';
 import { formatElementTitle, type ChartSelectedElement } from './chart-chrome';
 
 export interface WorksheetChartItem {
@@ -49,6 +50,7 @@ interface RangeDragState {
 }
 
 export function ChartOverlay({
+  workbook,
   charts,
   selectedChartId,
   selectedElement,
@@ -76,8 +78,10 @@ export function ChartOverlay({
   onOpenChangeChartType,
   onOpenMoveChart,
   onOpenFormatPane,
+  onPivotFilter,
   onFocusGrid,
 }: {
+  readonly workbook?: WorkbookDocument | undefined;
   readonly charts: readonly WorksheetChartItem[];
   readonly selectedChartId?: DocumentId | undefined;
   readonly selectedElement?: ChartSelectedElement | undefined;
@@ -105,6 +109,12 @@ export function ChartOverlay({
   readonly onOpenChangeChartType?: ((chartId: DocumentId) => void) | undefined;
   readonly onOpenMoveChart?: ((chartId: DocumentId) => void) | undefined;
   readonly onOpenFormatPane?: ((chartId: DocumentId, el?: ChartSelectedElement) => void) | undefined;
+  readonly onPivotFilter?: ((
+    pivotId: DocumentId,
+    kind: 'reportFilter' | 'rowLabel' | 'colLabel',
+    fieldNames: readonly string[],
+    anchor: { readonly x: number; readonly y: number },
+  ) => void) | undefined;
   readonly onFocusGrid: () => void;
 }) {
   const dragRef = useRef<ChartDragState | null>(null);
@@ -404,6 +414,14 @@ export function ChartOverlay({
               }}
             />
 
+            {!isDraft && !rangePicking && workbook && chart.source.kind === 'pivot' && chart.showFieldButtons !== false && onPivotFilter && (
+              <PivotChartFieldButtons
+                document={workbook}
+                chart={chart}
+                onPivotFilter={onPivotFilter}
+              />
+            )}
+
             {isEditingTitle && (
               <input
                 type="text"
@@ -636,6 +654,18 @@ export function ChartOverlay({
             >
               {`${formatElementTitle(selectedElement ?? { kind: 'chartArea' }, contextMenu.chart)}...`}
             </button>
+            {contextMenu.chart.source.kind === 'pivot' && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  onUpdateChart?.(contextMenu.chart.id, { showFieldButtons: contextMenu.chart.showFieldButtons === false });
+                  setContextMenu(undefined);
+                }}
+              >
+                {contextMenu.chart.showFieldButtons === false ? 'Show Field Buttons' : 'Hide Field Buttons'}
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

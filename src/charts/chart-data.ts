@@ -277,8 +277,12 @@ export function resolveChartSourceArea(
   const pivot = (document.pivots ?? []).find(p => p.id === source.pivotId);
   if (!pivot || !pivot.extent) return undefined;
   const filterOffset = pivot.filters.length > 0 ? pivot.filters.length + 1 : 0;
-  const row = pivot.extent.row + filterOffset;
-  const rows = Math.max(1, pivot.extent.rows - filterOffset - (pivot.grandTotals.columns ? 1 : 0));
+  const colBannerOffset = pivot.columns.length > 0
+    ? (pivot.showFieldHeaders !== false ? pivot.columns.length : Math.max(0, pivot.columns.length - 1))
+    : 0;
+  const rowOffset = filterOffset + colBannerOffset;
+  const row = pivot.extent.row + rowOffset;
+  const rows = Math.max(1, pivot.extent.rows - rowOffset - (pivot.grandTotals.columns ? 1 : 0));
   const columns = Math.max(1, pivot.extent.columns - (pivot.grandTotals.rows && pivot.columns.length > 0 ? 1 : 0));
   return {
     sheetId: pivot.target.sheetId,

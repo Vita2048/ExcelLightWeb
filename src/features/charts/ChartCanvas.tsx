@@ -670,6 +670,7 @@ export function ChartCanvas({
             x={layout.plotArea.x + layout.plotArea.width / 2}
             y={layout.plotArea.y + layout.plotArea.height + 27}
             textAnchor="middle"
+            data-axis="x"
             className="chart-axis-title"
           >
             {xTitleCfg.text}
@@ -709,6 +710,7 @@ export function ChartCanvas({
               y={yTitleY}
               textAnchor="middle"
               transform={`rotate(-90 ${yTitleX} ${yTitleY})`}
+              data-axis="y"
               className="chart-axis-title"
             >
               {yTitleCfg.text}
@@ -736,24 +738,39 @@ export function ChartCanvas({
           </g>
         )}
 
-        {layout.title && !editingTitle && (
-          <text
-            x={layout.title.x}
-            y={chart.elements.title?.overlay ? layout.plotArea.y + 16 : layout.title.y}
-            textAnchor={layout.title.anchor}
-            fontSize={layout.title.fontSize}
-            fontWeight={layout.title.bold ? 600 : 400}
-            className={'chart-title-text' + (elementMatches(selectedElement, { kind: 'title' }) ? ' chart-el-selected' : '')}
-            onClick={event => pickElement(event, { kind: 'title' })}
-            onDoubleClick={event => {
-              if (!interactive || !onStartTitleEdit) return;
-              event.stopPropagation();
-              onStartTitleEdit();
-            }}
-          >
-            {layout.title.text}
-          </text>
-        )}
+        {layout.title && !editingTitle && (() => {
+          const titleY = chart.elements.title?.overlay ? layout.plotArea.y + 16 : layout.title.y;
+          return (
+            <g
+              className={'chart-title-hit' + (elementMatches(selectedElement, { kind: 'title' }) ? ' chart-el-selected' : '')}
+              onClick={event => pickElement(event, { kind: 'title' })}
+              onDoubleClick={event => {
+                if (!interactive || !onStartTitleEdit) return;
+                event.stopPropagation();
+                onStartTitleEdit();
+              }}
+            >
+              <rect
+                x={Math.max(4, layout.title.x - 100)}
+                y={Math.max(2, titleY - 16)}
+                width={Math.min(layout.width - 8, 200)}
+                height={24}
+                rx={3}
+                fill="transparent"
+              />
+              <text
+                x={layout.title.x}
+                y={titleY}
+                textAnchor={layout.title.anchor}
+                fontSize={layout.title.fontSize}
+                fontWeight={layout.title.bold ? 600 : 400}
+                className="chart-title-text"
+              >
+                {layout.title.text}
+              </text>
+            </g>
+          );
+        })()}
 
         {layout.legend && layout.legend.map((item, i) => (
           <g

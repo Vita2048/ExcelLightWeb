@@ -32,6 +32,7 @@ import {
   relationshipNamespace, textOf,
 } from './xlsx-xml';
 import { exchangeCodes, XlsxReport } from './xlsx-report';
+import { importCharts } from './xlsx-charts';
 import { stripXlfnPrefixes } from './xlsx-formulas';
 
 const cfbSignature = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
@@ -40,6 +41,9 @@ const tablePart = /^xl\/tables\/[^/]+\.xml$/iu;
 const pivotTablePart = /^xl\/pivottables\/[^/]+\.xml$/iu;
 const pivotRelsPart = /^xl\/pivottables\/_rels\/[^/]+\.rels$/iu;
 const pivotCacheDefPart = /^xl\/pivotcache\/pivotcachedefinition[^/]*\.xml$/iu;
+const drawingPart = /^xl\/drawings\/[^/]+\.xml$/iu;
+const drawingRelsPart = /^xl\/drawings\/_rels\/[^/]+\.rels$/iu;
+const chartPart = /^xl\/charts\/chart[^/]*\.xml$/iu;
 const maxReportedNames = 12;
 
 export interface XlsxImport {
@@ -58,6 +62,7 @@ function isWantedPart(name: string): boolean {
     lower === 'xl/_rels/workbook.xml.rels' || lower === 'xl/sharedstrings.xml' ||
     lower === 'xl/styles.xml' || worksheetPart.test(name) ||
     tablePart.test(name) || pivotTablePart.test(name) || pivotRelsPart.test(name) || pivotCacheDefPart.test(name) ||
+    drawingPart.test(name) || drawingRelsPart.test(name) || chartPart.test(name) ||
     lower.endsWith('.rels') && lower.startsWith('xl/worksheets/_rels/');
 }
 
@@ -132,10 +137,8 @@ function scanEntries(entries: readonly string[], report: XlsxReport): void {
     if (lower === 'xl/vbaproject.bin') {
       throw new PackageException('Macro-enabled Excel files are unsupported, including renamed .xlsm files.');
     }
-    if (lower.startsWith('xl/charts/') || lower.startsWith('xl/chartsheets/')) {
+    if (lower.startsWith('xl/chartsheets/')) {
       report.add(exchangeCodes.charts, 'Charts were not imported.');
-    } else if (lower.startsWith('xl/drawings/')) {
-      report.add(exchangeCodes.drawings, 'Drawings were not imported.');
     } else if (lower.startsWith('xl/comments') || lower.startsWith('xl/threadedcomments')) {
       report.add(exchangeCodes.comments, 'Comments were not imported.');
     } else if (lower.startsWith('xl/externallinks/')) {
@@ -1190,7 +1193,14 @@ export async function importXlsx(file: Blob, options?: { readonly makeId?: IdFac
     names: [...tables],
   };
 
-  const { document, importedPivotParts } = importPivotTables(baseDocument, sheetMetas, parts, styles, makeId);
+  const { document: withPivotsDoc, importedPivotParts } = importPivotTables(baseDocument, sheetMetas, parts, styles, makeId);
+  const {
+    document,
+    importedChartParts,
+    importedDrawingParts,
+    hasUnsupportedCharts,
+    hasUnimportedDrawings,
+  } = importCharts(withPivotsDoc, sheetMetas, parts, makeId);
 
   if (entries.some(name => tablePart.test(name) && !importedTableParts.has(name.toLowerCase()))) {
     report.add(exchangeCodes.tables, 'Tables were not imported.');
@@ -1200,6 +1210,15 @@ export async function importXlsx(file: Blob, options?: { readonly makeId?: IdFac
   if (hasUnimportedPivot || hasOrphanedCache) {
     report.add(exchangeCodes.pivots,
       'PivotTable definitions (pivotTableDefinition/pivotCache) were not imported; materialized worksheet cell values and number formats remain.');
+  }
+  const hasUnimportedChart = entries.some(name =>
+    name.toLowerCase().startsWith('xl/charts/') && !importedChartParts.has(name.toLowerCase()));
+  if (hasUnsupportedCharts || hasUnimportedChart) {
+    report.add(exchangeCodes.charts, 'Charts or chart sheets that could not be mapped cleanly to 2D charts were omitted.');
+  }
+  const hasUnimportedDrawing = entries.some(name => drawingPart.test(name) && !importedDrawingParts.has(name.toLowerCase()));
+  if (hasUnimportedDrawings || hasUnimportedDrawing) {
+    report.add(exchangeCodes.drawings, 'Non-chart drawings or shapes were not imported.');
   }
 
   try {

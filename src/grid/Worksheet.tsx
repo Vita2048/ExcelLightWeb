@@ -5,7 +5,7 @@ import {
 import type { BorderMode, BorderSegment } from '../core/formats/borders';
 import { mergeAt } from '../application/border-commands';
 import { drawGesture, hitBorder, type BorderHit, type DrawGesture } from './border-geometry';
-import { findCell, resolvedCellStyle, worksheetViewport, type CellBorder, type CellReference, type Coordinate, type DocumentId, type SheetDocument, type WorkbookName } from '../core/workbook';
+import { findCell, resolvedCellStyle, worksheetViewport, type CellBorder, type CellReference, type Coordinate, type DocumentId, type SheetDocument, type WorkbookDocument, type WorkbookName } from '../core/workbook';
 import type { PivotInteractiveOverlay } from '../calculation/pivot-engine';
 import { extentContains, lastColumn, lastRow, tableDesign } from '../core/workbook-names';
 import { filteredRows, headerLabel } from '../application/data-commands';
@@ -88,6 +88,7 @@ interface WorksheetProps {
   ) => void;
   readonly onPivotDrillDown?: (target: CellReference) => boolean;
   readonly figures?: readonly WorksheetFigure[];
+  readonly document?: WorkbookDocument;
   readonly pendingFigure?: { readonly ownerId: string; readonly figure: PythonFigure };
   readonly figureStatus?: { readonly ownerId: string; readonly message: string };
   readonly onFigurePlacement?: (ownerId: string, placement: FigurePlacement, original?: FigurePlacement) => void;
@@ -1160,6 +1161,7 @@ export function Worksheet(props: WorksheetProps) {
       </div>
       {((props.charts && props.charts.length > 0) || props.chartRangeHandle) && (
         <ChartOverlay
+          workbook={props.document}
           charts={props.charts ?? []}
           selectedChartId={props.selectedChartId}
           selectedElement={props.selectedChartElement}
@@ -1187,6 +1189,7 @@ export function Worksheet(props: WorksheetProps) {
           onOpenChangeChartType={props.onOpenChangeChartType}
           onOpenMoveChart={props.onOpenMoveChart}
           onOpenFormatPane={props.onOpenFormatChartPane}
+          onPivotFilter={props.onPivotFilter}
           onFocusGrid={focus}
         />
       )}

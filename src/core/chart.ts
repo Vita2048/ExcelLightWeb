@@ -283,6 +283,7 @@ export interface ChartDocument {
   readonly hiddenEmptyMode: ChartHiddenEmptyMode;
   readonly showHiddenCells: boolean;
   readonly hiddenCategories?: readonly number[];
+  readonly showFieldButtons?: boolean;
   readonly styleId: number;
   readonly paletteId: string;
   readonly chartAreaStyle?: ChartShapeStyle;

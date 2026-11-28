@@ -246,10 +246,12 @@ export function InsertChartsRibbon({
   onRecommendedCharts,
   onAllCharts,
   onInsertChart,
+  onInsertPivotChart,
 }: {
   readonly onRecommendedCharts: () => void;
   readonly onAllCharts: (category?: ChartDialogCategory) => void;
   readonly onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => void;
+  readonly onInsertPivotChart?: () => void;
 }) {
   return (
     <fieldset className="insert-charts-group">
@@ -272,6 +274,22 @@ export function InsertChartsRibbon({
           />
         ))}
       </div>
+      <button
+        type="button"
+        className="ribbon-command ribbon-large"
+        aria-label="PivotChart"
+        onClick={() => onInsertPivotChart?.()}
+      >
+        <svg className="ribbon-glyph" width={30} height={30} viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="3" width="14" height="14" fill="#1d222b" stroke="#9aa3b2" strokeWidth="1.2" />
+          <rect x="5" y="5" width="4" height="3" fill="#a5aab4" />
+          <rect x="11" y="5" width="4" height="3" fill="#a5aab4" />
+          <rect x="5" y="10" width="3" height="5" fill="#a5aab4" />
+          <rect x="11" y="12" width="4" height="9" fill="#4ea1ff" stroke="#1f4e8c" />
+          <rect x="16" y="9" width="5" height="12" fill="#f38c4e" stroke="#6c3a14" />
+        </svg>
+        PivotChart
+      </button>
       <button
         type="button"
         className="ribbon-launcher"

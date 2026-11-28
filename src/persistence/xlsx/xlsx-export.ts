@@ -52,6 +52,10 @@ export function inspectXlsxExport(document: WorkbookDocument): XlsxReport {
     report.add(exchangeCodes.pivots,
       'PivotTable definitions (pivotTableDefinition/pivotCache) are omitted from XLSX; materialized header/value cells and number formats are exported. Native .exlt retains live PivotTables.');
   }
+  if ((document.charts?.length ?? 0) > 0) {
+    report.add(exchangeCodes.charts,
+      'Charts are omitted from XLSX export. Native .exlt retains live charts.');
+  }
   if (document.sheets.some(sheet => sheet.cells.some(cell => cell.requiresExternalCalculation))) {
     report.add(exchangeCodes.unsupportedFormulas,
       'Unsupported formula sources/caches are retained without evaluation. Array/spill semantics are not exported; formula text is written as a scalar formula. Native .exlt retains external-calculation metadata.');

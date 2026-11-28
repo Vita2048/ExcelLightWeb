@@ -55,12 +55,18 @@ export interface CreatePivotInput {
 
 function revertPivotCellsOnSheet(document: WorkbookDocument, pivotId: DocumentId): WorkbookDocument {
   const pivots = (document.pivots ?? []).filter(item => item.id !== pivotId);
-  const { pivots: _prev, ...restDoc } = document;
+  const charts = (document.charts ?? []).filter(chart => !(chart.source.kind === 'pivot' && chart.source.pivotId === pivotId));
+  const { pivots: _prev, charts: _prevCharts, ...restDoc } = document;
   const sheets = document.sheets.map(sheet => {
     const cells = sheet.cells.filter(cell => !(cell.spillKind === 'pivot' && cell.spillOwner === pivotId));
     return cells.length === sheet.cells.length ? sheet : { ...sheet, cells };
   });
-  return { ...restDoc, sheets, ...(pivots.length > 0 && { pivots }) };
+  return {
+    ...restDoc,
+    sheets,
+    ...(pivots.length > 0 && { pivots }),
+    ...(charts.length > 0 && { charts }),
+  };
 }
 
 export function materializePivotDocument(

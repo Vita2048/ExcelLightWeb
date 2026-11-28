@@ -194,6 +194,7 @@ button:disabled { cursor: default; opacity: .5; }
 .chart-axis-line { stroke: #555e6d; stroke-width: 1.2; }
 .chart-axis-label { fill: #a7b0be; font-size: 11px; }
 .chart-title-text { fill: #e6ebf2; }
+.chart-title-hit { cursor: pointer; }
 .chart-legend-label { fill: #c8d0dc; font-size: 11px; }
 .chart-series-bar:hover, .chart-series-slice:hover, .chart-series-marker:hover { filter: brightness(1.15); }
 .chart-tooltip {
@@ -1767,7 +1768,50 @@ button:disabled { cursor: default; opacity: .5; }
 
 @media (forced-colors: active) {
   .chart-elements-side-submenu,
-  .ribbon-flyout.chart-colors-gallery .chart-palette-strip-btn.selected {
+  .ribbon-flyout.chart-colors-gallery .chart-palette-strip-btn.selected,
+  .pivot-chart-field-btn,
+  .pivot-chart-field-pill {
     border-color: Highlight;
   }
 }
+
+/* PivotChart on-chart interactive Field Buttons */
+.pivot-chart-field-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.pivot-chart-buttons-tl,
+.pivot-chart-buttons-tr,
+.pivot-chart-buttons-bl {
+  position: absolute;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: calc(50% - 10px);
+  pointer-events: auto;
+}
+.pivot-chart-buttons-tl { top: 6px; left: 8px; }
+.pivot-chart-buttons-tr { top: 6px; right: 8px; justify-content: flex-end; }
+.pivot-chart-buttons-bl { bottom: 6px; left: 8px; }
+.pivot-chart-field-pill,
+.pivot-chart-field-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  min-height: 22px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: rgba(24, 28, 35, 0.92);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pivot-chart-field-btn { cursor: pointer; }
+.pivot-chart-field-btn:hover { background: var(--raised); border-color: var(--accent); }
+.pivot-chart-field-btn.filtered { border-color: var(--accent); font-weight: 600; }
+.pivot-chart-field-pill.value-pill { color: var(--muted); }

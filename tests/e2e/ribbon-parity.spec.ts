@@ -282,7 +282,7 @@ test('contextual PivotTable Analyze and Design tabs appear only inside a PivotTa
   await expect(analyzeTab).toHaveAttribute('aria-selected', 'true');
   await expect(analyzeTab).toHaveCSS('color', 'rgb(110, 231, 183)');
   const analyzePanel = page.locator('.ribbon-panel:not([hidden])');
-  await expect(analyzePanel.locator('> fieldset > legend')).toHaveText(['PivotTable', 'Active Field', 'Data', 'Actions', 'Show']);
+  await expect(analyzePanel.locator('> fieldset > legend')).toHaveText(['PivotTable', 'Active Field', 'Data', 'Actions', 'Tools', 'Show']);
 
   const designTab = page.getByRole('tab', { name: 'Design', exact: true });
   await designTab.click();

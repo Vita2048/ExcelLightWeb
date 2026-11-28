@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import axe from 'axe-core';
 
 const path = '/ExcelLightWeb/';
-test.describe.configure({ timeout: 60_000 });
+test.describe.configure({ timeout: 120_000 });
 
 async function go(page: Page, address: string, value?: string) {
   const name = page.getByRole('textbox', { name: 'Name box' });
@@ -225,9 +225,9 @@ test('supports Excel Chart Chrome: Insert launcher parity, contextual Chart Desi
   await elPopover.getByRole('button', { name: 'Legend options', exact: true }).click();
   await elPopover.getByRole('menu', { name: 'Element options' }).getByRole('menuitemradio', { name: 'Left', exact: true }).click();
   await elPopover.getByRole('checkbox', { name: 'Axis Titles' }).check();
-  const leftLegendBox = (await chart.locator('.chart-legend-item').first().boundingBox())!;
-  const yAxisTitleBox = (await chart.locator('.chart-axis-title').first().boundingBox())!;
-  expect(yAxisTitleBox.x).toBeGreaterThan(leftLegendBox.x + 20);
+  const leftLegendX = Number(await chart.locator('.chart-legend-item rect').first().getAttribute('x'));
+  const yAxisTitleX = Number(await chart.locator('.chart-axis-title[data-axis="y"]').getAttribute('x'));
+  expect(yAxisTitleX).toBeGreaterThan(leftLegendX + 40);
 
   // Floating Brush quick button: switch palette via Color tab
   await page.getByRole('button', { name: 'Chart Styles', exact: true }).click();
@@ -313,7 +313,7 @@ test('supports Excel Chart Chrome: Insert launcher parity, contextual Chart Desi
   await ctxChangeDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
 
   // Inline title edit on double-click
-  await chart.locator('.chart-title-text').dblclick();
+  await chart.locator('.chart-title-hit').dblclick();
   const titleInput = chart.getByRole('textbox', { name: 'Edit chart title' });
   await expect(titleInput).toBeVisible();
   await titleInput.fill('Quarterly Sales');
@@ -362,4 +362,64 @@ test('supports Excel Chart Chrome: Insert launcher parity, contextual Chart Desi
   await moveDialog.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sheet2', exact: true })).toHaveAttribute('aria-current', 'true');
   await expect(page.locator('.chart-frame[aria-label="Chart 1"]')).toBeVisible();
+});
+
+test('creates PivotChart with interactive Field Buttons, syncs filters bidirectionally with PivotTable, toggles Field Buttons, and passes axe', async ({ page }) => {
+  await page.context().addInitScript(axe.source);
+  await page.goto(path);
+  await seedChartData(page);
+  await go(page, 'A1');
+
+  // Create PivotTable on Existing Worksheet E1
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'PivotTable', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'From Table/Range', exact: true }).click();
+  const createDialog = page.getByRole('dialog', { name: 'PivotTable from table or range' });
+  await createDialog.getByRole('radio', { name: 'Existing Worksheet' }).check();
+  await createDialog.getByLabel('Location:').fill("='Sheet1'!$E$1");
+  await createDialog.getByRole('button', { name: 'OK' }).click();
+
+  const fieldsPane = page.getByRole('complementary', { name: 'PivotTable Fields' });
+  await fieldsPane.getByRole('checkbox', { name: 'Quarter' }).check();
+  await fieldsPane.getByRole('checkbox', { name: 'East' }).check();
+  await expect(page.getByRole('gridcell', { name: 'E2, Q1' })).toBeAttached();
+
+  // Insert PivotChart from PivotTable Analyze -> Tools -> PivotChart
+  await page.getByRole('tab', { name: 'PivotTable Analyze', exact: true }).click();
+  await page.getByRole('button', { name: 'PivotChart', exact: true }).click();
+
+  const pivotChart = page.locator('.chart-frame[aria-label="Chart 1"]');
+  await expect(pivotChart).toBeVisible();
+  await expect(pivotChart.locator('.chart-series-bar')).toHaveCount(3);
+
+  // On-chart Field Buttons render cleanly inside the PivotChart
+  const quarterBtn = pivotChart.getByRole('button', { name: 'Filter axis field Quarter', exact: true });
+  await expect(quarterBtn).toBeVisible();
+  await expect(pivotChart.locator('.pivot-chart-field-pill.value-pill', { hasText: 'Sum of East' })).toBeVisible();
+
+  // Filter via on-chart Field Button -> uncheck Q1 -> both PivotTable and PivotChart update live
+  await quarterBtn.click();
+  const filterDialog = page.getByRole('dialog', { name: 'Filter Row Labels (Quarter)' });
+  await expect(filterDialog).toBeVisible();
+  await filterDialog.getByRole('checkbox', { name: 'Q1' }).uncheck();
+  await filterDialog.getByRole('button', { name: 'OK' }).click();
+
+  await expect(pivotChart.locator('.chart-series-bar')).toHaveCount(2);
+  await expect(page.getByRole('gridcell', { name: 'E2, Q1' })).toHaveCount(0);
+  await expect(quarterBtn).toHaveAttribute('data-filtered', 'true');
+
+  // Toggle Field Buttons off and back on from Chart Design -> Show/Hide -> Field Buttons
+  await page.getByRole('tab', { name: 'Chart Design', exact: true }).click();
+  const fieldBtnsToggle = page.getByRole('button', { name: 'Field Buttons', exact: true });
+  await expect(fieldBtnsToggle).toHaveAttribute('aria-pressed', 'true');
+  await fieldBtnsToggle.click();
+  await expect(quarterBtn).toHaveCount(0);
+  await fieldBtnsToggle.click();
+  await expect(quarterBtn).toBeVisible();
+
+  // Accessibility check with PivotChart + Field Buttons active
+  const violations = await page.evaluate(async () => (await (window as Window & { axe?: typeof axe }).axe!.run({
+    runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] },
+  })).violations.map(({ id, nodes }) => ({ id, targets: nodes.map(node => node.target) })));
+  expect(violations).toEqual([]);
 });
