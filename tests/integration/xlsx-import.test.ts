@@ -403,3 +403,22 @@ it('imports Excel Tables and worksheet/table-backed PivotTables cleanly and calc
   const saved = await saveNativePackage(document);
   expect(await loadNativePackage(saved)).toEqual(document);
 });
+
+it('treats empty <v></v> or <v/> elements on formula and numeric cells as missing cache or blank while still rejecting non-numeric text', async () => {
+  const pkg = await simplePackage(worksheetXml(
+    '<row r="1"><c r="A1"><v>10</v></c><c r="A2"><v></v></c></row>' +
+    '<row r="5"><c r="E5"><f>SUM(A1:A1)</f><v></v></c><c r="E6"><f>SUM(A1:A1)</f><v/></c></row>',
+  ));
+  const { document, report } = await importXlsx(pkg);
+  const sheet = document.sheets[0]!;
+  expect(cell(sheet, 1, 1)?.content).toEqual({ kind: 'number', value: 10 });
+  expect(cell(sheet, 1, 2)).toBeUndefined();
+  expect(cell(sheet, 5, 5)?.content).toEqual({ kind: 'formula', source: '=SUM(A1:A1)' });
+  expect(cell(sheet, 5, 5)?.cache).toBeUndefined();
+  expect(cell(sheet, 6, 5)?.content).toEqual({ kind: 'formula', source: '=SUM(A1:A1)' });
+  expect(cell(sheet, 6, 5)?.cache).toBeUndefined();
+  expect(report.has('missing-cache')).toBe(true);
+
+  const badPkg = await simplePackage(worksheetXml('<row r="1"><c r="A1"><v>not-a-number</v></c></row>'));
+  await expect(importXlsx(badPkg)).rejects.toThrow(/invalid numeric value\/cache/i);
+});

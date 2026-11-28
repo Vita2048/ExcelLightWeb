@@ -527,7 +527,7 @@ export function movePivotTableWithSheet(
   requireDocument(current, 'PivotTable no longer exists.');
   const reverted = revertPivotCellsOnSheet(basis.document, pivotId);
   if (input.newSheet) {
-    requireDocument(reverted.sheets.length < documentLimits.sheets, 'A workbook may contain at most 10 worksheets.');
+    requireDocument(reverted.sheets.length < documentLimits.sheets, `A workbook may contain at most ${documentLimits.sheets} worksheets.`);
     const newSheetId = makeId();
     const sheetName = nextAutoSheetName(reverted);
     const newSheet = emptySheet(newSheetId, sheetName);
@@ -603,7 +603,7 @@ export function createPivotTableWithSheet(
   makeId: IdFactory,
 ): { readonly command: StructureCommand; readonly sheetId: DocumentId; readonly pivotId: DocumentId } {
   if (input.newSheet) {
-    requireDocument(basis.document.sheets.length < documentLimits.sheets, 'A workbook may contain at most 10 worksheets.');
+    requireDocument(basis.document.sheets.length < documentLimits.sheets, `A workbook may contain at most ${documentLimits.sheets} worksheets.`);
     const used = new Set(basis.document.sheets.map(s => ordinalNameKey(s.name)));
     let n = basis.document.sheets.length + 1;
     while (used.has(ordinalNameKey(`Sheet${n}`))) n++;
@@ -647,7 +647,7 @@ export function drillDownPivotCell(
   const drill = extractPivotCellDrillDown(basis.document, pivot, target);
   if (!drill || drill.fields.length === 0) return undefined;
 
-  requireDocument(basis.document.sheets.length < documentLimits.sheets, 'A workbook may contain at most 10 worksheets.');
+  requireDocument(basis.document.sheets.length < documentLimits.sheets, `A workbook may contain at most ${documentLimits.sheets} worksheets.`);
   const newSheetId = makeId();
   const sheetName = nextAutoSheetName(basis.document);
   const cells: CellDocument[] = [];

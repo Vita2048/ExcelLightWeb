@@ -482,7 +482,7 @@ function readWorksheet(raw: Element, sheetId: DocumentId, sheetName: string, mer
       requiresExternal = requiresExternal || record.formula.kind === 'array' ||
         formulaNeedsExternalCalculation(source, tables, sheetId, record.row, record.column);
       const numeric = record.type === undefined || record.type === 'n' ? record.value : undefined;
-      if (numeric !== undefined) {
+      if (numeric !== undefined && numeric.trim().length > 0) {
         let value = parseInvariantNumber(numeric, 'XLSX contains an invalid numeric value/cache.');
         if (use1904 && dateFormatted) value += 1462;
         cache = { kind: 'number', value };
@@ -512,7 +512,7 @@ function readWorksheet(raw: Element, sheetId: DocumentId, sheetName: string, mer
       } else if (type === 'd') {
         report.add(exchangeCodes.dateSerial, 'Date values are stored as 1900 serial numbers plus their number format.');
         content = { kind: 'number', value: workspaceSerial(record.value ?? '') };
-      } else if (record.value !== undefined) {
+      } else if (record.value !== undefined && record.value.trim().length > 0) {
         let value = parseInvariantNumber(record.value, 'XLSX contains an invalid numeric value/cache.');
         if (use1904 && dateFormatted) value += 1462;
         content = { kind: 'number', value };

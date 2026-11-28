@@ -768,7 +768,7 @@ function validateCharts(document: WorkbookDocument, addId: (id: DocumentId) => v
 export function validateWorkbook(document: WorkbookDocument): void {
   requireDocument(document?.formatVersion === 1 && document.dateSystem === '1900', 'Unsupported document version or date system.');
   requireDocument(Array.isArray(document.sheets) && inRange(document.sheets.length, 1, limits.sheets),
-    'A workbook requires 1 to 10 sheets.');
+    `A workbook requires 1 to ${limits.sheets} sheets.`);
   const ids = new Set<DocumentId>();
   function addId(id: DocumentId): void {
     validateId(id);

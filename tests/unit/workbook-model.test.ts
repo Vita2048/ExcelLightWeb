@@ -17,7 +17,7 @@ const withCells = (cells: readonly CellDocument[]): WorkbookDocument => ({ ...bo
 
 describe('sparse workbook model', () => {
   it('accepts the sheet count and coordinate boundaries and rejects the next sheet', () => {
-    const sheets = Array.from({ length: 10 }, (_, index) => emptySheet(`s${index}`, `Sheet ${index}`));
+    const sheets = Array.from({ length: documentLimits.sheets }, (_, index) => emptySheet(`s${index}`, `Sheet ${index}`));
     const edge = { ...cell(0), row: documentLimits.rows, column: documentLimits.columns };
     expect(columnLetters(documentLimits.columns)).toBe('XFD');
     expect(worksheetViewport).toEqual({ rows: documentLimits.rows, columns: documentLimits.columns, address: 'A1:XFD1048576' });

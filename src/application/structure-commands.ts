@@ -71,7 +71,7 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
     }
     label = 'Move Sheet';
   } else {
-    requireDocument(sheets.length < documentLimits.sheets, 'The workbook already has the maximum number of worksheets.');
+    requireDocument(sheets.length < documentLimits.sheets, `The workbook already has the maximum number of worksheets (${documentLimits.sheets}).`);
     let n = 1;
     while (sheets.some(sheet => sameSheet(sheet.name, 'Sheet' + n))) n++;
     const name = 'Sheet' + n;

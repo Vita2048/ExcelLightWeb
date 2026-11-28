@@ -1,5 +1,6 @@
 export const documentLimits = Object.freeze({
-  sheets: 10, rows: 1_048_576, columns: 16_384, cells: 200_000, formulas: 10_000,
+  // Excel has no fixed worksheet cap (it is bounded only by available memory); this is a browser safety bound.
+  sheets: 1000, rows: 1_048_576, columns: 16_384, cells: 200_000, formulas: 10_000,
   formulaLength: 8192, textLength: 32767, sheetNameLength: 31, numberFormatLength: 128,
   names: 1000, pythonSourceBytes: 1024 * 1024,
 });
