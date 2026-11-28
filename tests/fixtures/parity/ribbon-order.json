@@ -5,7 +5,7 @@
   "tabs": ["File", "Home", "Insert", "Formulas", "Data", "View"],
   "panels": {
     "Home": ["Clipboard", "Font", "Alignment", "Number", "Cells", "Editing"],
-    "Insert": ["Tables"],
+    "Insert": ["Tables", "Charts"],
     "Formulas": ["Function Library", "Formula Auditing", "Defined Names", "Calculation", "Python"],
     "Data": ["Sort & Filter"],
     "View": ["Show", "Zoom", "Window"]
@@ -26,6 +26,10 @@
     { "tab": "Home", "trigger": "Sort & Filter", "items": ["Sort A to Z", "Sort Z to A", "Custom Sort...", "Filter", "Clear", "Reapply"] },
     { "tab": "Home", "trigger": "Find & Select", "items": ["Find...", "Replace..."] },
     { "tab": "Insert", "trigger": "PivotTable", "items": ["From Table/Range"] },
+    { "tab": "Insert", "trigger": "Insert Column or Bar Chart", "items": ["Clustered Column", "Stacked Column", "100% Stacked Column", "Clustered Bar", "Stacked Bar", "100% Stacked Bar", "More Column Charts..."] },
+    { "tab": "Insert", "trigger": "Insert Line or Area Chart", "items": ["Line", "Stacked Line", "100% Stacked Line", "Line with Markers", "Stacked Line with Markers", "100% Stacked Line with Markers", "Area", "Stacked Area", "100% Stacked Area", "More Line Charts..."] },
+    { "tab": "Insert", "trigger": "Insert Pie or Doughnut Chart", "items": ["Pie", "Pie of Pie", "Bar of Pie", "Doughnut", "More Pie Charts..."] },
+    { "tab": "Insert", "trigger": "Insert Scatter (X, Y) or Bubble Chart", "items": ["Scatter", "Scatter with Smooth Lines and Markers", "Scatter with Smooth Lines", "Scatter with Straight Lines and Markers", "Scatter with Straight Lines", "Bubble", "More Scatter Charts..."] },
     { "tab": "Formulas", "trigger": "AutoSum options", "iconlessItems": ["Average", "Count Numbers", "Max", "Min"], "items": ["Sum", "Average", "Count Numbers", "Max", "Min"] },
     { "tab": "Formulas", "trigger": "Recently Used", "textOnly": true, "items": ["SUM", "AVERAGE", "IF", "XLOOKUP", "VLOOKUP", "FILTER", "COUNT", "MAX", "SUMIF", "TEXTJOIN", "Insert Function..."] },
     { "tab": "Formulas", "trigger": "Financial", "textOnly": true, "items": ["DB", "DDB", "FV", "IPMT", "IRR", "NPER", "NPV", "PMT", "PPMT", "PV", "RATE", "SLN", "XIRR", "XNPV", "Insert Function..."] },

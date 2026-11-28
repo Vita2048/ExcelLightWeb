@@ -173,10 +173,58 @@ button:disabled { cursor: default; opacity: .5; }
   padding: 0; border: 1px solid var(--accent); border-radius: 3px; color: var(--text); background: var(--panel);
 }
 @media (forced-colors: active) {
-  .figure-placement.selected { outline-color: Highlight; }
-  .figure-handle, .figure-delete { border-color: ButtonText; color: ButtonText; background: ButtonFace; }
-  .figure-placement-preview { outline-color: Highlight; }
+  .figure-placement.selected, .chart-frame.selected { outline-color: Highlight; }
+  .figure-handle, .figure-delete, .chart-range-handle { border-color: ButtonText; color: ButtonText; background: ButtonFace; }
+  .figure-placement-preview, .chart-range-preview { outline-color: Highlight; border-color: Highlight; }
+  .chart-area-bg { fill: Canvas; stroke: CanvasText; }
+  .chart-axis-line { stroke: CanvasText; }
+  .chart-gridline { stroke: GrayText; }
+  .chart-title-text, .chart-axis-label, .chart-legend-label { fill: CanvasText; }
 }
+.worksheet-chart-layer { position: absolute; inset: 0; z-index: 2; overflow: hidden; pointer-events: none; }
+.chart-frame {
+  position: absolute; left: 0; top: 0; box-sizing: border-box; overflow: visible;
+  pointer-events: auto; cursor: move; will-change: transform; touch-action: none; border-radius: 4px;
+}
+.chart-frame.selected { outline: 2px solid var(--accent); outline-offset: -1px; z-index: 3; }
+.chart-frame.range-picking { pointer-events: none; }
+.chart-canvas-wrap { position: relative; width: 100%; height: 100%; }
+.chart-svg { display: block; width: 100%; height: 100%; user-select: none; }
+.chart-gridline { stroke: #2b313b; stroke-width: 1; }
+.chart-axis-line { stroke: #555e6d; stroke-width: 1.2; }
+.chart-axis-label { fill: #a7b0be; font-size: 11px; }
+.chart-title-text { fill: #e6ebf2; }
+.chart-legend-label { fill: #c8d0dc; font-size: 11px; }
+.chart-series-bar:hover, .chart-series-slice:hover, .chart-series-marker:hover { filter: brightness(1.15); }
+.chart-tooltip {
+  position: absolute; pointer-events: none; z-index: 5; transform: translate(-50%, -115%);
+  background: #0f1216; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px;
+  font-size: 12px; color: var(--text); white-space: nowrap; box-shadow: 0 4px 12px rgba(0, 0, 0, .55);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.chart-range-handle {
+  position: absolute; left: 0; top: 0; width: 10px; height: 10px; min-width: 0; min-height: 0; padding: 0;
+  margin-left: -5px; margin-top: -5px;
+  border: 2px solid var(--accent); background: #fff; border-radius: 1px;
+  pointer-events: auto; cursor: nwse-resize; z-index: 4;
+}
+.chart-range-preview {
+  position: absolute; pointer-events: none; border: 2px dashed var(--accent); box-sizing: border-box; z-index: 2;
+}
+.chart-context-menu { position: fixed; z-index: 40; min-width: 190px; }
+
+.insert-charts-group { position: relative; }
+.chart-ribbon-grid {
+  display: grid; grid-template-columns: repeat(2, auto); gap: 3px; align-items: center;
+}
+.chart-ribbon-trigger {
+  display: inline-flex; align-items: center; gap: 2px; padding: 3px 5px; min-height: 26px;
+}
+.ribbon-dialog-launcher {
+  align-self: flex-end; width: 16px; height: 16px; min-width: 0; min-height: 0; padding: 0;
+  font-size: 11px; line-height: 1; border-radius: 2px; color: var(--muted); background: transparent;
+}
+.ribbon-dialog-launcher:hover { background: var(--raised); color: var(--text); }
 .inline-editor-layer { position: absolute; overflow: hidden; pointer-events: none; }
 .inline-cell-editor { position: absolute; pointer-events: auto; }
 .inline-cell-input {
@@ -1306,6 +1354,111 @@ button:disabled { cursor: default; opacity: .5; }
 }
 .paste-dialog .pivot-options-check input[type='checkbox'] {
   width: 15px; height: 15px; margin: 0; flex: none; cursor: pointer;
+}
+
+.ribbon-flyout.chart-gallery-flyout { min-width: 176px; padding: 6px; }
+.ribbon-flyout.chart-gallery-flyout .chart-gallery-grid {
+  display: grid; grid-template-columns: repeat(3, 48px); gap: 4px; padding: 2px 4px 6px;
+}
+.ribbon-flyout.chart-gallery-flyout .chart-gallery-tile {
+  width: 48px; height: 44px; min-width: 0; min-height: 0; padding: 2px;
+  display: grid; place-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 3px; background: var(--top-field);
+}
+.ribbon-flyout.chart-gallery-flyout .chart-gallery-tile:hover,
+.ribbon-flyout.chart-gallery-flyout .chart-gallery-tile:focus-visible {
+  border-color: var(--accent); background: var(--raised);
+}
+.ribbon-flyout.chart-gallery-flyout .chart-thumb-glyph {
+  flex: 0 0 auto; width: 40px; height: 38px; border: none; background: transparent;
+}
+.ribbon-flyout.chart-gallery-flyout .chart-gallery-sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap;
+}
+.ribbon-flyout.chart-gallery-flyout .chart-gallery-more { width: 100%; }
+
+.paste-dialog.insert-chart-dialog {
+  width: min(780px, 95vw); max-width: none;
+}
+.paste-dialog.insert-chart-dialog > form { display: flex; flex-direction: column; gap: 10px; }
+.paste-dialog.insert-chart-dialog .insert-chart-tabs {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--border);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-tabs button {
+  padding: 6px 14px; min-height: 30px; border: 1px solid transparent; border-bottom: none;
+  border-radius: 4px 4px 0 0; background: transparent; color: var(--muted);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-tabs button.active {
+  background: var(--raised); border-color: var(--border); color: var(--text); font-weight: 600;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-body {
+  display: grid; grid-template-columns: 185px 1fr; gap: 14px; min-height: 330px; align-items: stretch;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-recommended-list,
+.paste-dialog.insert-chart-dialog .insert-chart-categories {
+  display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 350px;
+  border: 1px solid var(--border); border-radius: 4px; padding: 6px; background: var(--top-field);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-rec-item,
+.paste-dialog.insert-chart-dialog .insert-chart-cat-item {
+  display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 8px; min-height: 30px;
+  border-radius: 3px; border: 1px solid transparent; background: transparent; color: var(--text);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-cat-item:hover,
+.paste-dialog.insert-chart-dialog .insert-chart-rec-item:hover {
+  background: var(--panel);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-rec-item small {
+  display: block; color: var(--muted); font-size: 11px;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-rec-item.selected,
+.paste-dialog.insert-chart-dialog .insert-chart-cat-item.selected {
+  background: var(--raised); border-color: var(--accent);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-col {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-subtypes {
+  display: flex; flex-wrap: wrap; gap: 6px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-subtype-btn {
+  width: 54px; height: 48px; min-width: 0; min-height: 0; padding: 4px;
+  display: grid; place-items: center; overflow: visible;
+  border-radius: 4px; border: 1px solid transparent; background: var(--top-field);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-subtype-btn:hover {
+  border-color: var(--border); background: var(--raised);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-subtype-btn.selected {
+  border-color: var(--accent); background: var(--raised); box-shadow: inset 0 0 0 1px var(--accent);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-pane {
+  flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-label {
+  font-size: 16px; font-weight: 500; color: var(--text);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: stretch;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-single {
+  display: grid; grid-template-columns: minmax(0, 380px);
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-card {
+  padding: 6px; min-width: 0; min-height: 0; border: 2px solid var(--border); border-radius: 4px;
+  background: var(--top-field); display: flex; align-items: center; justify-content: center;
+}
+.paste-dialog.insert-chart-dialog .insert-chart-preview-card.selected {
+  border-color: var(--accent); background: var(--panel);
+}
+@media (forced-colors: active) {
+  .paste-dialog.insert-chart-dialog .insert-chart-subtype-btn.selected,
+  .paste-dialog.insert-chart-dialog .insert-chart-cat-item.selected,
+  .paste-dialog.insert-chart-dialog .insert-chart-rec-item.selected,
+  .paste-dialog.insert-chart-dialog .insert-chart-preview-card.selected,
+  .ribbon-flyout.chart-gallery-flyout .chart-gallery-tile:focus-visible {
+    border-color: Highlight;
+  }
 }
 
 

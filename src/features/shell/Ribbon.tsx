@@ -17,6 +17,9 @@ import type { FormatTab } from '../formatting/FormatCellsDialog';
 import type { AppearancePatch } from '../../core/formats/appearance';
 import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
+import type { ChartType } from '../../core/chart';
+import { InsertChartsRibbon } from '../charts/InsertChartsRibbon';
+import type { CoreChartCategoryTab } from '../charts/chart-catalog';
 import { TableDesignRibbon } from '../tables/TableDesignRibbon';
 import { PivotAnalyzeRibbon, type PivotAnalyzeRibbonProps } from '../pivot/PivotAnalyzeRibbon';
 import { PivotDesignRibbon } from '../pivot/PivotDesignRibbon';
@@ -72,6 +75,9 @@ interface RibbonProps {
   readonly onTableChangeDesign?: (patch: Partial<TableDesign>) => void;
   readonly onTableClick?: () => void;
   readonly onPivotTableClick?: () => void;
+  readonly onInsertChart?: (chartType: ChartType) => void;
+  readonly onRecommendedCharts?: () => void;
+  readonly onAllCharts?: (category?: CoreChartCategoryTab) => void;
   readonly pivotRibbon?: PivotAnalyzeRibbonProps & {
     readonly onUpdateLayout: (patch: Partial<Omit<PivotTableDocument, 'id' | 'extent'>>) => void;
   };
@@ -111,7 +117,7 @@ function AutoSum({ onEdit }: { onEdit: RibbonProps['onEdit'] }) {
 
 export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBackstage, onAlign, onMerge, merged, view, onView, onZoomToSelection, onZoomDialog, frozen, onFreeze, onEdit, onStructure, calculationMode,
   onCalculationMode, onCalculate, pythonOpen, onPython, recentFunctions, onInsertFunction, onOpenInsertFunctionDialog, cell, style = cell?.style, onNumberFormat, onAppearance, onAppearanceError, onFormatDialog, painter, onPainter, borders,
-  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, pivotRibbon, onNameManagerClick, onDefineNameClick,
+  activeTable, onTableRename, onTableResize, onTableChangeDesign, onTableClick, onPivotTableClick, onInsertChart, onRecommendedCharts, onAllCharts, pivotRibbon, onNameManagerClick, onDefineNameClick,
   filter, onSort, onToggleFilter, onClearFilter, onReapplyFilter, onFind, onReplace }: RibbonProps) {
   const [active, setActive] = useState<string>('Home');
   const [trackedTableId, setTrackedTableId] = useState<string | undefined>(undefined);
@@ -268,18 +274,25 @@ export const Ribbon = memo(function Ribbon({ inert, fileBackstageOpen, onFileBac
               onUpdateLayout={pivotRibbon.onUpdateLayout}
             />
           ) : name === 'Insert' ? (
-            <fieldset>
-              <legend>Tables</legend>
-              <RibbonFlyout
-                label="PivotTable"
-                icon="PivotTable"
-                large
-                items={[{ label: 'From Table/Range', icon: 'Table', select: onPivotTableClick ?? (() => {}) }]}
+            <>
+              <fieldset>
+                <legend>Tables</legend>
+                <RibbonFlyout
+                  label="PivotTable"
+                  icon="PivotTable"
+                  large
+                  items={[{ label: 'From Table/Range', icon: 'Table', select: onPivotTableClick ?? (() => {}) }]}
+                />
+                <button type="button" className="ribbon-command ribbon-large" onClick={onTableClick}>
+                  <RibbonGlyph name="Table" size={32} />Table
+                </button>
+              </fieldset>
+              <InsertChartsRibbon
+                onRecommendedCharts={onRecommendedCharts ?? (() => {})}
+                onAllCharts={onAllCharts ?? (() => {})}
+                onInsertChart={onInsertChart ?? (() => {})}
               />
-              <button type="button" className="ribbon-command ribbon-large" onClick={onTableClick}>
-                <RibbonGlyph name="Table" size={32} />Table
-              </button>
-            </fieldset>
+            </>
           ) : name === 'View' ? <>
             <fieldset>
               <legend>Show</legend><div className="ribbon-stack view-checks">

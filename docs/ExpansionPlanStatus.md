@@ -18,22 +18,24 @@ Live status tracker for [ExpansionPlan.md](ExpansionPlan.md). Update after every
 | **2.3** | Compact/Outline/Tabular layouts, expand/collapse `+/-`, in-sheet filters/sort & Show Details drill-down | Done | `npm run check` (53/53 files: 1716 passed, 2 skipped, 0 failed; `pivot-engine` 7/7, `pivot-commands` 4/4; `vite build` 72 files, 44.31 MiB) + Chromium Playwright (`pivot-tables.spec.ts` 4/4 + `ribbon-parity.spec.ts` 5/5 = 9/9 passed) | 2026-11-27 |
 | **2.4** | Contextual `PivotTable Analyze` & `Design` ribbon tabs, style options & PivotTable styles | Done | `npm run check` (53/53 files: 1719 passed, 2 skipped, 0 failed; `pivot-engine` 9/9, `pivot-commands` 5/5; `vite build` 72 files, 44.35 MiB) + Chromium Playwright (`pivot-tables.spec.ts` 5/5 + `ribbon-parity.spec.ts` 6/6 = 11/11 passed) | 2026-11-27 |
 | **2.5** | `GETPIVOTDATA`, mixed recalc propagation, XLSX materialized boundary & Phase 2 completion gate | Done | `npm run check` (53/53 files: 1741 passed, 2 skipped, 0 failed; `vite build` 72 files, 44.37 MiB) + Excel 16.0.17932 `GETPIVOTDATA` oracle (20/20 passed) + `test:performance` (6/6) + Chromium full e2e (108/108) + WebKit Pivot/Ribbon/Formulas (14/14 with `--timeout=60000` on `formulas.spec.ts`) + `test:worksheet` (12/12 across Chromium/Firefox/WebKit) | 2026-11-27 |
-| **Phase 3** | Charts — Excel variety *(detail sprints after Phase 2)* | Planned (detail after prior phase) | — | — |
+| **3.1** | Chart core model, data binding (`range`/`A1#`/`table`/`pivot`), structural rewrites & `.exlt` v1 persistence | Done | `npm run check` (55/55 files: 1751 passed, 2 skipped, 0 failed; `chart-model` 5/5, `chart-commands` 3/3; `vite build` 72 files, 44.41 MiB) | 2026-11-28 |
+| **3.2** | Core 2D chart engine, floating worksheet overlay & `Insert → Charts` Excel UI | Done | `npm run check` (56/56 files: 1755 passed, 2 skipped, 0 failed; `chart-layout` 4/4; `vite build` 72 files, 44.48 MiB) + Chromium Playwright (`charts.spec.ts` 1/1 + `ribbon-parity.spec.ts` 6/6 = 7/7 passed) | 2026-11-28 |
+| **3.3** | Combo, Statistical, Hierarchy, Financial, Radar & analytics overlays | Planned (next) | — | — |
+| **3.4** | Contextual `Chart Design` & `Format` tabs, `+`/Brush/Funnel buttons, dialogs & docked `Format` pane | Planned | — | — |
+| **3.5** | PivotCharts, OOXML XLSX chart boundary & Phase 3 completion gate | Planned | — | — |
 | **Phase 4** | Remaining Long-Tail Excel Functions *(detail waves after Phase 1/3)* | Planned (detail after prior phase) | — | — |
 
 ---
 
 ## Latest Verification Ledger
 
-- **Date**: 2026-11-28 (Filter `isCurrentAuthored` background-recalc race fix + `worksheet.spec.ts` 60s timeout)
+- **Date**: 2026-11-28 (Sprint 3.2 — Core 2D chart engine, floating worksheet overlay & `Insert → Charts` Excel UI)
 - **Excel Oracle Build Version**: Excel `16.0` build `17932` (`smoke-excel.json`, `dynamic-arrays.json`, `logical-info.json`, `lookup.json`, `shaping.json`, `math.json`, `text.json`, `datetime.json`, `stats-financial.json`, `getpivotdata.json`)
 - **Commands Run**:
-  - `npm run check` (`tsc --noEmit -p tsconfig.model.json && tsc --noEmit`, `vitest run`, `vite build` + `finalize-static-build.mjs`) -> exit 0 (`53/53` Vitest files: `1743` passed, `0` failed, `2` pre-existing skipped in `smoke-excel.json`; `72` files, `44.39 MiB` uncompressed / `33.63 MiB` gzip).
-  - `npx playwright test tests/e2e/data-sort-filter.spec.ts --project=chromium --repeat-each=3` -> exit 0 (`12/12` passed).
-  - `npx playwright test tests/e2e/worksheet.spec.ts --project=chromium` -> exit 0 (`10/10` passed).
-  - `npx playwright test tests/e2e/worksheet.spec.ts --project=firefox` -> exit 0 (`10/10` passed).
-- **Pass / Fail / Skipped**: `npm run check` `53/53` files (`1743` passed, `0` failed, `2` skipped); Chromium `data-sort-filter` (`repeat-each=3`) `12/12` passed; Chromium `worksheet` `10/10` passed; Firefox `worksheet` `10/10` passed.
-- **Unrun Since Last Code Edit**: `npm run test:performance`, remaining Chromium/Firefox/WebKit E2E specs. Prior Sprint 2.5 baseline on 2026-11-27 passed `test:performance` (`6/6`), `test:worksheet` (`12/12`), and Chromium full E2E (`108/108`).
+  - `npm run check` (`tsc --noEmit -p tsconfig.model.json && tsc --noEmit`, `vitest run`, `vite build` + `finalize-static-build.mjs`) -> exit 0 (`56/56` Vitest files: `1755` passed, `0` failed, `2` pre-existing skipped in `smoke-excel.json`; `72` files, `44.48 MiB` uncompressed / `33.65 MiB` gzip).
+  - `npx playwright test tests/e2e/charts.spec.ts tests/e2e/ribbon-parity.spec.ts --project=chromium` -> exit 0 (`7/7` passed: `charts.spec.ts` `1/1`, `ribbon-parity.spec.ts` `6/6`).
+- **Pass / Fail / Skipped**: `npm run check` `56/56` files (`1755` passed, `0` failed, `2` skipped); Chromium `charts.spec.ts` + `ribbon-parity.spec.ts` `7/7` passed.
+- **Unrun Since Last Code Edit**: `npm run test:performance`, remaining Playwright specs (`test:e2e`, `test:worksheet`) across Chromium/Firefox/WebKit. Prior Sprint 2.5 baseline on 2026-11-27 passed `test:performance` (`6/6`), `test:worksheet` (`12/12`), and Chromium full E2E (`108/108`).
 
 ---
 

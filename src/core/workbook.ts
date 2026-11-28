@@ -165,6 +165,7 @@ export interface PythonBlock {
   readonly placements?: readonly FigurePlacement[];
 }
 
+import type { ChartDocument } from './chart';
 import type { PivotTableDocument } from './pivot';
 
 export type SpillKind = 'python' | 'formula' | 'pivot';
@@ -203,6 +204,7 @@ export interface WorkbookDocument {
   readonly sheets: readonly SheetDocument[];
   readonly names: readonly WorkbookName[];
   readonly pivots?: readonly PivotTableDocument[];
+  readonly charts?: readonly ChartDocument[];
 }
 
 export function emptySheet(id: DocumentId, name: string): SheetDocument {

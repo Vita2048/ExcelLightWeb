@@ -15,7 +15,13 @@ import type { Axis } from '../core/axis-edit';
 import { RowMask } from '../core/row-mask';
 import type { AfterEditKey } from '../features/editing/useWorksheetEditing';
 import { drawWorksheet, type GridViewport } from './draw-worksheet';
+import type { ChartPlacement } from '../core/chart';
 import type { FigurePlacement, PythonFigure } from '../core/workbook';
+import {
+  ChartOverlay,
+  type ChartRangeHandleConfig,
+  type WorksheetChartItem,
+} from '../features/charts/ChartOverlay';
 import { figureLogicalRect, figurePlacementFromRect, figureScreenRect, logicalPoint,
   type FigureRect } from './figure-geometry';
 import drawBorderCursor from './cursors/draw-border.svg';
@@ -85,6 +91,12 @@ interface WorksheetProps {
   readonly onFigurePlacement?: (ownerId: string, placement: FigurePlacement, original?: FigurePlacement) => void;
   readonly onFigureDelete?: (placementId: string) => void;
   readonly onFigureCancel?: () => void;
+  readonly charts?: readonly WorksheetChartItem[];
+  readonly selectedChartId?: DocumentId;
+  readonly chartRangeHandle?: ChartRangeHandleConfig;
+  readonly onSelectChart?: (chartId: DocumentId | undefined) => void;
+  readonly onChartPlacement?: (chartId: DocumentId, placement: Partial<ChartPlacement>) => void;
+  readonly onChartDelete?: (chartId: DocumentId) => void;
   readonly ref: Ref<WorksheetHandle>;
 }
 
@@ -634,6 +646,7 @@ export function Worksheet(props: WorksheetProps) {
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (event.button !== 0 || !event.isPrimary) return;
     setSelectedFigureId(undefined);
+    props.onSelectChart?.(undefined);
     const node = event.currentTarget;
     const bounds = node.getBoundingClientRect();
     const x = event.clientX - bounds.left;
@@ -1134,6 +1147,29 @@ export function Worksheet(props: WorksheetProps) {
           </>;
         })()}
       </div>
+      {((props.charts && props.charts.length > 0) || props.chartRangeHandle) && (
+        <ChartOverlay
+          charts={props.charts ?? []}
+          selectedChartId={props.selectedChartId}
+          rangePicking={!!props.rangePicking}
+          rows={rows}
+          columns={columns}
+          scale={scale}
+          scrollX={view.x}
+          scrollY={view.y}
+          headerLeft={left}
+          headerTop={top}
+          scrollContainer={() => scroll.current}
+          scrollOrigin={scrollOrigin}
+          cellBounds={cellBounds}
+          pointAt={(x, y) => pointAt(x, y, 'cells')}
+          chartRangeHandle={props.chartRangeHandle}
+          onSelectChart={props.onSelectChart}
+          onChartPlacement={props.onChartPlacement}
+          onChartDelete={props.onChartDelete}
+          onFocusGrid={focus}
+        />
+      )}
       {guide && <div ref={guideRef} aria-hidden="true" className={'dimension-guide ' + guide.axis}
         style={{ transform: guide.axis === 'row' ? `translate3d(0, ${guide.offset}px, 0)` : `translate3d(${guide.offset}px, 0, 0)` }} />}
       {editRow && editColumn && <div className="inline-editor-layer" style={{

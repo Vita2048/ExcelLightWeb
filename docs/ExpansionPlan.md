@@ -9,8 +9,8 @@ Live sprint progress, verification counts, and active risks live in [ExpansionPl
 ## 1. Phase Overview
 
 1. **Phase 1 — Formula Engine + Core Functions** *(Complete; Section 4)*: Pure TypeScript engine (`src/calculation`) with dynamic array spilling, `LET`/`LAMBDA`, structured table references, 3D references, Windows Excel COM differential oracle (`16.0.17932`), 225 implemented functions, Function Library ribbon & parameter dialogs, and F2 color-coded range highlights.
-2. **Phase 2 — PivotTables** *(Next; detailed in Section 5)*: Core immutable PivotTable model, aggregation engine, Insert → PivotTable dialog, docked dark PivotTable Fields side pane, grid rendering, in-sheet filter/sort dropdowns, contextual `PivotTable Analyze` & `Design` ribbon tabs, `GETPIVOTDATA`, and `.exlt`/XLSX handling.
-3. **Phase 3 — Charts (Full Excel Variety)** *(Planned; detail after Phase 2)*: Floating interactive charts bound to ranges, Tables, dynamic spills, and PivotTables, with Format Chart / Select Data side panes and dark-theme parity across Excel's chart families.
+2. **Phase 2 — PivotTables** *(Complete; Section 5)*: Core immutable PivotTable model, aggregation engine, Insert → PivotTable dialog, docked dark PivotTable Fields side pane, grid rendering, in-sheet filter/sort dropdowns, contextual `PivotTable Analyze` & `Design` ribbon tabs, `GETPIVOTDATA`, and `.exlt`/XLSX handling.
+3. **Phase 3 — Charts (Full Excel Variety)** *(Next; detailed in Section 6)*: Floating interactive charts bound to ranges, Tables, dynamic spills, and PivotTables, with Format Chart / Select Data side panes and dark-theme parity across Excel's chart families.
 4. **Phase 4 — Remaining Long-Tail Excel Functions** *(Planned; can batch after Phase 1)*: Remaining ~300+ Excel functions in categorized waves verified against the Excel COM oracle.
 
 ### Permanent Formula Exclusions
@@ -169,4 +169,76 @@ All PivotTable UI flows follow desktop Excel conventions adapted to ExcelLightWe
   - Export materialized PivotTable header/value cells and number formats cleanly so workbooks open accurately in desktop Excel without executing scripts, while adding explicit reviewed XLSX loss notices on PivotTable import/export (`pivotTableDefinition` not round-tripped natively).
 - **Phase 2 Completion Gate**:
   - Run `npm run check`, Excel COM `GETPIVOTDATA` oracle fixtures, `npm run test:performance` (verify PivotTable refresh & 10k-row aggregation latency), `npm run test:e2e`, and `npm run test:worksheet`.
+  - Update [Features.md](Features.md), [Architecture.md](Architecture.md), [Known-Issues.md](Known-Issues.md), and [ExpansionPlanStatus.md](ExpansionPlanStatus.md).
+
+---
+
+## 6. Phase 3 Detailed Sprints: Charts (Full Excel Variety, Excel UI)
+
+All Chart UI flows follow desktop Excel conventions adapted to `ExcelLightWeb`'s dark palette, forced-colors accessibility, React/SVG/Canvas split, and session command transactions — **exposing only controls that are backed by real implementation** (no disabled/placeholder 3-D Map / Filled Map requiring external tile services, 3-D Wireframe Surface, Power BI, or fake shape/SmartArt controls). Excel screenshots of Charts ribbons, dialogs, floating quick-buttons, and the Format task pane lock the exact layout and labels below before UI implementation.
+
+### Sprint 3.1 — Chart Core Model, Data Binding, Reference Rewrites & `.exlt` v1 Persistence
+- **Core model (`src/core/chart.ts`, `src/core/workbook.ts`)**:
+  - Immutable `ChartDocument` definitions on `WorkbookDocument.charts`: stable ID, unique case-insensitive name, target `sheetId`, cell-anchored floating geometry (anchor cell, pixel offsets, width/height, move/size placement mode, z-index), chart type/subtype across all Excel families, source range / structured Table / dynamic spill (`A1#`) / PivotTable binding, `seriesBy` (`columns` | `rows`), `ChartSeries[]` (name, categories, values, X/Y/bubble size, secondary axis, per-series combo type, per-point overrides such as Waterfall `isTotal` or Pie explosion), `ChartElements` (title, axes, axis titles, gridlines, legend, data labels, data table, error bars, trendlines), `hiddenEmptyMode` (`gaps` | `zero` | `connect`), `showHiddenCells`, and dark-adapted `styleId` / `paletteId`.
+- **Pure data extraction & series inference (`src/charts/chart-data.ts`)**:
+  - Resolves cell ranges, named Tables (auto-expanding on Table resize), `A1#` dynamic spills, and PivotTables, honoring cell number formats, hidden/filtered rows, and Excel's row/column orientation heuristic.
+- **Structural reference rewrites (`src/core/formula-references.ts`, `src/application/structure-commands.ts`)**:
+  - Rewrite chart source/series/category/title references via the existing parsed reference engine across row/column insert/delete, sheet rename/copy/delete, and Table rename.
+- **Session commands & persistence (`src/application/chart-commands.ts`, `src/persistence/native/`)**:
+  - Atomic session commands (`create-chart`, `update-chart`, `move-resize-chart`, `reorder-chart`, `delete-chart`, `move-chart-sheet`) with full undo/redo and additive `.exlt` v1 serialization/validation without breaking existing `.exlt` workbooks.
+- **Verification**: Unit tests for model invariants, series inference, hidden/empty handling, structural rewrites, and `.exlt` v1 round-trip + `npm run check`.
+
+### Sprint 3.2 — Core 2D Chart Engine, Floating Worksheet Overlay & `Insert → Charts` Excel UI
+- **Pure layout & dark-theme SVG renderer (`src/charts/layout/`, `src/features/charts/ChartCanvas.tsx`)**:
+  - Pure TypeScript scale/tick/auto-bounds/layout engine with zero DOM dependencies + crisp dark-theme and forced-colors SVG renderer zoom-aware at 10–400% with interactive hover tooltips, live recalculation redraw, and **Save as Picture (PNG/SVG)**.
+- **Core Excel 2D chart families**:
+  - **Column** (Clustered, Stacked, 100% Stacked).
+  - **Bar** (Clustered, Stacked, 100% Stacked).
+  - **Line** (Line, Stacked, 100% Stacked, each with/without Markers).
+  - **Area** (Area, Stacked, 100% Stacked).
+  - **Pie & Doughnut** (Pie, Doughnut, Pie of Pie, Bar of Pie).
+  - **X Y (Scatter) & Bubble** (Scatter, Smooth/Straight Lines with/without Markers, Bubble).
+- **Floating worksheet overlay (`src/features/charts/ChartOverlay.tsx`)**:
+  - 8 resize handles with directional cursors, free drag, keyboard arrow nudge, `Delete` to remove (undoable), and Excel's on-sheet colored range highlights (Categories, Series Name, Values) with draggable corner handles to resize source ranges live.
+- **Excel `Insert → Charts` UI (`src/features/shell/Ribbon.tsx`, `src/features/charts/InsertChartDialog.tsx`)**:
+  - 3×3 category flyout grid matching desktop Excel + `Recommended Charts` / `All Charts` modal dialog with smart recommendations, left category list, top subtype icons, live dark preview of selected data, and `OK` / `Cancel`.
+- **Verification**: Unit tests for axis auto-scaling, stacked/100% math, and hit-testing; Playwright Chromium journeys inserting, dragging, resizing, range-handle-editing, and deleting charts + `tests/e2e/ribbon-parity.spec.ts` update + `npm run check`.
+
+### Sprint 3.3 — Full Excel Chart Variety: Combo, Statistical, Hierarchy, Financial, Radar & Analytics Overlays
+- **Remaining Excel chart families (`src/charts/layout/`, `src/features/charts/renderers/`)**:
+  - **Combo**: Clustered Column – Line, Clustered Column – Line on Secondary Axis, Stacked Area – Clustered Column, and Custom Combination with per-series type & dual synchronized Y-axes.
+  - **Waterfall**: Increase/Decrease/Total bars, connector lines, and per-point `Set as Total`.
+  - **Funnel**: proportional horizontal stages.
+  - **Histogram & Pareto**: Auto / Bin Width / Bin Count / Overflow / Underflow bins; Pareto sorted bars + cumulative `%` secondary axis.
+  - **Box & Whisker**: Exclusive/Inclusive quartile calculation matching `QUARTILE.EXC`/`QUARTILE.INC`, median line, mean marker & line, inner points, and 1.5×IQR outliers.
+  - **Hierarchy**: **Treemap** (squarified multi-level headers) and **Sunburst** (concentric radial rings).
+  - **Stock**: High-Low-Close (HLC), Open-High-Low-Close (OHLC), Volume-HLC, Volume-OHLC.
+  - **Radar**: Radar, Radar with Markers, Filled Radar.
+- **Analytical overlays (`src/charts/analytics.ts`)**:
+  - **Trendlines**: Linear, Exponential, Logarithmic, Polynomial (order 2–6), Power, Moving Average; forecast forward/backward, set intercept, display equation & $R^2$.
+  - **Error Bars**: Fixed, Percentage, Standard Deviation, Standard Error, Custom; Both/Plus/Minus, Cap/No Cap.
+- **Verification**: Unit tests & Excel COM oracle checks for Histogram binning, Box & Whisker quartiles, and Trendline regressions/$R^2$; Playwright rendering & interaction tests across all chart families + `npm run check`.
+
+### Sprint 3.4 — Excel Chart Chrome: Contextual `Chart Design` & `Format` Tabs, Floating `+`/Brush/Funnel Buttons, Dialogs & Docked `Format` Pane
+- **Three floating chart-edge quick buttons (`src/features/charts/ChartQuickButtons.tsx`)**:
+  - **`+` (Chart Elements)** checklist with `>` submenus contextually filtered per chart type (Axes, Axis Titles, Chart Title, Data Labels, Data Table, Error Bars, Gridlines, Legend, Trendline).
+  - **Brush (`Chart Styles`)** (`Style` + `Color` tabs with Colorful & Monochromatic palettes).
+  - **Funnel (`Chart Filters`)** (`Values` Series/Category checkboxes + `Apply` + `Select Data...`, `Names` tab).
+- **Contextual `Chart Design` & `Format` ribbon tabs (`src/features/charts/ChartDesignRibbon.tsx`, `ChartFormatRibbon.tsx`)**:
+  - Shown when a chart is selected (with per-chart tab memory and prior-tab restoration on exit):
+  - **`Chart Design`**: `Chart Layouts` (`Add Chart Element`, `Quick Layout`), `Chart Styles` (`Change Colors`, `Chart Styles` gallery), `Data` (`Switch Row/Column`, `Select Data`), `Type` (`Change Chart Type`), `Location` (`Move Chart`).
+  - **`Format`**: `Current Selection` (element dropdown, `Format Selection`, `Reset to Match Style`), `Shape Styles` (`Shape Fill`, `Shape Outline`), `Arrange` (`Bring Forward`/`To Front`, `Send Backward`/`To Back`), `Size` (`Height`, `Width`).
+- **Excel modal dialogs (`src/features/charts/ChartDialogs.tsx`)**:
+  - **`Select Data Source`** (range picker, `Switch Row/Column`, Series Add/Edit/Remove/Reorder, Category Axis Labels Edit, `Hidden and Empty Cells` sub-dialog), **`Change Chart Type`** (including `Combo` per-series table), and **`Move Chart`** (`Object in:` sheet selector).
+- **Docked dark `Format <Element>` side pane (`src/features/charts/FormatChartPane.tsx`)**:
+  - Element switcher dropdown, `Fill & Line` / `Size & Properties` / `<Element> Options` icon tabs, and full live controls for Chart Area, Plot Area, Series (overlap, gap width, secondary axis, pie explosion/hole, binning, quartiles, Waterfall `Set as Total`), Axis (min/max bounds, major/minor units, log scale, reverse order, display units, ticks, number format), Data Labels, Legend, and Trendline; plus direct chart-element click selection and inline editing/cell-binding (`=Sheet1!$A$1`) for titles.
+- **Verification**: Keyboard/focus/axe accessibility, forced-colors, `tests/fixtures/parity/ribbon-order.json` & `tests/e2e/ribbon-parity.spec.ts`, and Playwright journeys exercising `+`/Brush/Funnel, dialogs, contextual ribbons, and the docked Format pane.
+
+### Sprint 3.5 — PivotCharts, OOXML XLSX Chart Boundary & Phase 3 Completion Gate
+- **PivotCharts (`src/charts/pivot-chart.ts`, `src/features/charts/PivotChartFieldButtons.tsx`)**:
+  - `Insert → Charts → PivotChart` and `PivotTable Analyze → PivotChart` create a chart bound to a `PivotTableDocument` with bidirectional sync and toggleable on-chart **Field Buttons** (Report Filter / Axis / Legend filter & sort dropdowns).
+- **XLSX OOXML chart interchange (`src/persistence/xlsx/xlsx-charts.ts`)**:
+  - Import standard OOXML `xl/drawings/drawing*.xml` + `xl/charts/chart*.xml` for supported 2D chart types into live `ChartDocument`s with reviewed loss reporting for unsupported 3D/`chartEx`/drawing shapes; export continues to report omitted OOXML chart parts in the reviewed loss report (native `.exlt` v1 remains lossless).
+- **Phase 3 Completion Gate**:
+  - Run `npm run check`, Excel COM analytics/quartile/trendline oracle fixtures, `npm run test:performance`, `npm run test:e2e`, and `npm run test:worksheet`.
   - Update [Features.md](Features.md), [Architecture.md](Architecture.md), [Known-Issues.md](Known-Issues.md), and [ExpansionPlanStatus.md](ExpansionPlanStatus.md).

@@ -1,3 +1,4 @@
+import type { ChartPlacement } from '../core/chart';
 import type { FigurePlacement } from '../core/workbook';
 import { clamp, type GridAxis } from './grid-geometry';
 
@@ -6,6 +7,69 @@ export interface FigureRect {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+export function chartLogicalRect(
+  placement: ChartPlacement,
+  rows: GridAxis,
+  columns: GridAxis,
+  scale: number,
+): FigureRect | undefined {
+  const row = rows.trackAtOrAfter(placement.row);
+  const column = columns.trackAtOrAfter(placement.column);
+  if (!row || !column) return undefined;
+  return {
+    x: column.start / scale + placement.offsetX,
+    y: row.start / scale + placement.offsetY,
+    width: placement.width,
+    height: placement.height,
+  };
+}
+
+export function chartScreenRect(
+  placement: ChartPlacement,
+  rows: GridAxis,
+  columns: GridAxis,
+  scale: number,
+  scrollX: number,
+  scrollY: number,
+  headerLeft: number,
+  headerTop: number,
+): FigureRect | undefined {
+  const row = rows.trackAtOrAfter(placement.row);
+  const column = columns.trackAtOrAfter(placement.column);
+  if (!row || !column) return undefined;
+  return {
+    x: headerLeft + columns.screen(column, scrollX) + placement.offsetX * scale,
+    y: headerTop + rows.screen(row, scrollY) + placement.offsetY * scale,
+    width: placement.width * scale,
+    height: placement.height * scale,
+  };
+}
+
+export function chartPlacementFromRect(
+  rect: FigureRect,
+  rows: GridAxis,
+  columns: GridAxis,
+  scale: number,
+): Pick<ChartPlacement, 'row' | 'column' | 'offsetX' | 'offsetY' | 'width' | 'height'> {
+  const maxWidth = columns.total / scale;
+  const maxHeight = rows.total / scale;
+  const width = clamp(rect.width, 120, Math.min(4096, maxWidth));
+  const height = clamp(rect.height, 90, Math.min(4096, maxHeight));
+  const x = clamp(rect.x, 0, Math.max(0, maxWidth - width));
+  const y = clamp(rect.y, 0, Math.max(0, maxHeight - height));
+  const firstColumn = columns.at(x * scale);
+  const firstRow = rows.at(y * scale);
+  if (!firstColumn || !firstRow) throw new Error('Chart placement is outside the visible worksheet.');
+  return {
+    row: firstRow.index,
+    column: firstColumn.index,
+    offsetX: Math.max(-4096, Math.min(4096, x - firstColumn.start / scale)),
+    offsetY: Math.max(-4096, Math.min(4096, y - firstRow.start / scale)),
+    width,
+    height,
+  };
 }
 
 export function figureLogicalRect(placement: FigurePlacement, rows: GridAxis, columns: GridAxis,

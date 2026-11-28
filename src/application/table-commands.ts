@@ -1,3 +1,4 @@
+import { rewriteChartFormulaRefs } from '../core/chart';
 import { columnLetters, parseFormula, quoteSheet, referenceBox, renameTableReferences, shiftEnclosedRows } from '../core/formula-references';
 import { formatCellValue } from '../core/formats/cell-format';
 import { cellKey, findCell, type CellContent, type CellDocument, type IdFactory, type SheetDocument,
@@ -56,7 +57,7 @@ function replaceSheet(document: WorkbookDocument, next: SheetDocument): Workbook
 }
 
 function renamePython(document: WorkbookDocument, oldName: string, newName: string): WorkbookDocument {
-  return { ...document, sheets: document.sheets.map(sheet => {
+  const sheets = document.sheets.map(sheet => {
     const cells = sheet.cells.map(cell => {
       if (cell.content.kind === 'python') {
         return { ...cell, content: renamePythonContent(cell.content, oldName, newName) };
@@ -70,7 +71,11 @@ function renamePython(document: WorkbookDocument, oldName: string, newName: stri
       return cell;
     });
     return cells.some((cell, index) => cell !== sheet.cells[index]) ? { ...sheet, cells } : sheet;
-  }) };
+  });
+  const charts = document.charts?.map(chart =>
+    rewriteChartFormulaRefs(chart, source => renameTableReferences(source, oldName, newName)),
+  );
+  return { ...document, sheets, ...(charts ? { charts } : {}) };
 }
 
 function put(document: WorkbookDocument, entry: WorkbookName): WorkbookDocument {

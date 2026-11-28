@@ -1,4 +1,5 @@
 import { axisLimit, shiftBox, shiftIndex, validateAxisEdit, type Axis, type AxisEdit } from '../core/axis-edit';
+import { nextChartName, rewriteChartFormulaRefs } from '../core/chart';
 import { intersection, rewriteSheetReferences, sameSheet, shiftReferences, type ReferenceBox } from '../core/formula-references';
 import { documentLimits, emptySheet, type AxisDimension, type CellDocument, type CellExtent,
   type IdFactory, type SheetDocument, type WorkbookName } from '../core/workbook';
@@ -19,6 +20,7 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
   let sheets = [...document.sheets];
   let names = document.names;
   let pivots = document.pivots;
+  let charts = document.charts;
   const index = sheets.findIndex(sheet => sheet.id === id);
   requireDocument(index >= 0, 'The worksheet no longer exists.');
   const target = sheets[index]!;
@@ -39,15 +41,26 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
           : pivot);
       pivots = kept.length > 0 ? kept : undefined;
     }
+    if (charts) {
+      const kept = charts
+        .filter(chart => chart.placement.sheetId !== id)
+        .map(chart => rewriteChartFormulaRefs(chart, source => rewriteSheetReferences(source, target.name, undefined, originalOrder)));
+      charts = kept.length > 0 ? kept : undefined;
+    }
     label = 'Delete Sheet';
   } else if (change.kind === 'rename') {
     const name = change.name.trim();
     requireDocument(name.length > 0 && name.length <= documentLimits.sheetNameLength &&
       !sheets.some(sheet => sheet.id !== id && sameSheet(sheet.name, name)), 'Enter a unique worksheet name of 1–31 characters.');
-    if (name !== target.name) sheets = sheets.map(sheet => {
-      const next = rewriteCells(sheet, source => rewriteSheetReferences(source, target.name, name));
-      return sheet.id === id ? { ...next, name } : next;
-    });
+    if (name !== target.name) {
+      sheets = sheets.map(sheet => {
+        const next = rewriteCells(sheet, source => rewriteSheetReferences(source, target.name, name));
+        return sheet.id === id ? { ...next, name } : next;
+      });
+      if (charts) {
+        charts = charts.map(chart => rewriteChartFormulaRefs(chart, source => rewriteSheetReferences(source, target.name, name)));
+      }
+    }
     label = 'Rename Sheet';
   } else if (change.kind === 'place' && !change.copy) {
     if (change.before !== id) {
@@ -95,12 +108,33 @@ export function changeSheet(basis: WorkbookSnapshot, id: string, change: SheetCh
         return { ...entry, id: makeId(), name: candidate, area: { ...entry.area, sheetId: active } };
       });
       names = [...names, ...copies];
+      if (charts) {
+        const existingCharts = [...charts];
+        const copiedCharts = existingCharts
+          .filter(chart => chart.placement.sheetId === id)
+          .map(chart => {
+            const chartName = nextChartName({ ...document, charts: existingCharts });
+            const cloned = rewriteChartFormulaRefs(
+              {
+                ...chart,
+                id: makeId(),
+                name: chartName,
+                placement: { ...chart.placement, sheetId: active },
+                series: chart.series.map(s => ({ ...s, id: makeId() })),
+              },
+              source => rewriteSheetReferences(source, target.name, name),
+            );
+            existingCharts.push(cloned);
+            return cloned;
+          });
+        if (copiedCharts.length > 0) charts = existingCharts;
+      }
       label = 'Copy Sheet';
     }
     sheets.splice(before, 0, next);
   }
-  const { pivots: _oldPivots, ...restDoc } = document;
-  const nextDoc = { ...restDoc, sheets, names, ...(pivots ? { pivots } : {}) };
+  const { pivots: _oldPivots, charts: _oldCharts, ...restDoc } = document;
+  const nextDoc = { ...restDoc, sheets, names, ...(pivots ? { pivots } : {}), ...(charts ? { charts } : {}) };
   return { active, command: { kind: 'structure', label, document: nextDoc } satisfies StructureCommand };
 }
 
@@ -229,7 +263,26 @@ export function editAxis(basis: WorkbookSnapshot, id: string, edit: AxisEdit): S
       ...nextFilter, criteria: nextCriteria, ...(sort && column !== undefined && { sort: { ...sort, column } }),
     } };
   });
-  return { kind: 'structure', document: { ...basis.document, sheets, names },
+  const sheetsById = new Map(basis.document.sheets.map(sheet => [sheet.id, sheet.name]));
+  const charts = basis.document.charts?.map(chart => {
+    const localSheet = sheetsById.get(chart.placement.sheetId) ?? target.name;
+    let next = rewriteChartFormulaRefs(
+      chart,
+      source => shiftReferences(source, localSheet, target.name, edit, sheetOrder),
+    );
+    if (next.placement.sheetId === id && next.placement.mode !== 'freeFloating' && !edit.lane) {
+      const prevAxis = next.placement[edit.axis];
+      const shifted = shiftIndex(edit, prevAxis);
+      const nextAxis = shifted !== undefined
+        ? shifted
+        : Math.max(1, Math.min(axisLimit(edit.axis), edit.start));
+      if (nextAxis !== prevAxis) {
+        next = { ...next, placement: { ...next.placement, [edit.axis]: nextAxis } };
+      }
+    }
+    return next;
+  });
+  return { kind: 'structure', document: { ...basis.document, sheets, names, ...(charts ? { charts } : {}) },
     label: (edit.delete ? 'Delete ' : 'Insert ') + (edit.lane ? 'cells' : edit.axis + 's') };
 }
 

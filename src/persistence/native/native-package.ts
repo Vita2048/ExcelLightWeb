@@ -6,6 +6,13 @@ import type {
   TableDesign, WorkbookDocument, WorkbookName,
 } from '../../core/workbook';
 import type {
+  ChartAxesConfig, ChartAxisConfig, ChartAxisDisplayUnits, ChartAxisLabelPosition,
+  ChartBinMode, ChartDataLabelPosition, ChartDataLabelsConfig, ChartDocument, ChartElements,
+  ChartErrorBars, ChartHiddenEmptyMode, ChartLegendConfig, ChartPlacement, ChartPlacementMode,
+  ChartPointOverride, ChartQuartileMethod, ChartSeries, ChartShapeStyle, ChartSource,
+  ChartTickMark, ChartTitleConfig, ChartTrendline, ChartType,
+} from '../../core/chart';
+import type {
   PivotAggregation, PivotAxisField, PivotFilterField, PivotReportLayout, PivotShowValuesAs,
   PivotSortRule, PivotStyleId, PivotSubtotalPosition, PivotTableDocument, PivotValueField,
 } from '../../core/pivot';
@@ -254,7 +261,7 @@ function readDocument(manifestBytes: Uint8Array, workbookBytes: Uint8Array, shee
   }
 
   const workbookRoot = requireObject(workbook, 'workbook.json');
-  rejectUnknown(workbookRoot, 'workbookId', 'sheets', 'names', 'pivots');
+  rejectUnknown(workbookRoot, 'workbookId', 'sheets', 'names', 'pivots', 'charts');
 
   if (requireGuid(requireProperty(workbookRoot, 'workbookId'), 'workbookId') !== workbookId) {
     throw new PackageException('Workbook id does not match the manifest.');
@@ -317,6 +324,20 @@ function readDocument(manifestBytes: Uint8Array, workbookBytes: Uint8Array, shee
     }
   }
 
+  let charts: ChartDocument[] | undefined;
+  if (Object.hasOwn(workbookRoot, 'charts')) {
+    const chartsVal = workbookRoot.charts;
+    if (!Array.isArray(chartsVal)) {
+      throw new PackageException('Invalid workbook charts: charts must be an array.');
+    }
+    try {
+      charts = chartsVal.map(readChartDocument);
+    } catch (ex) {
+      if (ex instanceof PackageException) throw ex;
+      throw new PackageException('Invalid workbook charts: ' + (ex instanceof Error ? ex.message : String(ex)));
+    }
+  }
+
   const doc: WorkbookDocument = {
     id: workbookId,
     formatVersion: 1,
@@ -324,6 +345,7 @@ function readDocument(manifestBytes: Uint8Array, workbookBytes: Uint8Array, shee
     sheets,
     names,
     ...(pivots && pivots.length > 0 ? { pivots } : {}),
+    ...(charts && charts.length > 0 ? { charts } : {}),
   };
 
   return migrateDetachedHeaders(doc);
@@ -540,6 +562,304 @@ function readPivotTable(raw: unknown): PivotTableDocument {
       bandedColumns: requireBool(requireProperty(soObj, 'bandedColumns'), 'styleOptions.bandedColumns'),
     },
     ...(Object.hasOwn(obj, 'collapsedKeys') ? { collapsedKeys: readPivotStringList(obj.collapsedKeys, 'collapsedKeys') } : {}),
+  };
+}
+
+function readChartShapeStyle(raw: unknown, prop: string): ChartShapeStyle {
+  const obj = requireObject(raw, prop);
+  rejectUnknown(obj, 'fillRgb', 'borderRgb', 'borderWidth');
+  return {
+    ...(Object.hasOwn(obj, 'fillRgb') ? { fillRgb: requireString(obj.fillRgb, `${prop}.fillRgb`) } : {}),
+    ...(Object.hasOwn(obj, 'borderRgb') ? { borderRgb: requireString(obj.borderRgb, `${prop}.borderRgb`) } : {}),
+    ...(Object.hasOwn(obj, 'borderWidth') ? { borderWidth: requireFinite(obj.borderWidth, `${prop}.borderWidth`) } : {}),
+  };
+}
+
+function readChartTitle(raw: unknown, prop: string): ChartTitleConfig {
+  const obj = requireObject(raw, prop);
+  rejectUnknown(obj, 'show', 'text', 'formulaRef');
+  return {
+    show: requireBool(requireProperty(obj, 'show'), `${prop}.show`),
+    ...(Object.hasOwn(obj, 'text') ? { text: requireString(obj.text, `${prop}.text`) } : {}),
+    ...(Object.hasOwn(obj, 'formulaRef') ? { formulaRef: requireString(obj.formulaRef, `${prop}.formulaRef`) } : {}),
+  };
+}
+
+function readChartDataLabels(raw: unknown, prop: string): ChartDataLabelsConfig {
+  const obj = requireObject(raw, prop);
+  rejectUnknown(obj, 'show', 'position', 'showValue', 'showCategoryName', 'showSeriesName', 'showPercentage', 'separator', 'numberFormat');
+  return {
+    show: requireBool(requireProperty(obj, 'show'), `${prop}.show`),
+    ...(Object.hasOwn(obj, 'position') ? { position: requireString(obj.position, `${prop}.position`) as ChartDataLabelPosition } : {}),
+    ...(Object.hasOwn(obj, 'showValue') ? { showValue: requireBool(obj.showValue, `${prop}.showValue`) } : {}),
+    ...(Object.hasOwn(obj, 'showCategoryName') ? { showCategoryName: requireBool(obj.showCategoryName, `${prop}.showCategoryName`) } : {}),
+    ...(Object.hasOwn(obj, 'showSeriesName') ? { showSeriesName: requireBool(obj.showSeriesName, `${prop}.showSeriesName`) } : {}),
+    ...(Object.hasOwn(obj, 'showPercentage') ? { showPercentage: requireBool(obj.showPercentage, `${prop}.showPercentage`) } : {}),
+    ...(Object.hasOwn(obj, 'separator') ? { separator: requireString(obj.separator, `${prop}.separator`) } : {}),
+    ...(Object.hasOwn(obj, 'numberFormat') ? { numberFormat: requireString(obj.numberFormat, `${prop}.numberFormat`) } : {}),
+  };
+}
+
+function readChartAxis(raw: unknown, prop: string): ChartAxisConfig {
+  const obj = requireObject(raw, prop);
+  rejectUnknown(
+    obj,
+    'show', 'title', 'min', 'max', 'majorUnit', 'minorUnit', 'logarithmic', 'logBase',
+    'reverseOrder', 'crossesAt', 'displayUnits', 'majorTick', 'minorTick', 'labelPosition',
+    'numberFormat', 'sourceLinked',
+  );
+  let crossesAt: ChartAxisConfig['crossesAt'];
+  if (Object.hasOwn(obj, 'crossesAt')) {
+    if (typeof obj.crossesAt === 'number') crossesAt = requireFinite(obj.crossesAt, `${prop}.crossesAt`);
+    else crossesAt = requireString(obj.crossesAt, `${prop}.crossesAt`) as 'min' | 'max' | 'auto';
+  }
+  return {
+    show: requireBool(requireProperty(obj, 'show'), `${prop}.show`),
+    ...(Object.hasOwn(obj, 'title') ? { title: readChartTitle(obj.title, `${prop}.title`) } : {}),
+    ...(Object.hasOwn(obj, 'min') ? { min: requireFinite(obj.min, `${prop}.min`) } : {}),
+    ...(Object.hasOwn(obj, 'max') ? { max: requireFinite(obj.max, `${prop}.max`) } : {}),
+    ...(Object.hasOwn(obj, 'majorUnit') ? { majorUnit: requireFinite(obj.majorUnit, `${prop}.majorUnit`) } : {}),
+    ...(Object.hasOwn(obj, 'minorUnit') ? { minorUnit: requireFinite(obj.minorUnit, `${prop}.minorUnit`) } : {}),
+    ...(Object.hasOwn(obj, 'logarithmic') ? { logarithmic: requireBool(obj.logarithmic, `${prop}.logarithmic`) } : {}),
+    ...(Object.hasOwn(obj, 'logBase') ? { logBase: requireFinite(obj.logBase, `${prop}.logBase`) } : {}),
+    ...(Object.hasOwn(obj, 'reverseOrder') ? { reverseOrder: requireBool(obj.reverseOrder, `${prop}.reverseOrder`) } : {}),
+    ...(crossesAt !== undefined ? { crossesAt } : {}),
+    ...(Object.hasOwn(obj, 'displayUnits') ? { displayUnits: requireString(obj.displayUnits, `${prop}.displayUnits`) as ChartAxisDisplayUnits } : {}),
+    ...(Object.hasOwn(obj, 'majorTick') ? { majorTick: requireString(obj.majorTick, `${prop}.majorTick`) as ChartTickMark } : {}),
+    ...(Object.hasOwn(obj, 'minorTick') ? { minorTick: requireString(obj.minorTick, `${prop}.minorTick`) as ChartTickMark } : {}),
+    ...(Object.hasOwn(obj, 'labelPosition') ? { labelPosition: requireString(obj.labelPosition, `${prop}.labelPosition`) as ChartAxisLabelPosition } : {}),
+    ...(Object.hasOwn(obj, 'numberFormat') ? { numberFormat: requireString(obj.numberFormat, `${prop}.numberFormat`) } : {}),
+    ...(Object.hasOwn(obj, 'sourceLinked') ? { sourceLinked: requireBool(obj.sourceLinked, `${prop}.sourceLinked`) } : {}),
+  };
+}
+
+function readChartElements(raw: unknown): ChartElements {
+  const obj = requireObject(raw, 'elements');
+  rejectUnknown(obj, 'title', 'axes', 'gridlines', 'legend', 'dataLabels', 'dataTable');
+  let axes: ChartAxesConfig | undefined;
+  if (Object.hasOwn(obj, 'axes')) {
+    const aObj = requireObject(obj.axes, 'elements.axes');
+    rejectUnknown(aObj, 'category', 'value', 'secondaryCategory', 'secondaryValue');
+    axes = {
+      ...(Object.hasOwn(aObj, 'category') ? { category: readChartAxis(aObj.category, 'elements.axes.category') } : {}),
+      ...(Object.hasOwn(aObj, 'value') ? { value: readChartAxis(aObj.value, 'elements.axes.value') } : {}),
+      ...(Object.hasOwn(aObj, 'secondaryCategory') ? { secondaryCategory: readChartAxis(aObj.secondaryCategory, 'elements.axes.secondaryCategory') } : {}),
+      ...(Object.hasOwn(aObj, 'secondaryValue') ? { secondaryValue: readChartAxis(aObj.secondaryValue, 'elements.axes.secondaryValue') } : {}),
+    };
+  }
+  let legend: ChartLegendConfig | undefined;
+  if (Object.hasOwn(obj, 'legend')) {
+    const lObj = requireObject(obj.legend, 'elements.legend');
+    rejectUnknown(lObj, 'show', 'position');
+    legend = {
+      show: requireBool(requireProperty(lObj, 'show'), 'elements.legend.show'),
+      position: requireString(requireProperty(lObj, 'position'), 'elements.legend.position') as ChartLegendConfig['position'],
+    };
+  }
+  let gridlines: ChartElements['gridlines'];
+  if (Object.hasOwn(obj, 'gridlines')) {
+    const gObj = requireObject(obj.gridlines, 'elements.gridlines');
+    rejectUnknown(gObj, 'primaryMajorHorizontal', 'primaryMinorHorizontal', 'primaryMajorVertical', 'primaryMinorVertical');
+    gridlines = {
+      ...(Object.hasOwn(gObj, 'primaryMajorHorizontal') ? { primaryMajorHorizontal: requireBool(gObj.primaryMajorHorizontal, 'primaryMajorHorizontal') } : {}),
+      ...(Object.hasOwn(gObj, 'primaryMinorHorizontal') ? { primaryMinorHorizontal: requireBool(gObj.primaryMinorHorizontal, 'primaryMinorHorizontal') } : {}),
+      ...(Object.hasOwn(gObj, 'primaryMajorVertical') ? { primaryMajorVertical: requireBool(gObj.primaryMajorVertical, 'primaryMajorVertical') } : {}),
+      ...(Object.hasOwn(gObj, 'primaryMinorVertical') ? { primaryMinorVertical: requireBool(gObj.primaryMinorVertical, 'primaryMinorVertical') } : {}),
+    };
+  }
+  let dataTable: ChartElements['dataTable'];
+  if (Object.hasOwn(obj, 'dataTable')) {
+    const dtObj = requireObject(obj.dataTable, 'elements.dataTable');
+    rejectUnknown(dtObj, 'show', 'showLegendKeys');
+    dataTable = {
+      show: requireBool(requireProperty(dtObj, 'show'), 'elements.dataTable.show'),
+      ...(Object.hasOwn(dtObj, 'showLegendKeys') ? { showLegendKeys: requireBool(dtObj.showLegendKeys, 'elements.dataTable.showLegendKeys') } : {}),
+    };
+  }
+  return {
+    ...(Object.hasOwn(obj, 'title') ? { title: readChartTitle(obj.title, 'elements.title') } : {}),
+    ...(axes ? { axes } : {}),
+    ...(gridlines ? { gridlines } : {}),
+    ...(legend ? { legend } : {}),
+    ...(Object.hasOwn(obj, 'dataLabels') ? { dataLabels: readChartDataLabels(obj.dataLabels, 'elements.dataLabels') } : {}),
+    ...(dataTable ? { dataTable } : {}),
+  };
+}
+
+function readChartPointOverride(raw: unknown): ChartPointOverride {
+  const obj = requireObject(raw, 'pointOverride');
+  rejectUnknown(obj, 'index', 'isTotal', 'explosion', 'fillRgb', 'borderRgb');
+  return {
+    index: requireInt(requireProperty(obj, 'index'), 'pointOverride.index'),
+    ...(Object.hasOwn(obj, 'isTotal') ? { isTotal: requireBool(obj.isTotal, 'pointOverride.isTotal') } : {}),
+    ...(Object.hasOwn(obj, 'explosion') ? { explosion: requireFinite(obj.explosion, 'pointOverride.explosion') } : {}),
+    ...(Object.hasOwn(obj, 'fillRgb') ? { fillRgb: requireString(obj.fillRgb, 'pointOverride.fillRgb') } : {}),
+    ...(Object.hasOwn(obj, 'borderRgb') ? { borderRgb: requireString(obj.borderRgb, 'pointOverride.borderRgb') } : {}),
+  };
+}
+
+function readChartTrendline(raw: unknown): ChartTrendline {
+  const obj = requireObject(raw, 'trendline');
+  rejectUnknown(
+    obj,
+    'id', 'type', 'polynomialOrder', 'period', 'forward', 'backward',
+    'intercept', 'displayEquation', 'displayRSquared', 'name', 'colorRgb',
+  );
+  return {
+    id: requireGuid(requireProperty(obj, 'id'), 'trendline.id'),
+    type: requireString(requireProperty(obj, 'type'), 'trendline.type') as ChartTrendline['type'],
+    ...(Object.hasOwn(obj, 'polynomialOrder') ? { polynomialOrder: requireInt(obj.polynomialOrder, 'trendline.polynomialOrder') } : {}),
+    ...(Object.hasOwn(obj, 'period') ? { period: requireInt(obj.period, 'trendline.period') } : {}),
+    ...(Object.hasOwn(obj, 'forward') ? { forward: requireFinite(obj.forward, 'trendline.forward') } : {}),
+    ...(Object.hasOwn(obj, 'backward') ? { backward: requireFinite(obj.backward, 'trendline.backward') } : {}),
+    ...(Object.hasOwn(obj, 'intercept') ? { intercept: requireFinite(obj.intercept, 'trendline.intercept') } : {}),
+    ...(Object.hasOwn(obj, 'displayEquation') ? { displayEquation: requireBool(obj.displayEquation, 'trendline.displayEquation') } : {}),
+    ...(Object.hasOwn(obj, 'displayRSquared') ? { displayRSquared: requireBool(obj.displayRSquared, 'trendline.displayRSquared') } : {}),
+    ...(Object.hasOwn(obj, 'name') ? { name: requireString(obj.name, 'trendline.name') } : {}),
+    ...(Object.hasOwn(obj, 'colorRgb') ? { colorRgb: requireString(obj.colorRgb, 'trendline.colorRgb') } : {}),
+  };
+}
+
+function readChartErrorBars(raw: unknown): ChartErrorBars {
+  const obj = requireObject(raw, 'errorBars');
+  rejectUnknown(obj, 'direction', 'type', 'value', 'plusRef', 'minusRef', 'cap');
+  return {
+    direction: requireString(requireProperty(obj, 'direction'), 'errorBars.direction') as ChartErrorBars['direction'],
+    type: requireString(requireProperty(obj, 'type'), 'errorBars.type') as ChartErrorBars['type'],
+    ...(Object.hasOwn(obj, 'value') ? { value: requireFinite(obj.value, 'errorBars.value') } : {}),
+    ...(Object.hasOwn(obj, 'plusRef') ? { plusRef: requireString(obj.plusRef, 'errorBars.plusRef') } : {}),
+    ...(Object.hasOwn(obj, 'minusRef') ? { minusRef: requireString(obj.minusRef, 'errorBars.minusRef') } : {}),
+    ...(Object.hasOwn(obj, 'cap') ? { cap: requireBool(obj.cap, 'errorBars.cap') } : {}),
+  };
+}
+
+function readChartSeries(raw: unknown): ChartSeries {
+  const obj = requireObject(raw, 'series');
+  rejectUnknown(
+    obj,
+    'id', 'name', 'nameRef', 'categoriesRef', 'valuesRef', 'xValuesRef', 'bubbleSizesRef',
+    'chartType', 'secondaryAxis', 'hidden', 'fillRgb', 'borderRgb', 'lineWidth',
+    'smooth', 'markers', 'gapWidth', 'overlap', 'explosion', 'holeSize', 'firstSliceAngle',
+    'binMode', 'binWidth', 'binCount', 'overflowBin', 'underflowBin', 'quartileMethod',
+    'showInnerPoints', 'showOutlierPoints', 'showMeanMarkers', 'showMeanLine',
+    'showConnectorLines', 'pointOverrides', 'dataLabels', 'trendlines', 'errorBars',
+  );
+  let pointOverrides: ChartPointOverride[] | undefined;
+  if (Object.hasOwn(obj, 'pointOverrides')) {
+    if (!Array.isArray(obj.pointOverrides)) throw new PackageException('series.pointOverrides must be an array.');
+    pointOverrides = obj.pointOverrides.map(readChartPointOverride);
+  }
+  let trendlines: ChartTrendline[] | undefined;
+  if (Object.hasOwn(obj, 'trendlines')) {
+    if (!Array.isArray(obj.trendlines)) throw new PackageException('series.trendlines must be an array.');
+    trendlines = obj.trendlines.map(readChartTrendline);
+  }
+  return {
+    id: requireGuid(requireProperty(obj, 'id'), 'series.id'),
+    ...(Object.hasOwn(obj, 'name') ? { name: requireString(obj.name, 'series.name') } : {}),
+    ...(Object.hasOwn(obj, 'nameRef') ? { nameRef: requireString(obj.nameRef, 'series.nameRef') } : {}),
+    ...(Object.hasOwn(obj, 'categoriesRef') ? { categoriesRef: requireString(obj.categoriesRef, 'series.categoriesRef') } : {}),
+    valuesRef: requireString(requireProperty(obj, 'valuesRef'), 'series.valuesRef'),
+    ...(Object.hasOwn(obj, 'xValuesRef') ? { xValuesRef: requireString(obj.xValuesRef, 'series.xValuesRef') } : {}),
+    ...(Object.hasOwn(obj, 'bubbleSizesRef') ? { bubbleSizesRef: requireString(obj.bubbleSizesRef, 'series.bubbleSizesRef') } : {}),
+    ...(Object.hasOwn(obj, 'chartType') ? { chartType: requireString(obj.chartType, 'series.chartType') as ChartType } : {}),
+    ...(Object.hasOwn(obj, 'secondaryAxis') ? { secondaryAxis: requireBool(obj.secondaryAxis, 'series.secondaryAxis') } : {}),
+    ...(Object.hasOwn(obj, 'hidden') ? { hidden: requireBool(obj.hidden, 'series.hidden') } : {}),
+    ...(Object.hasOwn(obj, 'fillRgb') ? { fillRgb: requireString(obj.fillRgb, 'series.fillRgb') } : {}),
+    ...(Object.hasOwn(obj, 'borderRgb') ? { borderRgb: requireString(obj.borderRgb, 'series.borderRgb') } : {}),
+    ...(Object.hasOwn(obj, 'lineWidth') ? { lineWidth: requireFinite(obj.lineWidth, 'series.lineWidth') } : {}),
+    ...(Object.hasOwn(obj, 'smooth') ? { smooth: requireBool(obj.smooth, 'series.smooth') } : {}),
+    ...(Object.hasOwn(obj, 'markers') ? { markers: requireBool(obj.markers, 'series.markers') } : {}),
+    ...(Object.hasOwn(obj, 'gapWidth') ? { gapWidth: requireFinite(obj.gapWidth, 'series.gapWidth') } : {}),
+    ...(Object.hasOwn(obj, 'overlap') ? { overlap: requireFinite(obj.overlap, 'series.overlap') } : {}),
+    ...(Object.hasOwn(obj, 'explosion') ? { explosion: requireFinite(obj.explosion, 'series.explosion') } : {}),
+    ...(Object.hasOwn(obj, 'holeSize') ? { holeSize: requireFinite(obj.holeSize, 'series.holeSize') } : {}),
+    ...(Object.hasOwn(obj, 'firstSliceAngle') ? { firstSliceAngle: requireFinite(obj.firstSliceAngle, 'series.firstSliceAngle') } : {}),
+    ...(Object.hasOwn(obj, 'binMode') ? { binMode: requireString(obj.binMode, 'series.binMode') as ChartBinMode } : {}),
+    ...(Object.hasOwn(obj, 'binWidth') ? { binWidth: requireFinite(obj.binWidth, 'series.binWidth') } : {}),
+    ...(Object.hasOwn(obj, 'binCount') ? { binCount: requireInt(obj.binCount, 'series.binCount') } : {}),
+    ...(Object.hasOwn(obj, 'overflowBin') ? { overflowBin: requireFinite(obj.overflowBin, 'series.overflowBin') } : {}),
+    ...(Object.hasOwn(obj, 'underflowBin') ? { underflowBin: requireFinite(obj.underflowBin, 'series.underflowBin') } : {}),
+    ...(Object.hasOwn(obj, 'quartileMethod') ? { quartileMethod: requireString(obj.quartileMethod, 'series.quartileMethod') as ChartQuartileMethod } : {}),
+    ...(Object.hasOwn(obj, 'showInnerPoints') ? { showInnerPoints: requireBool(obj.showInnerPoints, 'series.showInnerPoints') } : {}),
+    ...(Object.hasOwn(obj, 'showOutlierPoints') ? { showOutlierPoints: requireBool(obj.showOutlierPoints, 'series.showOutlierPoints') } : {}),
+    ...(Object.hasOwn(obj, 'showMeanMarkers') ? { showMeanMarkers: requireBool(obj.showMeanMarkers, 'series.showMeanMarkers') } : {}),
+    ...(Object.hasOwn(obj, 'showMeanLine') ? { showMeanLine: requireBool(obj.showMeanLine, 'series.showMeanLine') } : {}),
+    ...(Object.hasOwn(obj, 'showConnectorLines') ? { showConnectorLines: requireBool(obj.showConnectorLines, 'series.showConnectorLines') } : {}),
+    ...(pointOverrides ? { pointOverrides } : {}),
+    ...(Object.hasOwn(obj, 'dataLabels') ? { dataLabels: readChartDataLabels(obj.dataLabels, 'series.dataLabels') } : {}),
+    ...(trendlines ? { trendlines } : {}),
+    ...(Object.hasOwn(obj, 'errorBars') ? { errorBars: readChartErrorBars(obj.errorBars) } : {}),
+  };
+}
+
+function readChartDocument(raw: unknown): ChartDocument {
+  const obj = requireObject(raw, 'chart');
+  rejectUnknown(
+    obj,
+    'id', 'name', 'chartType', 'placement', 'source', 'seriesBy', 'series',
+    'elements', 'hiddenEmptyMode', 'showHiddenCells', 'hiddenCategories',
+    'styleId', 'paletteId', 'chartAreaStyle', 'plotAreaStyle',
+  );
+  const pObj = requireObject(requireProperty(obj, 'placement'), 'placement');
+  rejectUnknown(pObj, 'sheetId', 'row', 'column', 'offsetX', 'offsetY', 'width', 'height', 'mode', 'zIndex');
+  const placement: ChartPlacement = {
+    sheetId: requireGuid(requireProperty(pObj, 'sheetId'), 'placement.sheetId'),
+    row: requireInt(requireProperty(pObj, 'row'), 'placement.row'),
+    column: requireInt(requireProperty(pObj, 'column'), 'placement.column'),
+    offsetX: requireFinite(requireProperty(pObj, 'offsetX'), 'placement.offsetX'),
+    offsetY: requireFinite(requireProperty(pObj, 'offsetY'), 'placement.offsetY'),
+    width: requireFinite(requireProperty(pObj, 'width'), 'placement.width'),
+    height: requireFinite(requireProperty(pObj, 'height'), 'placement.height'),
+    ...(Object.hasOwn(pObj, 'mode') ? { mode: requireString(pObj.mode, 'placement.mode') as ChartPlacementMode } : {}),
+    ...(Object.hasOwn(pObj, 'zIndex') ? { zIndex: requireInt(pObj.zIndex, 'placement.zIndex') } : {}),
+  };
+
+  const sObj = requireObject(requireProperty(obj, 'source'), 'source');
+  const sKind = requireString(requireProperty(sObj, 'kind'), 'source.kind');
+  let source: ChartSource;
+  if (sKind === 'range') {
+    rejectUnknown(sObj, 'kind', 'formula');
+    source = { kind: 'range', formula: requireString(requireProperty(sObj, 'formula'), 'source.formula') };
+  } else if (sKind === 'table') {
+    rejectUnknown(sObj, 'kind', 'tableId');
+    source = { kind: 'table', tableId: requireGuid(requireProperty(sObj, 'tableId'), 'source.tableId') };
+  } else if (sKind === 'pivot') {
+    rejectUnknown(sObj, 'kind', 'pivotId');
+    source = { kind: 'pivot', pivotId: requireGuid(requireProperty(sObj, 'pivotId'), 'source.pivotId') };
+  } else {
+    throw new PackageException(`Invalid chart source kind '${sKind}'.`);
+  }
+
+  const seriesRaw = requireProperty(obj, 'series');
+  if (!Array.isArray(seriesRaw)) {
+    throw new PackageException('chart.series must be an array.');
+  }
+
+  let hiddenCategories: number[] | undefined;
+  if (Object.hasOwn(obj, 'hiddenCategories')) {
+    if (!Array.isArray(obj.hiddenCategories)) {
+      throw new PackageException('chart.hiddenCategories must be an array.');
+    }
+    hiddenCategories = obj.hiddenCategories.map((val, i) => requireInt(val, `hiddenCategories[${i}]`));
+  }
+
+  return {
+    id: requireGuid(requireProperty(obj, 'id'), 'id'),
+    name: requireString(requireProperty(obj, 'name'), 'name'),
+    chartType: requireString(requireProperty(obj, 'chartType'), 'chartType') as ChartType,
+    placement,
+    source,
+    seriesBy: requireString(requireProperty(obj, 'seriesBy'), 'seriesBy') as 'columns' | 'rows',
+    series: seriesRaw.map(readChartSeries),
+    elements: readChartElements(requireProperty(obj, 'elements')),
+    hiddenEmptyMode: requireString(requireProperty(obj, 'hiddenEmptyMode'), 'hiddenEmptyMode') as ChartHiddenEmptyMode,
+    showHiddenCells: requireBool(requireProperty(obj, 'showHiddenCells'), 'showHiddenCells'),
+    ...(hiddenCategories !== undefined ? { hiddenCategories } : {}),
+    styleId: requireInt(requireProperty(obj, 'styleId'), 'styleId'),
+    paletteId: requireString(requireProperty(obj, 'paletteId'), 'paletteId'),
+    ...(Object.hasOwn(obj, 'chartAreaStyle') ? { chartAreaStyle: readChartShapeStyle(obj.chartAreaStyle, 'chartAreaStyle') } : {}),
+    ...(Object.hasOwn(obj, 'plotAreaStyle') ? { plotAreaStyle: readChartShapeStyle(obj.plotAreaStyle, 'plotAreaStyle') } : {}),
   };
 }
 
@@ -1135,6 +1455,9 @@ export async function saveNativePackage(document: WorkbookDocument, request?: Sa
     }
     if (owned.pivots && owned.pivots.length > 0) {
       workbookObj.pivots = owned.pivots;
+    }
+    if (owned.charts && owned.charts.length > 0) {
+      workbookObj.charts = owned.charts;
     }
     workbookObj.sheets = owned.sheets.map(sheet => ({
       id: sheet.id,

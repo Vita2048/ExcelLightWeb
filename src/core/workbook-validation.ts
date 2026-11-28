@@ -1,3 +1,4 @@
+import { isValidChartType, type ChartSeries } from './chart';
 import {
   pivotAggregations, pivotReportLayouts, pivotShowValuesAsModes, pivotStyles, pivotSubtotalPositions,
 } from './pivot';
@@ -641,6 +642,126 @@ function validatePivots(document: WorkbookDocument, addId: (id: DocumentId) => v
   }
 }
 
+function validateChartSeries(series: ChartSeries, seenIds: Set<DocumentId>): void {
+  requireDocument(series && typeof series === 'object', 'Invalid chart series entry.');
+  validateId(series.id);
+  requireDocument(!seenIds.has(series.id), 'Chart series identities must be unique within a chart.');
+  seenIds.add(series.id);
+  requireDocument(typeof series.valuesRef === 'string' && series.valuesRef.length > 0 && validText(series.valuesRef, limits.formulaLength),
+    'Chart series requires a valid values reference.');
+  for (const optionalRef of [series.nameRef, series.categoriesRef, series.xValuesRef, series.bubbleSizesRef]) {
+    if (optionalRef !== undefined) {
+      requireDocument(typeof optionalRef === 'string' && optionalRef.length > 0 && validText(optionalRef, limits.formulaLength),
+        'Invalid chart series reference.');
+    }
+  }
+  if (series.chartType !== undefined) {
+    requireDocument(isValidChartType(series.chartType), 'Invalid chart series type.');
+  }
+  if (series.gapWidth !== undefined) {
+    requireDocument(Number.isFinite(series.gapWidth) && series.gapWidth >= 0 && series.gapWidth <= 500, 'Invalid chart gap width.');
+  }
+  if (series.overlap !== undefined) {
+    requireDocument(Number.isFinite(series.overlap) && series.overlap >= -100 && series.overlap <= 100, 'Invalid chart overlap.');
+  }
+  if (series.holeSize !== undefined) {
+    requireDocument(Number.isFinite(series.holeSize) && series.holeSize >= 10 && series.holeSize <= 90, 'Invalid doughnut hole size.');
+  }
+  if (series.firstSliceAngle !== undefined) {
+    requireDocument(Number.isFinite(series.firstSliceAngle) && series.firstSliceAngle >= 0 && series.firstSliceAngle <= 360, 'Invalid first slice angle.');
+  }
+  if (series.explosion !== undefined) {
+    requireDocument(Number.isFinite(series.explosion) && series.explosion >= 0 && series.explosion <= 100, 'Invalid slice explosion.');
+  }
+  if (series.lineWidth !== undefined) {
+    requireDocument(Number.isFinite(series.lineWidth) && series.lineWidth >= 0 && series.lineWidth <= 20, 'Invalid series line width.');
+  }
+  if (series.binCount !== undefined) {
+    requireDocument(inRange(series.binCount, 1, 1000), 'Invalid histogram bin count.');
+  }
+  if (series.binWidth !== undefined) {
+    requireDocument(Number.isFinite(series.binWidth) && series.binWidth > 0, 'Invalid histogram bin width.');
+  }
+  if (series.trendlines !== undefined) {
+    requireDocument(Array.isArray(series.trendlines) && series.trendlines.length <= 16, 'Invalid chart trendlines.');
+    for (const trend of series.trendlines) {
+      validateId(trend.id);
+      requireDocument(['linear', 'exponential', 'logarithmic', 'polynomial', 'power', 'movingAverage'].includes(trend.type),
+        'Invalid chart trendline type.');
+      if (trend.polynomialOrder !== undefined) {
+        requireDocument(inRange(trend.polynomialOrder, 2, 6), 'Polynomial trendline order must be 2 to 6.');
+      }
+      if (trend.period !== undefined) {
+        requireDocument(inRange(trend.period, 2, 1000), 'Moving average trendline period must be at least 2.');
+      }
+    }
+  }
+}
+
+function validateCharts(document: WorkbookDocument, addId: (id: DocumentId) => void): void {
+  if (document.charts === undefined) return;
+  requireDocument(Array.isArray(document.charts) && document.charts.length <= 200,
+    'A workbook may contain at most 200 charts.');
+  const sheetIds = new Set(document.sheets.map(sheet => sheet.id));
+  const chartNames = new Set<string>();
+
+  for (const chart of document.charts) {
+    requireDocument(chart && typeof chart === 'object', 'Invalid chart entry.');
+    addId(chart.id);
+    requireDocument(typeof chart.name === 'string' && chart.name.trim().length > 0 && validText(chart.name, 255),
+      'Chart requires a valid name.');
+    const nameKey = ordinalNameKey(chart.name.trim());
+    requireDocument(!chartNames.has(nameKey), 'Duplicate chart name.');
+    chartNames.add(nameKey);
+
+    requireDocument(isValidChartType(chart.chartType), 'Invalid chart type.');
+    requireDocument(chart.seriesBy === 'columns' || chart.seriesBy === 'rows', 'Invalid chart series orientation.');
+    requireDocument(chart.hiddenEmptyMode === 'gaps' || chart.hiddenEmptyMode === 'zero' || chart.hiddenEmptyMode === 'connect',
+      'Invalid chart hidden/empty cell mode.');
+    requireDocument(typeof chart.showHiddenCells === 'boolean', 'Invalid chart showHiddenCells flag.');
+    requireDocument(inRange(chart.styleId, 1, 48), 'Invalid chart style id.');
+    requireDocument(typeof chart.paletteId === 'string' && chart.paletteId.length > 0 && validText(chart.paletteId, 64),
+      'Invalid chart palette id.');
+
+    const p = chart.placement;
+    requireDocument(p && typeof p === 'object' && sheetIds.has(p.sheetId), 'Chart placement refers to a missing sheet.');
+    requireDocument(isCoordinate({ row: p.row, column: p.column }), 'Chart anchor coordinate is outside grid.');
+    requireDocument(Number.isFinite(p.offsetX) && Number.isFinite(p.offsetY) &&
+      p.offsetX >= -4096 && p.offsetX <= 4096 && p.offsetY >= -4096 && p.offsetY <= 4096,
+    'Invalid chart placement offset.');
+    requireDocument(Number.isFinite(p.width) && p.width >= 120 && p.width <= 4096 &&
+      Number.isFinite(p.height) && p.height >= 90 && p.height <= 4096,
+    'Invalid chart dimensions.');
+    if (p.mode !== undefined) {
+      requireDocument(p.mode === 'moveAndSize' || p.mode === 'moveOnly' || p.mode === 'freeFloating',
+        'Invalid chart placement mode.');
+    }
+    if (p.zIndex !== undefined) {
+      requireDocument(Number.isInteger(p.zIndex), 'Invalid chart zIndex.');
+    }
+
+    requireDocument(chart.source && typeof chart.source === 'object', 'Invalid chart source.');
+    if (chart.source.kind === 'range') {
+      requireDocument(typeof chart.source.formula === 'string' && chart.source.formula.length > 0 &&
+        validText(chart.source.formula, limits.formulaLength),
+      'Invalid chart source formula.');
+    } else if (chart.source.kind === 'table') {
+      validateId(chart.source.tableId);
+    } else if (chart.source.kind === 'pivot') {
+      validateId(chart.source.pivotId);
+    } else {
+      throw new DocumentError('Unsupported chart source kind.');
+    }
+
+    requireDocument(Array.isArray(chart.series) && chart.series.length <= 255, 'Invalid chart series list.');
+    const seriesIds = new Set<DocumentId>();
+    for (const entry of chart.series) {
+      validateChartSeries(entry, seriesIds);
+    }
+    requireDocument(chart.elements && typeof chart.elements === 'object', 'Invalid chart elements.');
+  }
+}
+
 export function validateWorkbook(document: WorkbookDocument): void {
   requireDocument(document?.formatVersion === 1 && document.dateSystem === '1900', 'Unsupported document version or date system.');
   requireDocument(Array.isArray(document.sheets) && inRange(document.sheets.length, 1, limits.sheets),
@@ -655,6 +776,7 @@ export function validateWorkbook(document: WorkbookDocument): void {
   validateSheets(document, addId);
   validateNames(document, addId);
   validatePivots(document, addId);
+  validateCharts(document, addId);
   validateSpills(document);
   validateFigures(document);
 }

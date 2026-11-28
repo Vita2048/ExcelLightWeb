@@ -55,6 +55,12 @@ import { ChangePivotSourceDialog, MovePivotTableDialog, PivotOptionsDialog } fro
 import { PivotFilterDropdown } from '../features/pivot/PivotFilterDropdown';
 import { PivotTableFieldsPane } from '../features/pivot/PivotTableFieldsPane';
 import type { PivotAxisField, PivotTableDocument, PivotValueField } from '../core/pivot';
+import type { ChartPlacement, ChartType } from '../core/chart';
+import { createChart, deleteChart, moveResizeChart, updateChart } from '../application/chart-commands';
+import { formatAbsoluteAreaRef, resolveChartData, resolveFormulaExtent } from '../charts/chart-data';
+import { chartRangeHighlights } from '../charts/chart-highlights';
+import { InsertChartDialog } from '../features/charts/InsertChartDialog';
+import type { CoreChartCategoryTab } from '../features/charts/chart-catalog';
 import { extentContains, lastColumn, lastRow, ownsTableFilter, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
 import type { FigurePlacement, PythonFigure, TableDesign, WorkbookName } from '../core/workbook';
@@ -260,6 +266,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
   const [workspaceToRemove, setWorkspaceToRemove] = useState<LocalWorkspaceRecord>();
   const [fileMessage, setFileMessage] = useState<{ title: string; message: string }>();
   const [xlsxReport, setXlsxReport] = useState<{ title: string; issues: readonly ExchangeIssue[] }>();
+  const [selectedChartId, setSelectedChartId] = useState<DocumentId | undefined>(undefined);
+  const [insertChartDraft, setInsertChartDraft] = useState<{
+    readonly tab: 'recommended' | 'all';
+    readonly category?: CoreChartCategoryTab;
+    readonly sourceFormula: string;
+  } | undefined>(undefined);
   const xlsxReportResolver = useRef<((choice: ReportChoice) => void) | undefined>(undefined);
   const workspaceLease = useRef<WorkspaceLease | undefined>(undefined);
   const workspaceConflictRef = useRef<(id: string) => void>(() => {});
@@ -1454,6 +1466,74 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     if (!editing.commitFormula(target, localizedFormula)) return;
     setFunctionArgsDialog(undefined);
     scheduleFocusGrid();
+  }
+
+  function resolveChartSourceFormula(doc: WorkbookDocument): string {
+    const selArea = selectionAreas(selection)[0];
+    if (activeTable) {
+      return refersTo(doc, activeTable.area);
+    }
+    if (selArea && (selArea.bottom > selArea.top || selArea.right > selArea.left)) {
+      return refersTo(doc, {
+        sheetId: sheet.id,
+        row: selArea.top,
+        column: selArea.left,
+        rows: selArea.bottom - selArea.top + 1,
+        columns: selArea.right - selArea.left + 1,
+      });
+    }
+    const region = currentRegion(doc, {
+      sheetId: sheet.id,
+      row: selection.anchor.row,
+      column: selection.anchor.column,
+      rows: 1,
+      columns: 1,
+    });
+    return refersTo(doc, region);
+  }
+
+  function insertChartWithType(chartType: ChartType, explicitSourceFormula?: string, explicitSeriesBy?: 'columns' | 'rows') {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    const formula = explicitSourceFormula ?? resolveChartSourceFormula(basis.document);
+    const sourceArea = resolveFormulaExtent(basis.document, sheet.id, formula);
+    const selArea = selectionAreas(selection)[0];
+    const anchorRow = Math.max(1, sourceArea?.row ?? selArea?.top ?? selection.anchor.row);
+    const anchorCol = Math.min(
+      documentLimits.columns,
+      (sourceArea ? sourceArea.column + sourceArea.columns : (selArea?.right ?? selection.anchor.column) + 1) + 1,
+    );
+    const prevCount = basis.document.charts?.length ?? 0;
+    const cmd = createChart(basis, {
+      chartType,
+      source: { kind: 'range', formula },
+      ...(explicitSeriesBy && { seriesBy: explicitSeriesBy }),
+      placement: { sheetId: sheet.id, row: anchorRow, column: anchorCol, offsetX: 12, offsetY: 8, width: 480, height: 300 },
+    }, makeId);
+    applyStructure(basis, cmd);
+    const inserted = cmd.document.charts?.[prevCount];
+    if (inserted) setSelectedChartId(inserted.id);
+    setInsertChartDraft(undefined);
+  }
+
+  function openInsertChartDialog(tab: 'recommended' | 'all', category?: CoreChartCategoryTab) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    const sourceFormula = resolveChartSourceFormula(basis.document);
+    setInsertChartDraft({ tab, ...(category && { category }), sourceFormula });
+  }
+
+  function handleChartPlacement(chartId: DocumentId, placement: Partial<ChartPlacement>) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    applyStructure(basis, moveResizeChart(basis, chartId, placement));
+  }
+
+  function handleChartDelete(chartId: DocumentId) {
+    if (!editing.commit()) return;
+    const basis = session.capture();
+    applyStructure(basis, deleteChart(basis, chartId));
+    if (selectedChartId === chartId) setSelectedChartId(undefined);
   }
 
   function openCreatePivotDialog() {
@@ -2929,6 +3009,70 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return true;
   }
 
+  const sheetCharts = useMemo(
+    () => (snapshot.document.charts ?? [])
+      .filter(chart => chart.placement.sheetId === sheet.id)
+      .map(chart => ({ chart, data: resolveChartData(snapshot.document, chart) })),
+    [snapshot.document, sheet.id],
+  );
+  const selectedChart = useMemo(
+    () => (selectedChartId ? snapshot.document.charts?.find(c => c.id === selectedChartId && c.placement.sheetId === sheet.id) : undefined),
+    [snapshot.document.charts, selectedChartId, sheet.id],
+  );
+  const chartHighlights = useMemo(
+    () => (selectedChart && !editing.draft ? chartRangeHighlights(snapshot.document, selectedChart) : []),
+    [selectedChart, editing.draft, snapshot.document],
+  );
+  const chartRangeHandle = useMemo(() => {
+    if (!selectedChart || editing.draft || selectedChart.source.kind !== 'range') return undefined;
+    const valueHighlights = chartHighlights.filter(h => h.sheetId === sheet.id && h.kind === 'values');
+    if (valueHighlights.length === 0) return undefined;
+    const combinedValuesArea: Area = {
+      top: Math.min(...valueHighlights.map(h => h.area.top)),
+      left: Math.min(...valueHighlights.map(h => h.area.left)),
+      bottom: Math.max(...valueHighlights.map(h => h.area.bottom)),
+      right: Math.max(...valueHighlights.map(h => h.area.right)),
+    };
+    return {
+      area: combinedValuesArea,
+      color: valueHighlights[0]!.color,
+      onResizeArea: (nextArea: Area) => {
+        const basis = session.capture();
+        const current = basis.document.charts?.find(c => c.id === selectedChart.id);
+        if (!current || current.source.kind !== 'range') return;
+        const nextRowCount = nextArea.bottom - nextArea.top + 1;
+        const nextColCount = nextArea.right - nextArea.left + 1;
+        const catHighlight = chartHighlights.find(h => h.sheetId === sheet.id && h.kind === 'categories');
+        const nextSeries = current.series.flatMap((s, idx) => {
+          const vh = valueHighlights.find(h => h.seriesIndex === idx);
+          if (!vh) return [s];
+          if (current.seriesBy === 'columns') {
+            if (valueHighlights.length > 1 && vh.area.left > nextArea.right) return [];
+            const colCount = valueHighlights.length === 1 ? nextColCount : vh.area.right - vh.area.left + 1;
+            return [{
+              ...s,
+              valuesRef: formatAbsoluteAreaRef(sheet.name, nextArea.top, vh.area.left, nextRowCount, colCount),
+              ...(catHighlight && idx === 0
+                ? { categoriesRef: formatAbsoluteAreaRef(sheet.name, nextArea.top, catHighlight.area.left, nextRowCount, catHighlight.area.right - catHighlight.area.left + 1) }
+                : {}),
+            }];
+          }
+          if (valueHighlights.length > 1 && vh.area.top > nextArea.bottom) return [];
+          const rowCount = valueHighlights.length === 1 ? nextRowCount : vh.area.bottom - vh.area.top + 1;
+          return [{
+            ...s,
+            valuesRef: formatAbsoluteAreaRef(sheet.name, vh.area.top, nextArea.left, rowCount, nextColCount),
+            ...(catHighlight && idx === 0
+              ? { categoriesRef: formatAbsoluteAreaRef(sheet.name, catHighlight.area.top, nextArea.left, catHighlight.area.bottom - catHighlight.area.top + 1, nextColCount) }
+              : {}),
+          }];
+        });
+        if (nextSeries.length > 0) {
+          applyStructure(basis, updateChart(basis, current.id, { series: nextSeries }));
+        }
+      },
+    };
+  }, [selectedChart, editing.draft, chartHighlights, sheet.id, sheet.name, session]);
   const formulaHighlights = useMemo(
     () => (editing.draft && editing.draft.originalStyle?.numberFormat !== '@' && editing.draft.text.startsWith('=')
       ? formulaReferenceHighlights(editing.draft.text, snapshot.document, editing.draft.target.sheetId)
@@ -2936,8 +3080,10 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     [editing.draft, snapshot.document],
   );
   const sheetFormulaHighlights = useMemo(
-    () => formulaHighlights.filter(item => item.sheetId === sheet.id),
-    [formulaHighlights, sheet.id],
+    () => (formulaHighlights.length > 0
+      ? formulaHighlights.filter(item => item.sheetId === sheet.id)
+      : chartHighlights.filter(item => item.sheetId === sheet.id)),
+    [formulaHighlights, chartHighlights, sheet.id],
   );
 
   function editorProps(surface: EditSurface): CellEditorProps {
@@ -3025,6 +3171,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: handleTableChangeDesign,
     onTableClick: () => {},
     onPivotTableClick: () => {},
+    onInsertChart: (_chartType: ChartType) => {},
+    onRecommendedCharts: () => {},
+    onAllCharts: (_category?: CoreChartCategoryTab) => {},
     onFind: () => {},
     onReplace: () => {},
     onNameManagerClick: () => {},
@@ -3088,6 +3237,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: handleTableChangeDesign,
     onTableClick: () => openCreateDialog(true),
     onPivotTableClick: openCreatePivotDialog,
+    onInsertChart: (chartType: ChartType) => insertChartWithType(chartType),
+    onRecommendedCharts: () => openInsertChartDialog('recommended'),
+    onAllCharts: (category?: CoreChartCategoryTab) => openInsertChartDialog('all', category),
     onFind: () => openSearch(false),
     onReplace: () => openSearch(true),
     onNameManagerClick: () => { if (editing.commit()) setNameManagerOpen(true); },
@@ -3126,6 +3278,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: (patch: Partial<TableDesign>) => ribbonLatest.current.onTableChangeDesign(patch),
     onTableClick: () => ribbonLatest.current.onTableClick(),
     onPivotTableClick: () => ribbonLatest.current.onPivotTableClick(),
+    onInsertChart: (chartType: ChartType) => ribbonLatest.current.onInsertChart(chartType),
+    onRecommendedCharts: () => ribbonLatest.current.onRecommendedCharts(),
+    onAllCharts: (category?: CoreChartCategoryTab) => ribbonLatest.current.onAllCharts(category),
     onFind: () => ribbonLatest.current.onFind(),
     onReplace: () => ribbonLatest.current.onReplace(),
     onNameManagerClick: () => ribbonLatest.current.onNameManagerClick(),
@@ -3266,6 +3421,9 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onTableRename={ribbonHandlers.onTableRename} onTableResize={ribbonHandlers.onTableResize}
         onTableChangeDesign={ribbonHandlers.onTableChangeDesign} onTableClick={ribbonHandlers.onTableClick}
         onPivotTableClick={ribbonHandlers.onPivotTableClick}
+        onInsertChart={ribbonHandlers.onInsertChart}
+        onRecommendedCharts={ribbonHandlers.onRecommendedCharts}
+        onAllCharts={ribbonHandlers.onAllCharts}
         {...(pivotRibbonProps && { pivotRibbon: pivotRibbonProps })}
         onFind={ribbonHandlers.onFind} onReplace={ribbonHandlers.onReplace}
         onNameManagerClick={ribbonHandlers.onNameManagerClick} onDefineNameClick={ribbonHandlers.onDefineNameClick}
@@ -3323,6 +3481,12 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
             onFigurePlacement={(ownerId, placement, original) => { void saveFigurePlacement(ownerId, placement, original); }}
             onFigureDelete={deleteFigurePlacement}
             onFigureCancel={() => setPendingFigureOwner(undefined)}
+            charts={sheetCharts}
+            {...(selectedChartId !== undefined && { selectedChartId })}
+            {...(chartRangeHandle !== undefined && { chartRangeHandle })}
+            onSelectChart={setSelectedChartId}
+            onChartPlacement={handleChartPlacement}
+            onChartDelete={handleChartDelete}
             onHeaderFit={(axis, index) => openStructure(`fit-${axis}`, targetHeader(axis, index))}
             onHeaderResize={(axis, index) => {
               if (!python.barrier() || !editing.commit()) return;
@@ -3551,6 +3715,15 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         onPickRange={handlePickRangeFromManager}
         onApplyExtent={handleApplyManagerExtent}
         onClose={() => { setNameManagerOpen(false); setPickedManagerExtent(undefined); scheduleFocusGrid(); }} />}
+      {insertChartDraft && <InsertChartDialog
+        document={snapshot.document}
+        sheetId={sheet.id}
+        sourceFormula={insertChartDraft.sourceFormula}
+        initialTab={insertChartDraft.tab}
+        {...(insertChartDraft.category && { initialCategory: insertChartDraft.category })}
+        onSubmit={(chartType, seriesBy) => insertChartWithType(chartType, insertChartDraft.sourceFormula, seriesBy)}
+        onCancel={() => { setInsertChartDraft(undefined); scheduleFocusGrid(); }}
+      />}
       {createPivotDraft && <CreatePivotTableDialog
         sourceText={createPivotDraft.sourceText}
         placement={createPivotDraft.placement}
