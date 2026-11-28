@@ -114,6 +114,86 @@ export interface ChartLegendItem {
   readonly seriesIndex: number;
 }
 
+export interface ChartBoxWhiskerGeom {
+  readonly x: number;
+  readonly width: number;
+  readonly yBoxTop: number;
+  readonly yBoxBottom: number;
+  readonly yMedian: number;
+  readonly yWhiskerTop: number;
+  readonly yWhiskerBottom: number;
+  readonly yMean: number;
+  readonly fill: string;
+  readonly stroke: string;
+  readonly showMeanMarker: boolean;
+  readonly outliers: readonly { readonly x: number; readonly y: number; readonly value: number }[];
+  readonly innerPoints: readonly { readonly x: number; readonly y: number; readonly value: number }[];
+  readonly seriesName: string;
+  readonly category: string;
+  readonly summary: string;
+}
+
+export interface ChartTreemapRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly fill: string;
+  readonly stroke: string;
+  readonly label: string;
+  readonly value: number;
+  readonly formatted: string;
+}
+
+export interface ChartStockGeom {
+  readonly x: number;
+  readonly yHigh: number;
+  readonly yLow: number;
+  readonly yOpen?: number;
+  readonly yClose: number;
+  readonly boxWidth: number;
+  readonly isDown: boolean;
+  readonly category: string;
+  readonly summary: string;
+}
+
+export interface ChartRadarWeb {
+  readonly rings: readonly string[];
+  readonly spokes: readonly {
+    readonly x1: number;
+    readonly y1: number;
+    readonly x2: number;
+    readonly y2: number;
+    readonly labelX: number;
+    readonly labelY: number;
+    readonly anchor: 'start' | 'middle' | 'end';
+    readonly label: string;
+  }[];
+  readonly polygons: readonly {
+    readonly path: string;
+    readonly stroke: string;
+    readonly fill: string;
+    readonly fillOpacity: number;
+    readonly markers: readonly ChartMarkerPoint[];
+  }[];
+}
+
+export interface ChartTrendlineGeom {
+  readonly path: string;
+  readonly color: string;
+  readonly label?: string;
+  readonly labelX?: number;
+  readonly labelY?: number;
+}
+
+export interface ChartErrorBarGeom {
+  readonly x: number;
+  readonly yTop: number;
+  readonly yBottom: number;
+  readonly capWidth: number;
+  readonly color: string;
+}
+
 export interface ChartLayoutResult {
   readonly width: number;
   readonly height: number;
@@ -123,12 +203,20 @@ export interface ChartLayoutResult {
   readonly gridlines: readonly { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }[];
   readonly xAxis?: ChartAxisLayout;
   readonly yAxis?: ChartAxisLayout;
+  readonly secondaryYAxis?: ChartAxisLayout;
   readonly bars: readonly ChartBarRect[];
   readonly areas: readonly { readonly path: string; readonly fill: string; readonly opacity: number; readonly seriesIndex: number }[];
   readonly lines: readonly ChartLineSeriesLayout[];
   readonly slices: readonly ChartPieSlice[];
   readonly calloutConnectors: readonly { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }[];
+  readonly waterfallConnectors?: readonly { readonly x1: number; readonly y1: number; readonly x2: number; readonly y2: number }[];
   readonly bubbles: readonly ChartBubblePoint[];
+  readonly boxWhiskers?: readonly ChartBoxWhiskerGeom[];
+  readonly treemapRects?: readonly ChartTreemapRect[];
+  readonly stockStems?: readonly ChartStockGeom[];
+  readonly radarWeb?: ChartRadarWeb;
+  readonly trendlines?: readonly ChartTrendlineGeom[];
+  readonly errorBars?: readonly ChartErrorBarGeom[];
   readonly isEmpty: boolean;
 }
 
@@ -182,14 +270,14 @@ function smoothPath(points: readonly { readonly x: number; readonly y: number }[
   return d;
 }
 
-function straightPath(points: readonly { readonly x: number; readonly y: number }[]): string {
+export function straightPath(points: readonly { readonly x: number; readonly y: number }[]): string {
   if (points.length === 0) return '';
   return points
     .map((pt, idx) => `${idx === 0 ? 'M' : 'L'} ${pt.x.toFixed(2)} ${pt.y.toFixed(2)}`)
     .join(' ');
 }
 
-function arcSectorPath(
+export function arcSectorPath(
   cx: number,
   cy: number,
   outerR: number,
@@ -220,7 +308,7 @@ function arcSectorPath(
   return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${outerR.toFixed(2)} ${outerR.toFixed(2)} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} L ${ix1.toFixed(2)} ${iy1.toFixed(2)} A ${innerR.toFixed(2)} ${innerR.toFixed(2)} 0 ${largeArc} 0 ${ix2.toFixed(2)} ${iy2.toFixed(2)} Z`;
 }
 
-function computeLegendItems(
+export function computeLegendItems(
   seriesList: readonly { readonly label: string; readonly color: string; readonly seriesIndex: number }[],
   chartWidth: number,
   chartHeight: number,
@@ -269,7 +357,7 @@ function computeLegendItems(
   };
 }
 
-function visibleSeriesList(data: ResolvedChartData): readonly { readonly series: ResolvedChartSeries; readonly index: number }[] {
+export function visibleSeriesList(data: ResolvedChartData): readonly { readonly series: ResolvedChartSeries; readonly index: number }[] {
   return data.series
     .map((series, index) => ({ series, index }))
     .filter(entry => !entry.series.hidden);

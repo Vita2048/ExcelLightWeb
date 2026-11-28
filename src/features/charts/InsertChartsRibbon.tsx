@@ -5,13 +5,14 @@ import { positionRibbonPopup } from '../shell/RibbonFlyout';
 import {
   ChartTypeGlyph,
   RecommendedChartsGlyph,
-  coreChartFlyoutFamilies,
+  allChartFlyoutFamilies,
+  type ChartDialogCategory,
   type ChartFlyoutFamily,
-  type CoreChartCategoryTab,
+  type ComboPresetId,
 } from './chart-catalog';
 
-function ChartCategoryIcon({ index }: { readonly index: number }) {
-  if (index === 0) {
+function ChartCategoryIcon({ label }: { readonly label: string }) {
+  if (label.includes('Column')) {
     return (
       <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3 20 H21" stroke="#b0b6c0" strokeWidth="1.4" />
@@ -21,7 +22,26 @@ function ChartCategoryIcon({ index }: { readonly index: number }) {
       </svg>
     );
   }
-  if (index === 1) {
+  if (label.includes('Hierarchy')) {
+    return (
+      <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="4" width="7" height="16" fill="#a5aab4" stroke="#454b56" strokeWidth="1" />
+        <rect x="11" y="4" width="9" height="9" fill="#d4d8df" stroke="#454b56" strokeWidth="1" />
+        <rect x="11" y="13" width="9" height="7" fill="#4ea1ff" stroke="#1f4e8c" strokeWidth="1" />
+      </svg>
+    );
+  }
+  if (label.includes('Waterfall')) {
+    return (
+      <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 20 H21" stroke="#b0b6c0" strokeWidth="1.2" />
+        <rect x="4" y="10" width="4" height="10" fill="#a5aab4" stroke="#454b56" />
+        <rect x="9" y="6" width="4" height="5" fill="#d4d8df" stroke="#454b56" />
+        <rect x="14" y="11" width="4" height="9" fill="#4ea1ff" stroke="#1f4e8c" />
+      </svg>
+    );
+  }
+  if (label.includes('Line')) {
     return (
       <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
         <path d="M3 20 H21 M4 4 V20" stroke="#b0b6c0" strokeWidth="1.2" />
@@ -30,7 +50,28 @@ function ChartCategoryIcon({ index }: { readonly index: number }) {
       </svg>
     );
   }
-  if (index === 2) {
+  if (label.includes('Statistic')) {
+    return (
+      <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 20 H21 M4 4 V20" stroke="#b0b6c0" strokeWidth="1.2" />
+        <rect x="5" y="11" width="4" height="8" fill="#4ea1ff" stroke="#1f4e8c" />
+        <rect x="9" y="6" width="4" height="13" fill="#4ea1ff" stroke="#1f4e8c" />
+        <rect x="13" y="13" width="4" height="6" fill="#4ea1ff" stroke="#1f4e8c" />
+      </svg>
+    );
+  }
+  if (label.includes('Combo')) {
+    return (
+      <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 20 H21" stroke="#b0b6c0" strokeWidth="1.2" />
+        <rect x="4" y="11" width="4" height="8" fill="#a5aab4" stroke="#454b56" />
+        <rect x="10" y="8" width="4" height="11" fill="#d4d8df" stroke="#454b56" />
+        <rect x="16" y="13" width="4" height="6" fill="#4ea1ff" stroke="#1f4e8c" />
+        <polyline points="4,15 11,7 20,12" fill="none" stroke="#f38c4e" strokeWidth="1.8" />
+      </svg>
+    );
+  }
+  if (label.includes('Pie')) {
     return (
       <svg className="ribbon-glyph" width={20} height={20} viewBox="0 0 24 24" aria-hidden="true">
         <circle cx="12" cy="12" r="8" fill="#a5aab4" stroke="#454b56" strokeWidth="1.2" />
@@ -50,14 +91,12 @@ function ChartCategoryIcon({ index }: { readonly index: number }) {
 
 function ChartGalleryFlyout({
   family,
-  iconIndex,
   onInsertChart,
   onMoreCharts,
 }: {
   readonly family: ChartFlyoutFamily;
-  readonly iconIndex: number;
-  readonly onInsertChart: (chartType: ChartType) => void;
-  readonly onMoreCharts: (category: CoreChartCategoryTab) => void;
+  readonly onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => void;
+  readonly onMoreCharts: (category: ChartDialogCategory) => void;
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
@@ -142,7 +181,7 @@ function ChartGalleryFlyout({
           if (event.key === 'Escape' && open) { event.preventDefault(); close(); }
         }}
       >
-        <ChartCategoryIcon index={iconIndex} />
+        <ChartCategoryIcon label={family.triggerLabel} />
         <span className="ribbon-chevron" aria-hidden="true" />
       </button>
       {open && createPortal(
@@ -160,7 +199,7 @@ function ChartGalleryFlyout({
               <div className="chart-gallery-grid" role="none">
                 {section.options.map(option => (
                   <button
-                    key={option.type}
+                    key={option.label}
                     type="button"
                     role="menuitem"
                     className="chart-gallery-tile"
@@ -168,11 +207,11 @@ function ChartGalleryFlyout({
                     aria-label={option.label}
                     onClick={() => {
                       close();
-                      onInsertChart(option.type);
+                      onInsertChart(option.type, option.comboPreset);
                     }}
                   >
                     <span className="ribbon-flyout-glyph chart-thumb-glyph" aria-hidden="true">
-                      <ChartTypeGlyph type={option.type} size={36} />
+                      <ChartTypeGlyph type={option.type} comboPreset={option.comboPreset} size={38} />
                     </span>
                     <span className="ribbon-flyout-label chart-gallery-sr">{option.label}</span>
                   </button>
@@ -191,7 +230,7 @@ function ChartGalleryFlyout({
               }}
             >
               <span className="ribbon-flyout-glyph" aria-hidden="true">
-                <ChartCategoryIcon index={iconIndex} />
+                <ChartCategoryIcon label={family.triggerLabel} />
               </span>
               <span className="ribbon-flyout-label">{family.moreLabel}</span>
             </button>
@@ -209,8 +248,8 @@ export function InsertChartsRibbon({
   onInsertChart,
 }: {
   readonly onRecommendedCharts: () => void;
-  readonly onAllCharts: (category?: CoreChartCategoryTab) => void;
-  readonly onInsertChart: (chartType: ChartType) => void;
+  readonly onAllCharts: (category?: ChartDialogCategory) => void;
+  readonly onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => void;
 }) {
   return (
     <fieldset className="insert-charts-group">
@@ -224,11 +263,10 @@ export function InsertChartsRibbon({
         Recommended Charts
       </button>
       <div className="chart-ribbon-grid" role="group" aria-label="Chart types">
-        {coreChartFlyoutFamilies.map((family, idx) => (
+        {allChartFlyoutFamilies.map(family => (
           <ChartGalleryFlyout
             key={family.triggerLabel}
             family={family}
-            iconIndex={idx}
             onInsertChart={onInsertChart}
             onMoreCharts={category => onAllCharts(category)}
           />

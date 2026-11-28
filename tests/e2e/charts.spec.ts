@@ -118,3 +118,55 @@ test('inserts core 2D charts from Insert ribbon & dialog, updates live on cell e
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(chart2).toBeVisible();
 });
+
+test('inserts Combo (Secondary Axis), Waterfall, Statistical, Hierarchy, and Radar charts via ribbon and All Charts dialog', async ({ page }) => {
+  await page.goto(path);
+  await seedChartData(page);
+  await go(page, 'A1');
+
+  // 1. Insert Combo (Clustered Column - Line on Secondary Axis) from Insert -> Charts
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Insert Combo Chart', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Clustered Column - Line on Secondary Axis', exact: true }).click();
+
+  const comboChart = page.locator('.chart-frame[aria-label="Chart 1"]');
+  await expect(comboChart).toBeVisible();
+  await expect(comboChart.locator('.chart-series-bar')).toHaveCount(3);
+  await expect(comboChart.locator('g.chart-axis')).toHaveCount(3); // X + Primary Y + Secondary Y
+
+  // 2. Insert Waterfall from Waterfall/Funnel/Stock/Radar gallery
+  await go(page, 'A1');
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Insert Waterfall, Funnel, Stock, or Radar Chart', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Waterfall', exact: true }).click();
+
+  const waterfallChart = page.locator('.chart-frame[aria-label="Chart 2"]');
+  await expect(waterfallChart).toBeVisible();
+  await expect(waterfallChart.locator('.chart-waterfall-connector')).toHaveCount(2);
+
+  // 3. Insert Pareto from Statistic gallery
+  await go(page, 'A1');
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'Insert Statistic Chart', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Pareto', exact: true }).click();
+  const paretoChart = page.locator('.chart-frame[aria-label="Chart 3"]');
+  await expect(paretoChart).toBeVisible();
+
+  // 4. Open All Charts dialog -> Treemap + Radar + Custom Combo table
+  await go(page, 'A1');
+  await page.getByRole('tab', { name: 'Insert', exact: true }).click();
+  await page.getByRole('button', { name: 'See All Charts', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Insert Chart' });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole('option', { name: 'Combo', exact: true }).click();
+  await expect(dialog.getByRole('table', { name: 'Combo series configuration' })).toBeVisible();
+  await expect(dialog.getByRole('checkbox', { name: 'Secondary Axis for West' })).toBeVisible();
+
+  await dialog.getByRole('option', { name: 'Treemap', exact: true }).click();
+  await dialog.getByRole('button', { name: 'OK', exact: true }).click();
+
+  const treemapChart = page.locator('.chart-frame[aria-label="Chart 4"]');
+  await expect(treemapChart).toBeVisible();
+  await expect(treemapChart.locator('.chart-treemap-label')).toHaveCount(3);
+});

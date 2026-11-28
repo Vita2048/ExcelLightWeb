@@ -19,7 +19,7 @@ import { NumberRibbon } from '../formatting/NumberRibbon';
 import { StructureRibbon, type StructureAction } from '../structure/StructureControls';
 import type { ChartType } from '../../core/chart';
 import { InsertChartsRibbon } from '../charts/InsertChartsRibbon';
-import type { CoreChartCategoryTab } from '../charts/chart-catalog';
+import type { CoreChartCategoryTab, ComboPresetId } from '../charts/chart-catalog';
 import { TableDesignRibbon } from '../tables/TableDesignRibbon';
 import { PivotAnalyzeRibbon, type PivotAnalyzeRibbonProps } from '../pivot/PivotAnalyzeRibbon';
 import { PivotDesignRibbon } from '../pivot/PivotDesignRibbon';
@@ -75,7 +75,7 @@ interface RibbonProps {
   readonly onTableChangeDesign?: (patch: Partial<TableDesign>) => void;
   readonly onTableClick?: () => void;
   readonly onPivotTableClick?: () => void;
-  readonly onInsertChart?: (chartType: ChartType) => void;
+  readonly onInsertChart?: (chartType: ChartType, comboPreset?: ComboPresetId) => void;
   readonly onRecommendedCharts?: () => void;
   readonly onAllCharts?: (category?: CoreChartCategoryTab) => void;
   readonly pivotRibbon?: PivotAnalyzeRibbonProps & {

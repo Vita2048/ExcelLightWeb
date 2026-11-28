@@ -57,10 +57,10 @@ import { PivotTableFieldsPane } from '../features/pivot/PivotTableFieldsPane';
 import type { PivotAxisField, PivotTableDocument, PivotValueField } from '../core/pivot';
 import type { ChartPlacement, ChartType } from '../core/chart';
 import { createChart, deleteChart, moveResizeChart, updateChart } from '../application/chart-commands';
-import { formatAbsoluteAreaRef, resolveChartData, resolveFormulaExtent } from '../charts/chart-data';
+import { formatAbsoluteAreaRef, inferChartSeriesFromSource, resolveChartData, resolveFormulaExtent } from '../charts/chart-data';
 import { chartRangeHighlights } from '../charts/chart-highlights';
-import { InsertChartDialog } from '../features/charts/InsertChartDialog';
-import type { CoreChartCategoryTab } from '../features/charts/chart-catalog';
+import { buildComboPresetOverrides, InsertChartDialog, type ComboSeriesOverride } from '../features/charts/InsertChartDialog';
+import type { ComboPresetId, CoreChartCategoryTab } from '../features/charts/chart-catalog';
 import { extentContains, lastColumn, lastRow, ownsTableFilter, tableDesign, tableInputExtent, tablesOnSheet } from '../core/workbook-names';
 import { type DefinitionDraft, NameDefinitionDialog, NameManagerDialog, RangePickerWidget } from '../features/tables/TableDialogs';
 import type { FigurePlacement, PythonFigure, TableDesign, WorkbookName } from '../core/workbook';
@@ -1492,7 +1492,13 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     return refersTo(doc, region);
   }
 
-  function insertChartWithType(chartType: ChartType, explicitSourceFormula?: string, explicitSeriesBy?: 'columns' | 'rows') {
+  function insertChartWithType(
+    chartType: ChartType,
+    explicitSourceFormula?: string,
+    explicitSeriesBy?: 'columns' | 'rows',
+    comboPreset?: ComboPresetId,
+    comboOverrides?: readonly ComboSeriesOverride[],
+  ) {
     if (!editing.commit()) return;
     const basis = session.capture();
     const formula = explicitSourceFormula ?? resolveChartSourceFormula(basis.document);
@@ -1503,11 +1509,27 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
       documentLimits.columns,
       (sourceArea ? sourceArea.column + sourceArea.columns : (selArea?.right ?? selection.anchor.column) + 1) + 1,
     );
+    let customSeries;
+    let resolvedSeriesBy = explicitSeriesBy;
+    if (chartType === 'combo') {
+      const inferred = inferChartSeriesFromSource(basis.document, { kind: 'range', formula }, sheet.id, chartType, explicitSeriesBy);
+      resolvedSeriesBy = inferred.seriesBy;
+      const ovList = comboOverrides ?? buildComboPresetOverrides(inferred.series.length, comboPreset ?? 'colLine');
+      customSeries = inferred.series.map((s, idx) => {
+        const ov = ovList[idx];
+        return {
+          id: makeId(),
+          ...s,
+          ...(ov && { chartType: ov.chartType, secondaryAxis: ov.secondaryAxis }),
+        };
+      });
+    }
     const prevCount = basis.document.charts?.length ?? 0;
     const cmd = createChart(basis, {
       chartType,
       source: { kind: 'range', formula },
-      ...(explicitSeriesBy && { seriesBy: explicitSeriesBy }),
+      ...(resolvedSeriesBy && { seriesBy: resolvedSeriesBy }),
+      ...(customSeries && { series: customSeries }),
       placement: { sheetId: sheet.id, row: anchorRow, column: anchorCol, offsetX: 12, offsetY: 8, width: 480, height: 300 },
     }, makeId);
     applyStructure(basis, cmd);
@@ -3171,7 +3193,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: handleTableChangeDesign,
     onTableClick: () => {},
     onPivotTableClick: () => {},
-    onInsertChart: (_chartType: ChartType) => {},
+    onInsertChart: (_chartType: ChartType, _comboPreset?: ComboPresetId) => {},
     onRecommendedCharts: () => {},
     onAllCharts: (_category?: CoreChartCategoryTab) => {},
     onFind: () => {},
@@ -3237,7 +3259,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: handleTableChangeDesign,
     onTableClick: () => openCreateDialog(true),
     onPivotTableClick: openCreatePivotDialog,
-    onInsertChart: (chartType: ChartType) => insertChartWithType(chartType),
+    onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => insertChartWithType(chartType, undefined, undefined, comboPreset),
     onRecommendedCharts: () => openInsertChartDialog('recommended'),
     onAllCharts: (category?: CoreChartCategoryTab) => openInsertChartDialog('all', category),
     onFind: () => openSearch(false),
@@ -3278,7 +3300,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
     onTableChangeDesign: (patch: Partial<TableDesign>) => ribbonLatest.current.onTableChangeDesign(patch),
     onTableClick: () => ribbonLatest.current.onTableClick(),
     onPivotTableClick: () => ribbonLatest.current.onPivotTableClick(),
-    onInsertChart: (chartType: ChartType) => ribbonLatest.current.onInsertChart(chartType),
+    onInsertChart: (chartType: ChartType, comboPreset?: ComboPresetId) => ribbonLatest.current.onInsertChart(chartType, comboPreset),
     onRecommendedCharts: () => ribbonLatest.current.onRecommendedCharts(),
     onAllCharts: (category?: CoreChartCategoryTab) => ribbonLatest.current.onAllCharts(category),
     onFind: () => ribbonLatest.current.onFind(),
@@ -3721,7 +3743,7 @@ export function App({ initialWorkbook }: { initialWorkbook?: WorkbookDocument })
         sourceFormula={insertChartDraft.sourceFormula}
         initialTab={insertChartDraft.tab}
         {...(insertChartDraft.category && { initialCategory: insertChartDraft.category })}
-        onSubmit={(chartType, seriesBy) => insertChartWithType(chartType, insertChartDraft.sourceFormula, seriesBy)}
+        onSubmit={(chartType, seriesBy, comboOverrides) => insertChartWithType(chartType, insertChartDraft.sourceFormula, seriesBy, undefined, comboOverrides)}
         onCancel={() => { setInsertChartDraft(undefined); scheduleFocusGrid(); }}
       />}
       {createPivotDraft && <CreatePivotTableDialog

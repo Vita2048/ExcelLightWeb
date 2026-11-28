@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { ChartDocument } from '../../core/chart';
 import type { ResolvedChartData } from '../../charts/chart-data';
-import { computeCore2DChartLayout } from '../../charts/layout/core-2d-layout';
+import { computeChartLayout } from '../../charts/layout/advanced-layout';
 
 interface TooltipState {
   readonly x: number;
@@ -26,7 +26,7 @@ export function ChartCanvas({
   readonly interactive?: boolean;
 }) {
   const layout = useMemo(
-    () => computeCore2DChartLayout(data, chart, width, height),
+    () => computeChartLayout(data, chart, width, height),
     [data, chart, width, height],
   );
   const [tooltip, setTooltip] = useState<TooltipState | undefined>(undefined);
@@ -76,6 +76,51 @@ export function ChartCanvas({
           />
         ))}
 
+        {layout.radarWeb && (
+          <g className="chart-radar-web">
+            {layout.radarWeb.rings.map((d, i) => (
+              <path key={`r-${i}`} d={d} fill="none" className="chart-gridline" />
+            ))}
+            {layout.radarWeb.spokes.map((s, i) => (
+              <g key={`s-${i}`}>
+                <line x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2} className="chart-gridline" />
+                <text x={s.labelX} y={s.labelY} textAnchor={s.anchor} className="chart-axis-label">
+                  {s.label}
+                </text>
+              </g>
+            ))}
+            {layout.radarWeb.polygons.map((poly, i) => (
+              <g key={`p-${i}`}>
+                <path
+                  d={poly.path}
+                  fill={poly.fill}
+                  fillOpacity={poly.fillOpacity}
+                  stroke={poly.stroke}
+                  strokeWidth={2}
+                />
+                {poly.markers.map((m, mIdx) => (
+                  <circle
+                    key={mIdx}
+                    className="chart-series-marker"
+                    cx={m.x}
+                    cy={m.y}
+                    r={m.radius}
+                    fill={m.fill}
+                    stroke={m.stroke}
+                    strokeWidth={1.5}
+                    onPointerMove={interactive ? () => setTooltip({
+                      x: m.x,
+                      y: m.y,
+                      title: m.seriesName,
+                      detail: `${m.category}: ${m.formatted}`,
+                    }) : undefined}
+                  />
+                ))}
+              </g>
+            ))}
+          </g>
+        )}
+
         {layout.areas.map((area, i) => (
           <path
             key={i}
@@ -102,6 +147,119 @@ export function ChartCanvas({
               detail: `${bar.category}: ${bar.formatted}`,
             }) : undefined}
           />
+        ))}
+
+        {layout.waterfallConnectors?.map((conn, i) => (
+          <line
+            key={`wf-${i}`}
+            x1={conn.x1}
+            y1={conn.y1}
+            x2={conn.x2}
+            y2={conn.y2}
+            className="chart-waterfall-connector"
+          />
+        ))}
+
+        {layout.boxWhiskers?.map((bw, i) => {
+          const cx = bw.x + bw.width / 2;
+          const cap = Math.max(4, bw.width * 0.3);
+          return (
+            <g
+              key={`bw-${i}`}
+              className="chart-box-whisker"
+              onPointerMove={interactive ? () => setTooltip({
+                x: cx,
+                y: bw.yBoxTop,
+                title: bw.seriesName,
+                detail: bw.summary,
+              }) : undefined}
+            >
+              <line x1={cx} y1={bw.yWhiskerTop} x2={cx} y2={bw.yBoxTop} stroke={bw.stroke} strokeWidth={1.4} />
+              <line x1={cx - cap} y1={bw.yWhiskerTop} x2={cx + cap} y2={bw.yWhiskerTop} stroke={bw.stroke} strokeWidth={1.4} />
+              <line x1={cx} y1={bw.yBoxBottom} x2={cx} y2={bw.yWhiskerBottom} stroke={bw.stroke} strokeWidth={1.4} />
+              <line x1={cx - cap} y1={bw.yWhiskerBottom} x2={cx + cap} y2={bw.yWhiskerBottom} stroke={bw.stroke} strokeWidth={1.4} />
+              <rect
+                x={bw.x}
+                y={Math.min(bw.yBoxTop, bw.yBoxBottom)}
+                width={bw.width}
+                height={Math.max(2, Math.abs(bw.yBoxBottom - bw.yBoxTop))}
+                fill={bw.fill}
+                fillOpacity={0.78}
+                stroke={bw.stroke}
+                strokeWidth={1.3}
+              />
+              <line x1={bw.x} y1={bw.yMedian} x2={bw.x + bw.width} y2={bw.yMedian} stroke={bw.stroke} strokeWidth={1.8} />
+              {bw.showMeanMarker && (
+                <path
+                  d={`M ${cx - 3.5} ${bw.yMean - 3.5} L ${cx + 3.5} ${bw.yMean + 3.5} M ${cx + 3.5} ${bw.yMean - 3.5} L ${cx - 3.5} ${bw.yMean + 3.5}`}
+                  stroke={bw.stroke}
+                  strokeWidth={1.5}
+                />
+              )}
+              {bw.innerPoints.map((pt, pIdx) => (
+                <circle key={`in-${pIdx}`} cx={pt.x} cy={pt.y} r={2.2} fill="#d8dee9" />
+              ))}
+              {bw.outliers.map((pt, oIdx) => (
+                <circle key={`out-${oIdx}`} cx={pt.x} cy={pt.y} r={3} fill="none" stroke="#f38c4e" strokeWidth={1.5} />
+              ))}
+            </g>
+          );
+        })}
+
+        {layout.treemapRects?.map((rect, i) => (
+          <g
+            key={`tm-${i}`}
+            className="chart-series-bar"
+            onPointerMove={interactive ? () => setTooltip({
+              x: rect.x + rect.width / 2,
+              y: rect.y + rect.height / 2,
+              title: rect.label,
+              detail: rect.formatted,
+            }) : undefined}
+          >
+            <rect
+              x={rect.x}
+              y={rect.y}
+              width={rect.width}
+              height={rect.height}
+              fill={rect.fill}
+              stroke={rect.stroke}
+              strokeWidth={1.5}
+            />
+            {rect.width > 42 && rect.height > 20 && (
+              <text x={rect.x + 5} y={rect.y + 15} className="chart-treemap-label">
+                {rect.label.length > Math.floor(rect.width / 7) ? rect.label.slice(0, Math.max(2, Math.floor(rect.width / 7) - 1)) + '…' : rect.label}
+              </text>
+            )}
+          </g>
+        ))}
+
+        {layout.stockStems?.map((st, i) => (
+          <g
+            key={`st-${i}`}
+            className="chart-stock-stem"
+            onPointerMove={interactive ? () => setTooltip({
+              x: st.x,
+              y: st.yHigh,
+              title: st.category,
+              detail: st.summary,
+            }) : undefined}
+          >
+            <line x1={st.x} y1={st.yHigh} x2={st.x} y2={st.yLow} stroke="#d8dee9" strokeWidth={1.5} />
+            {st.yOpen !== undefined ? (
+              <rect
+                x={st.x - st.boxWidth / 2}
+                y={Math.min(st.yOpen, st.yClose)}
+                width={st.boxWidth}
+                height={Math.max(2, Math.abs(st.yClose - st.yOpen))}
+                fill={st.isDown ? '#f38c4e' : '#4ea1ff'}
+                stroke="#181b20"
+                strokeWidth={1}
+              />
+            ) : (
+              <line x1={st.x} y1={st.yClose} x2={st.x + 6} y2={st.yClose} stroke="#4ea1ff" strokeWidth={2} />
+            )}
+          </g>
         ))}
 
         {layout.lines.map((series, i) => (
@@ -134,6 +292,29 @@ export function ChartCanvas({
                 }) : undefined}
               />
             ))}
+          </g>
+        ))}
+
+        {layout.errorBars?.map((eb, i) => (
+          <g key={`eb-${i}`} className="chart-error-bar">
+            <line x1={eb.x} y1={eb.yTop} x2={eb.x} y2={eb.yBottom} stroke={eb.color} strokeWidth={1.3} />
+            {eb.capWidth > 0 && (
+              <>
+                <line x1={eb.x - eb.capWidth / 2} y1={eb.yTop} x2={eb.x + eb.capWidth / 2} y2={eb.yTop} stroke={eb.color} strokeWidth={1.3} />
+                <line x1={eb.x - eb.capWidth / 2} y1={eb.yBottom} x2={eb.x + eb.capWidth / 2} y2={eb.yBottom} stroke={eb.color} strokeWidth={1.3} />
+              </>
+            )}
+          </g>
+        ))}
+
+        {layout.trendlines?.map((tl, i) => (
+          <g key={`tl-${i}`} className="chart-trendline">
+            <path d={tl.path} fill="none" stroke={tl.color} strokeWidth={1.6} strokeDasharray="5 3" />
+            {tl.label && tl.labelX !== undefined && tl.labelY !== undefined && (
+              <text x={tl.labelX} y={tl.labelY} textAnchor="end" className="chart-axis-label">
+                {tl.label}
+              </text>
+            )}
           </g>
         ))}
 
@@ -213,6 +394,23 @@ export function ChartCanvas({
               className="chart-axis-line"
             />
             {layout.yAxis.ticks.map((t, i) => (
+              <text key={i} x={t.x} y={t.y} textAnchor={t.anchor} className="chart-axis-label">
+                {t.label}
+              </text>
+            ))}
+          </g>
+        )}
+
+        {layout.secondaryYAxis && (
+          <g className="chart-axis">
+            <line
+              x1={layout.secondaryYAxis.line.x1}
+              y1={layout.secondaryYAxis.line.y1}
+              x2={layout.secondaryYAxis.line.x2}
+              y2={layout.secondaryYAxis.line.y2}
+              className="chart-axis-line"
+            />
+            {layout.secondaryYAxis.ticks.map((t, i) => (
               <text key={i} x={t.x} y={t.y} textAnchor={t.anchor} className="chart-axis-label">
                 {t.label}
               </text>
